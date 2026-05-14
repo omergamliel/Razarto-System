@@ -955,7 +955,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                   <Select value={newUser.department} onValueChange={(val) => setNewUser({...newUser, department: val})} required>
                     <SelectTrigger className="w-full text-right" dir="rtl"><SelectValue placeholder="בחר מחלקה" /></SelectTrigger>
                     <SelectContent dir="rtl">
-                      <SelectItem value="ש">מחלקה ש</SelectItem>
+                      <SelectItem value="א">מחלקה ש</SelectItem>
                       <SelectItem value="מ">מחלקה מ</SelectItem>
                       <SelectItem value="ת">מחלקה ת</SelectItem>
                     </SelectContent>
