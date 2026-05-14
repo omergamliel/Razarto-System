@@ -1036,7 +1036,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                 <Select value={editingUser.department} onValueChange={(val) => setEditingUser({...editingUser, department: val})} required>
                   <SelectTrigger className="w-full text-right" dir="rtl"><SelectValue /></SelectTrigger>
                   <SelectContent dir="rtl">
-                    <SelectItem value="ש">מחלקה ש</SelectItem>
+                    <SelectItem value="א">מחלקה ש</SelectItem>
                     <SelectItem value="מ">מחלקה מ</SelectItem>
                     <SelectItem value="ת">מחלקה ת</SelectItem>
                   </SelectContent>
