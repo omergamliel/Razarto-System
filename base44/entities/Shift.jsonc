@@ -1,0 +1,45 @@
+{
+  "name": "Shift",
+  "type": "object",
+  "properties": {
+    "start_date": {
+      "type": "string",
+      "format": "date",
+      "description": "\u05ea\u05d0\u05e8\u05d9\u05da \u05d4\u05ea\u05d7\u05dc\u05ea \u05d4\u05de\u05e9\u05de\u05e8\u05ea"
+    },
+    "end_date": {
+      "type": "string",
+      "format": "date",
+      "description": "\u05ea\u05d0\u05e8\u05d9\u05da \u05e1\u05d9\u05d5\u05dd \u05d4\u05de\u05e9\u05de\u05e8\u05ea"
+    },
+    "start_time": {
+      "type": "string",
+      "default": "09:00",
+      "description": "\u05e9\u05e2\u05ea \u05d4\u05ea\u05d7\u05dc\u05d4"
+    },
+    "end_time": {
+      "type": "string",
+      "default": "09:00",
+      "description": "\u05e9\u05e2\u05ea \u05e1\u05d9\u05d5\u05dd"
+    },
+    "original_user_id": {
+      "type": "number",
+      "description": "serial_id \u05e9\u05dc \u05d4\u05de\u05e9\u05ea\u05de\u05e9 \u05d4\u05de\u05e7\u05d5\u05e8\u05d9 \u05de\u05d8\u05d1\u05dc\u05ea AuthorizedPerson"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "Active",
+        "Swap_Requested",
+        "Covered"
+      ],
+      "default": "Active",
+      "description": "\u05e1\u05d8\u05d8\u05d5\u05e1 \u05d4\u05de\u05e9\u05de\u05e8\u05ea"
+    }
+  },
+  "required": [
+    "start_date",
+    "end_date",
+    "original_user_id"
+  ]
+}
