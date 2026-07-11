@@ -28,7 +28,6 @@ import KPIHeader from '../dashboard/KPIHeader';
 import KPIListModal from '../dashboard/KPIListModal';
 import AdminSettingsModal from '../admin/AdminSettingsModal';
 import SwapSuccessModal from './SwapSuccessModal';
-import SeedRolesData from '../admin/SeedRolesData';
 import HeadToHeadSelectorModal from './HeadToHeadSelectorModal';
 import HeadToHeadApprovalModal from './HeadToHeadApprovalModal';
 import HallOfFameModal from '../dashboard/HallOfFameModal';
@@ -652,9 +651,6 @@ export default function ShiftCalendar() {
   return (
     <div className="min-h-screen bg-[#F9FAFB] text-gray-900 font-sans selection:bg-blue-100 overflow-x-hidden relative" dir="rtl">
       <BackgroundShapes />
-      
-      {/* SEED DATA COMPONENT (Hidden) - Keeps roles synced if needed */}
-      <SeedRolesData />
 
       <div className="max-w-7xl mx-auto px-4 py-4 md:py-8 relative z-10 flex flex-col min-h-screen">
         
