@@ -122,16 +122,16 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   ]), []);
 
   const logEntries = useMemo(() => ([
-    { status: 'ok', user: 'חיים פרנסיו', action: 'ביקש החלפה מלאה', date: '2026-06-01', displayDate: '01/06/2026', time: '09:00', type: 'בקשות החלפה' },
-    { status: 'ok', user: 'עומר גמליאל', action: 'נכנס למערכת', date: '2026-06-01', displayDate: '01/06/2026', time: '09:12', type: 'כניסות משתמשים' },
-    { status: 'ok', user: 'ספיר לוי', action: 'הוסיף משמרת חדשה', date: '2026-06-02', displayDate: '02/06/2026', time: '14:00', type: 'הוספת משמרות' },
-    { status: 'warn', user: 'שחר כהן', action: 'שינה הרשאה למשתמש', date: '2026-06-02', displayDate: '02/06/2026', time: '14:05', type: 'שינויים בהרשאות' },
-    { status: 'error', user: 'איתי מזרחי', action: 'ניסה למחוק משמרת שלא קיימת', date: '2026-06-02', displayDate: '02/06/2026', time: '14:07', type: 'מחיקת משמרות' },
-    { status: 'ok', user: 'ספיר לוי', action: 'שיתף בקשה בוואטסאפ', date: '2026-06-02', displayDate: '02/06/2026', time: '14:12', type: 'שיתופים (WhatsApp, יומן)' },
-    { status: 'warn', user: 'עומר גמליאל', action: 'ערך את כותרת המערכת', date: '2026-06-03', displayDate: '03/06/2026', time: '10:00', type: 'עדכון מערכת' },
-    { status: 'error', user: 'חיים פרנסיו', action: 'ביצע ניסיון כושל להתחברות', date: '2026-06-03', displayDate: '03/06/2026', time: '10:12', type: 'כניסות משתמשים' },
-    { status: 'ok', user: 'ספיר הרשקו', action: 'אישר כיסוי משמרת', date: '2026-06-03', displayDate: '03/06/2026', time: '11:00', type: 'בקשות החלפה' },
-    { status: 'error', user: 'אלעד פסל', action: 'ביצע שיתוף ללא הרשאה', date: '2026-06-03', displayDate: '03/06/2026', time: '11:12', type: 'שיתופים (WhatsApp, יומן)' },
+    // { status: 'ok', user: 'חיים פרנסיו', action: 'ביקש החלפה מלאה', date: '2026-06-01', displayDate: '01/06/2026', time: '09:00', type: 'בקשות החלפה' },
+    // { status: 'ok', user: 'עומר גמליאל', action: 'נכנס למערכת', date: '2026-06-01', displayDate: '01/06/2026', time: '09:12', type: 'כניסות משתמשים' },
+    // { status: 'ok', user: 'ספיר לוי', action: 'הוסיף משמרת חדשה', date: '2026-06-02', displayDate: '02/06/2026', time: '14:00', type: 'הוספת משמרות' },
+    // { status: 'warn', user: 'שחר כהן', action: 'שינה הרשאה למשתמש', date: '2026-06-02', displayDate: '02/06/2026', time: '14:05', type: 'שינויים בהרשאות' },
+    // { status: 'error', user: 'איתי מזרחי', action: 'ניסה למחוק משמרת שלא קיימת', date: '2026-06-02', displayDate: '02/06/2026', time: '14:07', type: 'מחיקת משמרות' },
+    // { status: 'ok', user: 'ספיר לוי', action: 'שיתף בקשה בוואטסאפ', date: '2026-06-02', displayDate: '02/06/2026', time: '14:12', type: 'שיתופים (WhatsApp, יומן)' },
+    // { status: 'warn', user: 'עומר גמליאל', action: 'ערך את כותרת המערכת', date: '2026-06-03', displayDate: '03/06/2026', time: '10:00', type: 'עדכון מערכת' },
+    // { status: 'error', user: 'חיים פרנסיו', action: 'ביצע ניסיון כושל להתחברות', date: '2026-06-03', displayDate: '03/06/2026', time: '10:12', type: 'כניסות משתמשים' },
+    // { status: 'ok', user: 'ספיר הרשקו', action: 'אישר כיסוי משמרת', date: '2026-06-03', displayDate: '03/06/2026', time: '11:00', type: 'בקשות החלפה' },
+    // { status: 'error', user: 'אלעד פסל', action: 'ביצע שיתוף ללא הרשאה', date: '2026-06-03', displayDate: '03/06/2026', time: '11:12', type: 'שיתופים (WhatsApp, יומן)' },
   ]), []);
 
   const logTypeOptions = [
