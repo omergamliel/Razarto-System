@@ -512,8 +512,6 @@ export default function ShiftCalendar() {
   const handleCellClick = (date, shift) => {
     setClickedDate(date); // Fix: Save the clicked date for Add Modal
 
-    console.log(`date: ${date} shift: ${JSON.stringify(shift)}`);
-
     // Check Date Validity (Prevent editing past)
     const clickedDate = new Date(date);
     const today = new Date();
