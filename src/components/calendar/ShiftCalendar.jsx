@@ -101,6 +101,7 @@ export default function ShiftCalendar() {
   const { 
     data: authorizedPerson, 
     isLoading: isAuthCheckLoading,
+    error: authCheckError,
     refetch: refreshAuthCheck 
   } = useQuery({
     queryKey: ['check-authorization', userEmail],
@@ -140,6 +141,15 @@ export default function ShiftCalendar() {
       console.log(...args);
     }
   };
+
+  
+  // Unconditional (not admin-gated): if the query throws before it can even log
+  // "match", react-query swallows the rejection into `error` unless we surface it here.
+  useEffect(() => {
+    if (authCheckError) {
+      console.error("❌ [DEBUG] check-authorization query threw:", authCheckError);
+    }
+  }, [authCheckError]);
 
   // --- MUTATION: Link User (Onboarding Completion) ---
   const linkUserMutation = useMutation({
