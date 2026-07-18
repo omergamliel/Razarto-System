@@ -100,7 +100,6 @@ export default function ShiftCalendar() {
   const { 
     data: authorizedPerson, 
     isLoading: isAuthCheckLoading,
-    error: authCheckError,
     refetch: refreshAuthCheck 
   } = useQuery({
     queryKey: ['check-authorization', userEmail],
@@ -112,14 +111,14 @@ export default function ShiftCalendar() {
       
       console.log("🔍 [DEBUG] Checking authorization for:", userEmail);
 
+      // Fetch all authorized people and search case-insensitive on client-side
+      const allPeople = await base44.entities.AuthorizedPerson.list();
+
       // Case-insensitive search
       const normalizedUserEmail = userEmail.toLowerCase();
-      console.log("🔍 [DEBUG] normalizedUserEmail:", normalizedUserEmail);
       const match = allPeople.find(person => 
         person?.email && person.email.toLowerCase() === normalizedUserEmail
       );
-
-      console.log("🔍 [DEBUG] match:", match);
 
       // debug is gated on the record we just found, since `authorizedPerson`
       // (and any isAdmin derived from it) doesn't exist until this query resolves
@@ -132,12 +131,6 @@ export default function ShiftCalendar() {
     },
     enabled: !!userEmail
   });
-
-  useEffect(() => {
-    if (authCheckError) {
-      console.error("❌ [DEBUG] check-authorization query threw before reaching 'match':", authCheckError);
-    }
-  }, [authCheckError]);
 
   // --- DEBUG: only logs for Admin, silent for everyone else ---
   const isAdminUser = authorizedPerson?.permissions === 'Admin';
