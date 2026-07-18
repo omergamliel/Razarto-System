@@ -31,14 +31,6 @@ export default function ShiftActionModal({
     onClose();
   };
 
-  const handleRequestSwap = (type) => {
-    try {
-      onRequestSwap(type);
-    } catch (error) {
-      console.error('❌ [ShiftActionModal] onRequestSwap failed:', type, error);
-    }
-  };
-
   if (!isOpen || !shift) return null;
 
   // --- תיקון לוגיקת תאריכים ---
@@ -143,14 +135,14 @@ export default function ShiftActionModal({
                 <div className="flex flex-col gap-3 pt-2">
                    <div className="flex flex-col sm:flex-row gap-3">
                       <Button
-                         onClick={() => handleRequestSwap('full')}
+                         onClick={() => onRequestSwap('full')}
                          className="flex-1 h-12 bg-gradient-to-r from-[#EF5350] to-[#E53935] hover:from-[#E53935] hover:to-[#D32F2F] text-white rounded-xl shadow-lg shadow-red-500/20 text-base font-bold"
                        >
                          בקשת החלפה מלאה
                       </Button>
 
                       <Button
-                         onClick={() => handleRequestSwap('partial')}
+                         onClick={() => onRequestSwap('partial')}
                          variant="outline"
                          className="flex-1 h-12 rounded-xl border-2 border-[#EF5350] text-[#EF5350] hover:bg-red-50 text-base font-bold"
                        >
