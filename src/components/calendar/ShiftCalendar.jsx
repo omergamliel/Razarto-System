@@ -111,15 +111,15 @@ export default function ShiftCalendar() {
       
       console.log("🔍 [DEBUG] Checking authorization for:", userEmail);
 
-      // Fetch all authorized people and search case-insensitive on client-side
-      const allPeople = await base44.entities.AuthorizedPerson.list();
-      console.log("📄 [DEBUG] All AuthorizedPerson records:", allPeople);
-
       // Case-insensitive search
       const normalizedUserEmail = userEmail.toLowerCase();
       const match = allPeople.find(person => 
         person.email && person.email.toLowerCase() === normalizedUserEmail
       );
+
+      // debug is gated on the record we just found, since `authorizedPerson`
+      // (and any isAdmin derived from it) doesn't exist until this query resolves
+      if (match?.permissions === 'Admin') console.log("📄 [DEBUG] All AuthorizedPerson records:", allPeople);
 
       console.log("✅ [DEBUG] Final Authorization Result:", match || null);
       
@@ -127,6 +127,14 @@ export default function ShiftCalendar() {
     },
     enabled: !!userEmail
   });
+
+  // --- DEBUG: only logs for Admin, silent for everyone else ---
+  const isAdminUser = authorizedPerson?.permissions === 'Admin';
+  const debugLog = (...args) => {
+    if (isAdminUser) {
+      console.log(...args);
+    }
+  };
 
   // --- MUTATION: Link User (Onboarding Completion) ---
   const linkUserMutation = useMutation({
