@@ -132,18 +132,28 @@ export default function ShiftActionModal({
                 </div>
 
                 {/* Buttons */}
-                <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                   <Button
-                      onClick={onRequestSwap}
-                      className="flex-1 h-12 bg-gradient-to-r from-[#EF5350] to-[#E53935] hover:from-[#E53935] hover:to-[#D32F2F] text-white rounded-xl shadow-lg shadow-red-500/20 text-base font-bold"
-                    >
-                      בקש החלפה
-                   </Button>
+                <div className="flex flex-col gap-3 pt-2">
+                   <div className="flex flex-col sm:flex-row gap-3">
+                      <Button
+                         onClick={() => onRequestSwap('full')}
+                         className="flex-1 h-12 bg-gradient-to-r from-[#EF5350] to-[#E53935] hover:from-[#E53935] hover:to-[#D32F2F] text-white rounded-xl shadow-lg shadow-red-500/20 text-base font-bold"
+                       >
+                         בקשת החלפה מלאה
+                      </Button>
+
+                      <Button
+                         onClick={() => onRequestSwap('partial')}
+                         variant="outline"
+                         className="flex-1 h-12 rounded-xl border-2 border-[#EF5350] text-[#EF5350] hover:bg-red-50 text-base font-bold"
+                       >
+                         בקשת החלפה חלקית
+                      </Button>
+                   </div>
 
                    <Button
                       onClick={onClose}
                       variant="ghost"
-                      className="flex-1 h-12 rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 text-base font-medium"
+                      className="w-full h-12 rounded-xl bg-gray-100 text-gray-700 hover:bg-gray-200 text-base font-medium"
                     >
                       ביטול
                    </Button>
