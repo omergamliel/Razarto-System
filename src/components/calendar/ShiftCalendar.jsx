@@ -109,7 +109,7 @@ export default function ShiftCalendar() {
         return null;
       }
       
-      console.log("🔍 [DEBUG] Checking authorization for:", userEmail);
+      console.log("🔍 [DEBUG] Checking authorizationnn for:", userEmail);
 
       // Case-insensitive search
       const normalizedUserEmail = userEmail.toLowerCase();
