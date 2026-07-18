@@ -17,7 +17,7 @@ export default function SwapRequestModal({
   isSubmitting,
   initialSwapType = 'full'
 }) {
-  const [swapType, setSwapType] = useState('full');
+  const [swapType, setSwapType] = useState(initialSwapType);
   
   // Shift Limits
   const shiftStartStr = shift?.start_time || '09:00';
@@ -41,6 +41,8 @@ export default function SwapRequestModal({
   // Initialize
   useEffect(() => {
     if (isOpen && date && shift) {
+      setSwapType(initialSwapType);
+
       // 1. קביעת תאריך התחלה וסיום לפי ה-DB
       const sDateStr = shift.start_date || format(new Date(date), 'yyyy-MM-dd');
       
@@ -72,7 +74,7 @@ export default function SwapRequestModal({
       
       setRange([0, duration]);
     }
-  }, [isOpen, date, shift]);
+  }, [isOpen, date, shift, initialSwapType]);
 
   // --- SLIDER LOGIC ---
   const handleSliderDrag = (e, handleIndex) => {
