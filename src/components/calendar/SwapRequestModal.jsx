@@ -40,17 +40,19 @@ export default function SwapRequestModal({
 
   // Initialize
   useEffect(() => {
-    if (isOpen && date && shift) {
+    if (!isOpen || !date || !shift) return;
+
+    try {
       setSwapType(initialSwapType);
 
       // 1. קביעת תאריך התחלה וסיום לפי ה-DB
       const sDateStr = shift.start_date || format(new Date(date), 'yyyy-MM-dd');
-      
+
       const sH = parseInt(shiftStartStr.split(':')[0]);
       const eH = parseInt(shiftEndStr.split(':')[0]);
-      
+
       const startObj = new Date(sDateStr + 'T' + shiftStartStr);
-      
+
       // חישוב תאריך סיום (אם לא קיים, מחשבים לפי השעות)
       let endObj;
       if (shift.end_date) {
@@ -71,8 +73,10 @@ export default function SwapRequestModal({
       setStartTime(shiftStartStr);
       setEndDate(format(endObj, 'yyyy-MM-dd'));
       setEndTime(shiftEndStr);
-      
+
       setRange([0, duration]);
+    } catch (error) {
+      console.error('❌ [SwapRequestModal] Failed to initialize modal state:', error, { date, shift, initialSwapType });
     }
   }, [isOpen, date, shift, initialSwapType]);
 
