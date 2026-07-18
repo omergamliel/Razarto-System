@@ -100,6 +100,7 @@ export default function ShiftCalendar() {
   const { 
     data: authorizedPerson, 
     isLoading: isAuthCheckLoading,
+    error: authCheckError,
     refetch: refreshAuthCheck 
   } = useQuery({
     queryKey: ['check-authorization', userEmail],
@@ -115,7 +116,7 @@ export default function ShiftCalendar() {
       const normalizedUserEmail = userEmail.toLowerCase();
       console.log("🔍 [DEBUG] normalizedUserEmail:", normalizedUserEmail);
       const match = allPeople.find(person => 
-        person.email && person.email.toLowerCase() === normalizedUserEmail
+        person?.email && person.email.toLowerCase() === normalizedUserEmail
       );
 
       console.log("🔍 [DEBUG] match:", match);
@@ -131,6 +132,12 @@ export default function ShiftCalendar() {
     },
     enabled: !!userEmail
   });
+
+  useEffect(() => {
+    if (authCheckError) {
+      console.error("❌ [DEBUG] check-authorization query threw before reaching 'match':", authCheckError);
+    }
+  }, [authCheckError]);
 
   // --- DEBUG: only logs for Admin, silent for everyone else ---
   const isAdminUser = authorizedPerson?.permissions === 'Admin';
