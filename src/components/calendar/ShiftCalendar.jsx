@@ -117,6 +117,8 @@ export default function ShiftCalendar() {
         person.email && person.email.toLowerCase() === normalizedUserEmail
       );
 
+      console.log("🔍 [DEBUG] match:", match);
+
       // debug is gated on the record we just found, since `authorizedPerson`
       // (and any isAdmin derived from it) doesn't exist until this query resolves
       if (match?.permissions === 'Admin') {
