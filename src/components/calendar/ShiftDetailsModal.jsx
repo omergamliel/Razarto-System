@@ -556,7 +556,7 @@ export default function ShiftDetailsModal({
                 </Button>
               )}
 
-              {canRequestSwap && isOwnShift && !isAdmin && (
+              {canRequestSwap && isOwnShift && (
                 <>
                   <Button
                     onClick={() => onRequestSwap?.('full', shift)}
