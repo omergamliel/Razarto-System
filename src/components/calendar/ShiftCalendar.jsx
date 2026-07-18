@@ -589,13 +589,13 @@ export default function ShiftCalendar() {
 
   const handleSwapSubmit = (data) => {
     if (!selectedShift) {
-      console.error('❌ [ShiftCalendar] No shift selected for swap request submission');
+      debugLog('❌ [ShiftCalendar] No shift selected for swap request submission');
       appendSwapLog('❌ לא נבחרה משמרת לשליחה');
       return;
     }
 
     appendSwapLog('📝 נתוני בקשה מהמודל', data);
-    console.log('📤 [ShiftCalendar] Submitting swap request from modal:', data);
+    debugLog('📤 [ShiftCalendar] Submitting swap request from modal:', data);
 
     requestSwapMutation.mutate({
       shiftId: selectedShift.id,
