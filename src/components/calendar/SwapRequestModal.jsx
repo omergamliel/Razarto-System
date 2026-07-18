@@ -119,9 +119,49 @@ export default function SwapRequestModal({
       setEndTime(format(eTime, 'HH:mm'));
   };
 
+  
+  const clampMinutes = (minutes) => Math.max(0, Math.min(totalDurationRef.current, minutes));
+
+  // Resolves a manually-typed HH:mm into "minutes since shift start", trying
+  // the adjacent day too so times can still land inside the shift when it crosses midnight.
+  const resolveMinutesFromTime = (timeStr, refDateStr) => {
+      if (!shiftStartObjRef.current) return 0;
+      const baseDateStr = refDateStr || format(shiftStartObjRef.current, 'yyyy-MM-dd');
+      const candidate = new Date(`${baseDateStr}T${timeStr}`);
+      let minutes = differenceInMinutes(candidate, shiftStartObjRef.current);
+
+      if (minutes < 0 || minutes > totalDurationRef.current) {
+          const minutesNextDay = minutes + 24 * 60;
+          const minutesPrevDay = minutes - 24 * 60;
+
+          if (minutesNextDay >= 0 && minutesNextDay <= totalDurationRef.current) {
+              minutes = minutesNextDay;
+          } else if (minutesPrevDay >= 0 && minutesPrevDay <= totalDurationRef.current) {
+              minutes = minutesPrevDay;
+          }
+      }
+
+      return clampMinutes(minutes);
+  };
+
   const handleManualInputChange = (type, val) => {
-      if (type === 'startTime') setStartTime(val);
-      if (type === 'endTime') setEndTime(val);
+      if (!val || !shiftStartObjRef.current) return;
+
+      if (type === 'startTime') {
+          let minutes = resolveMinutesFromTime(val, startDate);
+          if (minutes >= range[1]) minutes = Math.max(0, range[1] - 30);
+          const newRange = [minutes, range[1]];
+          setRange(newRange);
+          updateInputsFromRange(newRange);
+      }
+
+      if (type === 'endTime') {
+          let minutes = resolveMinutesFromTime(val, endDate);
+          if (minutes <= range[0]) minutes = Math.min(totalDurationRef.current, range[0] + 30);
+          const newRange = [range[0], minutes];
+          setRange(newRange);
+          updateInputsFromRange(newRange);
+      }
   };
 
   // --- SUBMISSION LOGIC ---
@@ -294,7 +334,7 @@ export default function SwapRequestModal({
 
                       <div 
                         ref={sliderRef}
-                        className="relative h-3 bg-gray-200 rounded-full cursor-pointer"
+                        className="relative h-3 bg-gray-200 rounded-full cursor-pointer mx-8"
                       >
                           {/* Selected Range Bar */}
                           <div 
@@ -329,7 +369,7 @@ export default function SwapRequestModal({
                                   window.addEventListener('touchend', upHandler);
                               }}
                           >
-                              <div className="absolute -top-9 bg-[#EF5350] text-white text-xs font-bold py-1 px-2 rounded-md shadow-sm whitespace-nowrap after:content-[''] after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-t-[#EF5350]">
+                              <div className="absolute top-9 bg-[#EF5350] text-white text-xs font-bold py-1 px-2 rounded-md shadow-sm whitespace-nowrap after:content-[''] after:absolute after:bottom-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-b-[#EF5350]">
                                   {startTime}
                               </div>
                           </div>
@@ -358,7 +398,7 @@ export default function SwapRequestModal({
                                   window.addEventListener('touchend', upHandler);
                               }}
                           >
-                              <div className="absolute -top-9 bg-[#EF5350] text-white text-xs font-bold py-1 px-2 rounded-md shadow-sm whitespace-nowrap after:content-[''] after:absolute after:top-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-t-[#EF5350]">
+                              <div className="absolute top-9 bg-[#EF5350] text-white text-xs font-bold py-1 px-2 rounded-md shadow-sm whitespace-nowrap after:content-[''] after:absolute after:bottom-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-b-[#EF5350]">
                                   {endTime}
                               </div>
                           </div>
