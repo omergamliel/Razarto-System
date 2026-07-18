@@ -588,6 +588,7 @@ export default function ShiftCalendar() {
 
   const handleOpenSwapRequest = (shift) => {
     setSelectedShift(shift);
+    setSwapRequestInitialType('full');
     setShowSwapRequestModal(true);
   };
 
@@ -719,8 +720,9 @@ export default function ShiftCalendar() {
         onClose={closeAllModals}
         shift={selectedShift}
         date={currentDate}
-        onRequestSwap={() => {
+        onRequestSwap={(type) => {
             closeAllModals();
+            setSwapRequestInitialType(type || 'full');
             setShowSwapRequestModal(true);
         }}
         onEditRole={() => {
@@ -738,6 +740,7 @@ export default function ShiftCalendar() {
         shift={selectedShift}
         onSubmit={handleSwapSubmit}
         isSubmitting={requestSwapMutation.isPending}
+        initialSwapType={swapRequestInitialType}
       />
 
       <AddShiftModal
@@ -775,6 +778,7 @@ export default function ShiftCalendar() {
         onApprove={() => approveSwapMutation.mutate(selectedShift)}
         onRequestSwap={() => {
           closeAllModals();
+          setSwapRequestInitialType('full');
           setShowSwapRequestModal(true);
         }}
         currentUser={authorizedPerson}
