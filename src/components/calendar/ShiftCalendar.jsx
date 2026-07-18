@@ -721,9 +721,13 @@ export default function ShiftCalendar() {
         shift={selectedShift}
         date={currentDate}
         onRequestSwap={(type) => {
-            closeAllModals();
-            setSwapRequestInitialType(type || 'full');
-            setShowSwapRequestModal(true);
+            try {
+              closeAllModals();
+              setSwapRequestInitialType(type || 'full');
+              setShowSwapRequestModal(true);
+            } catch (error) {
+              console.error('❌ [ShiftCalendar] Failed to open swap request modal from ShiftActionModal:', type, error);
+            }
         }}
         onEditRole={() => {
             closeAllModals();
