@@ -1068,7 +1068,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 py-4">
             {/* View Option */}
             <div
               onClick={() => setSelectedPermission('View')}
