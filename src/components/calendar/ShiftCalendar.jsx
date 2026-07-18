@@ -119,9 +119,10 @@ export default function ShiftCalendar() {
 
       // debug is gated on the record we just found, since `authorizedPerson`
       // (and any isAdmin derived from it) doesn't exist until this query resolves
-      if (match?.permissions === 'Admin') console.log("📄 [DEBUG] All AuthorizedPerson records:", allPeople);
-
+      if (match?.permissions === 'Admin') {
+      console.log("📄 [DEBUG] All AuthorizedPerson records:", allPeople);
       console.log("✅ [DEBUG] Final Authorization Result:", match || null);
+      }
       
       return match || null; 
     },
@@ -141,7 +142,7 @@ export default function ShiftCalendar() {
     mutationFn: async () => {
       if (!authorizedPerson || !currentUser) return;
 
-      console.log("🔗 [DEBUG] Linking user...", { authId: authorizedPerson.id, serialId: currentUser.serial_id });
+      debugLog("🔗 [DEBUG] Linking user...", { authId: authorizedPerson.id, serialId: currentUser.serial_id });
 
       // 1. Update AuthorizedPerson with linked_user_id
       await base44.entities.AuthorizedPerson.update(authorizedPerson.id, {
@@ -155,7 +156,7 @@ export default function ShiftCalendar() {
       toast.success("החיבור בוצע בהצלחה! ברוכים הבאים.");
     },
     onError: (err) => {
-      console.error("❌ [DEBUG] Link Error:", err);
+      debugLog("❌ [DEBUG] Link Error:", err);
       toast.error("שגיאה בחיבור המשתמש.");
     }
   });
@@ -279,7 +280,7 @@ export default function ShiftCalendar() {
       };
 
       appendSwapLog('📨 שולח בקשה למסד', payload);
-      console.log('📨 [ShiftCalendar] Creating SwapRequest with payload:', payload);
+      debugLog('📨 [ShiftCalendar] Creating SwapRequest with payload:', payload);
 
       await base44.entities.SwapRequest.create(payload);
 
@@ -303,7 +304,7 @@ export default function ShiftCalendar() {
     },
     onError: (error) => {
       appendSwapLog('❌ שגיאה בשליחת הבקשה', { error: error?.message || String(error) });
-      console.error('❌ [ShiftCalendar] Swap request failed:', error);
+      debugLog('❌ [ShiftCalendar] Swap request failed:', error);
       toast.error('שליחת בקשת ההחלפה נכשלה. נסו שוב.');
     }
   });
