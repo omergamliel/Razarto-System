@@ -366,7 +366,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
 
         {/* Content */}
         <div className="flex-1 min-h-0 overflow-hidden bg-[#F9FAFB] p-4 md:p-8 flex flex-col gap-4 md:gap-6">
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-3 md:p-4">
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex-1 min-h-0 overflow-hidden flex flex-col">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-2">
                 <span className="px-3 py-1 text-[11px] rounded-full bg-blue-50 text-blue-700 font-semibold border border-blue-100">פאנל מודולארי</span>
@@ -452,7 +452,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                   <div className="col-span-1 text-center">פעולות</div>
                 </div>
 
-                <div className="overflow-y-auto flex-1 custom-scrollbar">
+                <div className="overflow-y-auto flex-1 min-h-0 custom-scrollbar">
                   {isLoadingPeople ? (
                     <div className="flex items-center justify-center h-40 text-gray-400">טוען נתונים...</div>
                   ) : filteredPeople.length === 0 ? (
