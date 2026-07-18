@@ -14,7 +14,8 @@ export default function SwapRequestModal({
   date,
   shift,
   onSubmit,
-  isSubmitting
+  isSubmitting,
+  initialSwapType = 'full'
 }) {
   const [swapType, setSwapType] = useState('full');
   
