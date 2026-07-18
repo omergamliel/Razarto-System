@@ -366,29 +366,39 @@ export default function ShiftDetailsModal({
               <>
 
             {/* Status Card + Timing */}
-            <div className="border rounded-2xl p-6 text-center shadow-sm space-y-4 bg-[#F4F4F6] border-gray-200">
-              <div className="space-y-3">
+            <div className="text-center space-y-3">
                 <p className="text-sm text-gray-500 font-medium">משובץ כרגע למשמרת</p>
-                <h2 className="text-2xl font-semibold text-gray-900">{assignedDisplayName}</h2>
+                <h2 className="text-2xl font-semibold text-gray-900 leading-none">{assignedDisplayName}</h2>
                 {assignedDepartment && (
-                  <span className="inline-flex items-center justify-center rounded-full bg-white px-3 py-1 text-xs font-semibold text-gray-700 border border-gray-200">
+                  <span className="inline-flex items-center justify-center rounded-full bg-gray-50 px-3 py-1 text-xs font-semibold text-gray-700 border border-gray-200">
                     {`מחלקה ${assignedDepartment}`}
                   </span>
                 )}
-              </div>
+            </div>
 
-              <div className="bg-white rounded-2xl border border-gray-200 px-4 py-3 shadow-sm grid grid-cols-2 gap-4 text-center">
-                <div className="space-y-1">
-                  <p className="text-[10px] text-gray-400">התחלה</p>
-                  <p className="text-lg font-bold text-gray-800">{startTime}</p>
-                  <p className="text-[11px] text-gray-500">{format(startDateObj, 'dd/MM')}</p>
+            <div className="flex items-center justify-between bg-gray-50 rounded-2xl p-1 border border-gray-100 shadow-sm">
+                {/* Start */}
+                <div className="flex-1 text-center py-3">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
+                        {format(startDateObj, 'EEEE', { locale: he })}
+                    </p>
+                    <p className="text-xl font-bold text-gray-800 leading-none mb-1 font-mono">{startTime}</p>
+                    <p className="text-[11px] text-gray-400">{format(startDateObj, 'dd/MM/yyyy')}</p>
                 </div>
-                <div className="space-y-1">
-                  <p className="text-[10px] text-gray-400">סיום</p>
-                  <p className="text-lg font-bold text-gray-800">{endTime}</p>
-                  <p className="text-[11px] text-gray-500">{format(endDateObj, 'dd/MM')}</p>
+
+                {/* Divider */}
+                <div className="flex flex-col items-center justify-center px-2 text-gray-400">
+                    <Clock className="w-5 h-5" />
                 </div>
-              </div>
+
+                {/* End */}
+                <div className="flex-1 text-center py-3">
+                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
+                        {format(endDateObj, 'EEEE', { locale: he })}
+                    </p>
+                    <p className="text-xl font-bold text-gray-800 leading-none mb-1 font-mono">{endTime}</p>
+                    <p className="text-[11px] text-gray-400">{format(endDateObj, 'dd/MM/yyyy')}</p>
+                </div>
             </div>
 
             {isPartialLike && (
