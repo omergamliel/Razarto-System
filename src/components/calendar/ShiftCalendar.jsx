@@ -112,6 +112,8 @@ export default function ShiftCalendar() {
       }
       
       console.log("🔍 [DEBUG] Checking authorization for:", userEmail);
+      // Fetch all authorized people and search case-insensitive on client-side
+      const allPeople = await base44.entities.AuthorizedPerson.list();
 
       // Case-insensitive search
       const normalizedUserEmail = userEmail.toLowerCase();
