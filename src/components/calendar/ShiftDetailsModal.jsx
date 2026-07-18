@@ -563,15 +563,7 @@ export default function ShiftDetailsModal({
                     className="min-w-[160px] flex-1 sm:flex-none h-12 bg-[#0ea5e9] hover:bg-[#0284c7] text-white rounded-xl shadow-lg"
                   >
                     <Send className="w-4 h-4 ml-2" />
-                    בקשת החלפה מלאה
-                  </Button>
-                  <Button
-                    onClick={() => onRequestSwap?.('partial', shift)}
-                    variant="outline"
-                    className="min-w-[160px] flex-1 sm:flex-none h-12 rounded-xl border-2 border-[#0ea5e9] text-[#0ea5e9] hover:bg-sky-50 shadow-sm"
-                  >
-                    <Send className="w-4 h-4 ml-2" />
-                    בקשת החלפה חלקית
+                    בקשת החלפה מלאה או חלקית
                   </Button>
                 </>
               )}
