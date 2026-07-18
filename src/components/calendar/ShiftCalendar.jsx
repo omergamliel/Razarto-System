@@ -50,6 +50,7 @@ export default function ShiftCalendar() {
   // Modal Visibilities
   const [selectedShift, setSelectedShift] = useState(null);
   const [showSwapRequestModal, setShowSwapRequestModal] = useState(false);
+  const [swapRequestInitialType, setSwapRequestInitialType] = useState('full');
   const [showPendingRequestsModal, setShowPendingRequestsModal] = useState(false);
   const [showAddShiftModal, setShowAddShiftModal] = useState(false);
   const [showAcceptSwapModal, setShowAcceptSwapModal] = useState(false);
@@ -111,14 +112,14 @@ export default function ShiftCalendar() {
       
       console.log("🔍 [DEBUG] Checking authorization for:", userEmail);
 
-      // Fetch all authorized people and search case-insensitive on client-side
-      const allPeople = await base44.entities.AuthorizedPerson.list();
-
       // Case-insensitive search
       const normalizedUserEmail = userEmail.toLowerCase();
+      console.log("🔍 [DEBUG] normalizedUserEmail:", normalizedUserEmail);
       const match = allPeople.find(person => 
-        person?.email && person.email.toLowerCase() === normalizedUserEmail
+        person.email && person.email.toLowerCase() === normalizedUserEmail
       );
+
+      console.log("🔍 [DEBUG] match:", match);
 
       // debug is gated on the record we just found, since `authorizedPerson`
       // (and any isAdmin derived from it) doesn't exist until this query resolves
