@@ -1102,6 +1102,23 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                 <div className="absolute top-2 right-2 text-orange-500"><Check className="w-5 h-5" /></div>
               )}
             </div>
+
+            {/* Manager Option */}
+            <div
+              onClick={() => setSelectedPermission('Manager')}
+              className={`cursor-pointer rounded-xl border-2 p-4 transition-all relative overflow-hidden group
+                ${selectedPermission === 'Manager' ? 'border-blue-400 bg-blue-50' : 'border-gray-200 hover:border-blue-200 hover:bg-gray-50'}
+              `}
+            >
+              <div className="flex flex-col items-center text-center gap-3">
+                <img src="https://cdn-icons-png.flaticon.com/512/10691/10691841.png" alt="Manager" className="w-12 h-12" />
+                <h3 className="font-bold text-gray-800">מנהל (Manager)</h3>
+                <p className="text-xs text-gray-500 leading-tight">מאפשר צפייה, ביצוע פעולות וניהול המערכת</p>
+              </div>
+              {selectedPermission === 'Manager' && (
+                <div className="absolute top-2 right-2 text-blue-500"><Check className="w-5 h-5" /></div>
+              )}
+            </div>
           </div>
 
           <DialogFooter className="flex-col sm:flex-row gap-2">
