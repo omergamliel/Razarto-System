@@ -40,9 +40,7 @@ export default function SwapRequestModal({
 
   // Initialize
   useEffect(() => {
-    if (!isOpen || !date || !shift) return;
-
-    try {
+    if (isOpen && date && shift) {
       setSwapType(initialSwapType);
 
       // 1. קביעת תאריך התחלה וסיום לפי ה-DB
@@ -75,8 +73,6 @@ export default function SwapRequestModal({
       setEndTime(shiftEndStr);
 
       setRange([0, duration]);
-    } catch (error) {
-      console.error('❌ [SwapRequestModal] Failed to initialize modal state:', error, { date, shift, initialSwapType });
     }
   }, [isOpen, date, shift, initialSwapType]);
 
