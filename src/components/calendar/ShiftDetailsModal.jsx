@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { format, addDays } from 'date-fns';
 import { he } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Calendar, User, Trash2, CheckCircle, AlertCircle, CalendarPlus, Send, UserRoundPen } from 'lucide-react';
+import { X, Calendar, Clock, User, Trash2, CheckCircle, AlertCircle, CalendarPlus, Send, UserRoundPen } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
