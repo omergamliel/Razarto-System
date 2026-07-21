@@ -114,6 +114,7 @@ export default function CalendarGrid({
             <ShiftCell
               date={day}
               shift={getShiftForDate(day)}
+              holidayName={holidaysByDate[format(day, 'yyyy-MM-dd')]}
               onClick={onCellClick}
               currentMonth={currentDate}
               isWeekView={viewMode === 'week'}
