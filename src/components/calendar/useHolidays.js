@@ -42,7 +42,7 @@ export function useHolidays(years = []) {
         if (!item?.date) return;
         if (isExcludedHoliday(item.title)) return;
         const dateKey = item.date.slice(0, 10);
-        const label = item.hebrew || item.title;
+        const label = (item.hebrew || item.title || '').replace(/\s*\d{4}\s*$/, '');
         if (!label) return;
         map[dateKey] = map[dateKey] && !map[dateKey].includes(label)
           ? `${map[dateKey]} / ${label}`
