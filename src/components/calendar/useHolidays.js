@@ -19,7 +19,7 @@ const EXCLUDED_TITLES = [
   'Herzl Day',
   'Ben-Gurion Day',
   'Sigd',
-  'Aliyah Day',
+  'Aliyah',
   'Family Day',
   'Hebrew Language Day',
 ];
