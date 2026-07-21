@@ -18,7 +18,6 @@ const EXCLUDED_TITLES = [
   'Jabotinsky Day',
   'Herzl Day',
   'Ben-Gurion Day',
-  'Rabin Memorial Day',
   'Sigd',
   'Aliyah Day',
   'Family Day',
