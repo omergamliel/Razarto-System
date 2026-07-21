@@ -40,6 +40,7 @@ export function useHolidays(years = []) {
       const map = {};
       results.flat().forEach((item) => {
         if (!item?.date) return;
+        if (isExcludedHoliday(item.title)) return;
         const dateKey = item.date.slice(0, 10);
         const label = item.hebrew || item.title;
         if (!label) return;
