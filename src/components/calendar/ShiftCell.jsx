@@ -119,6 +119,15 @@ export default function ShiftCell({
         {format(date, 'd')}
       </div>
 
+      {holidayName && (
+        <div
+          className="absolute top-1 left-1 md:top-2 md:left-2 max-w-[58%] truncate rounded-md bg-purple-100 text-purple-700 text-[8px] md:text-[10px] font-semibold px-1 py-0.5"
+          title={holidayName}
+        >
+          {holidayName}
+        </div>
+      )}
+
       {shift && (
         <div className="mt-6 md:mt-10 space-y-1 md:space-y-1.5">
           {/* Assignees / Covering Users */}
