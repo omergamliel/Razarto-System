@@ -66,6 +66,8 @@ export default function CalendarGrid({
 
   const days = getDaysToDisplay();
 
+  const { data: holidaysByDate = {} } = useHolidays(days.map((d) => d.getFullYear()));
+
   const getShiftForDate = (date) => {
     const rawShift = shifts.find((shift) => {
       const shiftDateStr = shift?.start_date || shift?.date;
