@@ -239,8 +239,12 @@ export default function ShiftDetailsModal({
   const isWhiteShift = !hasAnyRequest;
   const isCoveredOrClosed = isFullyCovered || requestStatus === 'Closed' || String(shift?.status || '').toLowerCase() === 'covered';
 
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const isPastShift = startDateObj < today;
+
   const canOfferCover = hasActiveRequest && !isOwnShift && !isCoveredOrClosed;
-  const canHeadToHead = !isOwnShift && !isCoveredOrClosed && !isPartialRequest && (isWhiteShift || isFullRequest);
+  const canHeadToHead = !isOwnShift && !isCoveredOrClosed && !isPartialRequest && !isPastShift && (isWhiteShift || isFullRequest);
   const canRequestSwap = isOwnShift && !hasActiveRequest;
   const canWhatsappShare = hasActiveRequest && isRequestOwner;
   const canAddToCalendarOrEmail = isOwnShift;
