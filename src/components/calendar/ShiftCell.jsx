@@ -10,7 +10,8 @@ export default function ShiftCell({
   currentMonth,
   isWeekView = false,
   currentUserEmail,
-  isAdmin = false
+  isAdmin = false,
+  holidayName
 }) {
 
   const handleClick = () => {
