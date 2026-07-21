@@ -12,16 +12,18 @@ const fetchHolidaysForYear = async (year) => {
 // entries (agricultural/Talmudic dates, "eve of" markers, minor Zionist
 // commemorations) that Hebcal has no separate category flag to exclude.
 const EXCLUDED_TITLES = [
-  'Rosh Hashana LaBehemot',
-  'Yom Kippur Katan',
-  'Leil Selichot',
-  'Jabotinsky Day',
-  'Herzl Day',
-  'Ben-Gurion Day',
-  'Sigd',
-  'Aliyah',
-  'Family Day',
-  'Hebrew Language Day',
+  "Rosh Hashana LaBehemot",
+  "Yom Kippur Katan",
+  "Purim Katan",
+  "Pesach Sheni",
+  "Leil Selichot",
+  "Jabotinsky Day",
+  "Herzl Day",
+  "Ben-Gurion Day",
+  "Sigd",
+  "Aliyah",
+  "Family Day",
+  "Hebrew Language Day",
 ];
 
 const isExcludedHoliday = (title = '') =>
