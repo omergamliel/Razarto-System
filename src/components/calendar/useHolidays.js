@@ -8,6 +8,27 @@ const fetchHolidaysForYear = async (year) => {
   return data.items || [];
 };
 
+// Hebcal's min=on/mod=on buckets mix real chagim u'moadim with obscure
+// entries (agricultural/Talmudic dates, "eve of" markers, minor Zionist
+// commemorations) that Hebcal has no separate category flag to exclude.
+const EXCLUDED_TITLES = [
+  'Rosh Hashana LaBehemot',
+  'Yom Kippur Katan',
+  'Leil Selichot',
+  'Jabotinsky Day',
+  'Herzl Day',
+  'Ben-Gurion Day',
+  'Rabin Memorial Day',
+  'Sigd',
+  'Aliyah Day',
+  'Family Day',
+  'Hebrew Language Day',
+];
+
+const isExcludedHoliday = (title = '') =>
+  /^Erev /i.test(title) ||
+  EXCLUDED_TITLES.some((excluded) => title.toLowerCase().includes(excluded.toLowerCase()));
+
 // Maps 'yyyy-MM-dd' -> holiday label (Hebrew name, falling back to English)
 export function useHolidays(years = []) {
   const uniqueYears = [...new Set(years)].sort();
