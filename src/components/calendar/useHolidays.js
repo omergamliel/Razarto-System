@@ -1,0 +1,1 @@
+// useHolidays.js - placeholder
