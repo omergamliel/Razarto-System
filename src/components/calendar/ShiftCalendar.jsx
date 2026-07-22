@@ -33,6 +33,7 @@ import HeadToHeadApprovalModal from './HeadToHeadApprovalModal';
 import HallOfFameModal from '../dashboard/HallOfFameModal';
 import HelpSupportModal from '../dashboard/HelpSupportModal';
 import LoadingSkeleton from '../LoadingSkeleton';
+import SwitchFlowBand from './SwitchFlowBand';
 
 // --- Summary of swap flow fixes ---
 // 1) AcceptSwapModal replaces legacy CoverSegmentModal across all entry points.
