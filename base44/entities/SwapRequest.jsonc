@@ -2,9 +2,12 @@
   "name": "SwapRequest",
   "type": "object",
   "properties": {
-    "shift_id": {
-      "type": "string",
-      "description": "\u05de\u05d6\u05d4\u05d4 \u05d4\u05de\u05e9\u05de\u05e8\u05ea \u05d4\u05de\u05e7\u05d5\u05e8\u05d9\u05ea"
+    "shift_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "\u05de\u05d6\u05d4\u05d9 \u05d4\u05de\u05e9\u05de\u05e8\u05d5\u05ea \u05d4\u05de\u05e7\u05d5\u05e8\u05d9\u05d5\u05ea \u05e9\u05d4\u05de\u05d1\u05e7\u05e9 \u05de\u05e6\u05d9\u05e2 \u05dc\u05d4\u05d7\u05dc\u05d9\u05e3"
     },
     "requesting_user_id": {
       "type": "number",
@@ -37,9 +40,12 @@
       "type": "string",
       "description": "\u05e9\u05e2\u05ea \u05e1\u05d9\u05d5\u05dd \u05de\u05d1\u05d5\u05e7\u05e9\u05ea"
     },
-    "offered_shift_id": {
-      "type": "string",
-      "description": "\u05de\u05d6\u05d4\u05d4 \u05de\u05e9\u05de\u05e8\u05ea \u05de\u05d5\u05e6\u05e2\u05ea (\u05e8\u05d0\u05e9 \u05d1\u05e8\u05d0\u05e9)"
+    "offered_shift_ids": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "\u05de\u05d6\u05d4\u05d9 \u05de\u05e9\u05de\u05e8\u05d5\u05ea \u05de\u05d5\u05e6\u05e2\u05d5\u05ea (\u05e8\u05d0\u05e9 \u05d1\u05e8\u05d0\u05e9)"
     },
     "status": {
       "type": "string",
@@ -54,7 +60,7 @@
     }
   },
   "required": [
-    "shift_id",
+    "shift_ids",
     "requesting_user_id",
     "request_type",
     "req_start_date",
