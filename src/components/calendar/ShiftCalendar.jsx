@@ -627,6 +627,21 @@ export default function ShiftCalendar() {
     clickedDate.setHours(0, 0, 0, 0);
     const isPast = clickedDate < today;
 
+    if (switchFlow) {
+      if (!shift || shift.status !== 'regular' || isPast) return;
+
+      const isEligible = switchFlow.step === 'own' ? shift.isMine : !shift.isMine;
+      if (!isEligible) return;
+
+      const listKey = switchFlow.step === 'own' ? 'ownShiftIds' : 'targetShiftIds';
+      setSwitchFlow(prev => {
+        const list = prev[listKey];
+        const nextList = list.includes(shift.id) ? list.filter(id => id !== shift.id) : [...list, shift.id];
+        return { ...prev, [listKey]: nextList };
+      });
+      return;
+    }
+
     if (!shift) {
         if (isAdmin && !isPast) {
             setShowAddShiftModal(true);
@@ -786,6 +801,7 @@ export default function ShiftCalendar() {
                setKpiListType(type);
                setShowKPIListModal(true);
              }}
+             onStartSwitchFlow={() => setSwitchFlow({ step: 'own', ownShiftIds: [], targetShiftIds: [] })}
            />
         </div>
 
@@ -799,9 +815,25 @@ export default function ShiftCalendar() {
             currentUserEmail={authorizedPerson.email}
             currentUserRole={authorizedPerson.full_name}
             isAdmin={isAdmin}
+            switchFlow={switchFlow}
           />
         </div>
       </div>
+
+      {switchFlow && (
+        <SwitchFlowBand
+          step={switchFlow.step}
+          ownCount={switchFlow.ownShiftIds.length}
+          targetCount={switchFlow.targetShiftIds.length}
+          isSubmitting={switchRequestMutation.isPending}
+          onCancel={() => setSwitchFlow(null)}
+          onNext={() => setSwitchFlow(prev => ({ ...prev, step: 'target' }))}
+          onConfirm={() => switchRequestMutation.mutate({
+            ownShiftIds: switchFlow.ownShiftIds,
+            targetShiftIds: switchFlow.targetShiftIds
+          })}
+        />
+      )}
 
       {/* --- MODALS --- */}
       
