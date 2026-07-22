@@ -330,7 +330,6 @@ export default function ShiftCalendar() {
 
       const payload = {
         shift_ids: [shiftId],
-        
         requesting_user_id: authorizedPerson.serial_id,
         request_type: isFull ? 'Full' : 'Partial',
         req_start_date,
@@ -370,10 +369,49 @@ export default function ShiftCalendar() {
     }
   });
 
+
+  const switchRequestMutation = useMutation({
+    mutationFn: async ({ ownShiftIds, targetShiftIds }) => {
+      const ownShifts = shifts.filter(s => ownShiftIds.includes(s.id));
+      const req_start_date = ownShifts.map(s => s.start_date).sort()[0];
+      const req_end_date = ownShifts.map(s => s.end_date || s.start_date).sort().slice(-1)[0];
+      const req_start_time = ownShifts[0]?.start_time || '09:00';
+      const req_end_time = ownShifts[0]?.end_time || req_start_time;
+
+      await Promise.all(targetShiftIds.map(targetId =>
+        base44.entities.SwapRequest.create({
+          shift_ids: ownShiftIds,
+          offered_shift_ids: [targetId],
+          requesting_user_id: authorizedPerson.serial_id,
+          request_type: 'Head2Head',
+          req_start_date,
+          req_end_date,
+          req_start_time,
+          req_end_time,
+          status: 'Open'
+        })
+      ));
+
+      await Promise.all(ownShiftIds.map(id =>
+        base44.entities.Shift.update(id, { status: 'Swap_Requested' })
+      ));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['shifts']);
+      queryClient.invalidateQueries(['swap-requests']);
+      toast.success('בקשות ההחלפה נשלחו בהצלחה!');
+      setSwitchFlow(null);
+    },
+    onError: (error) => {
+      debugLog('❌ [ShiftCalendar] Switch request failed:', error);
+      toast.error('שליחת בקשות ההחלפה נכשלה. נסו שוב.');
+    }
+  });
+
   const cancelSwapMutation = useMutation({
     mutationFn: async (shiftId) => {
       // Find and cancel the swap request
-      const activeRequest = swapRequests.find(sr => sr.shift_id === shiftId && sr.status === 'Open');
+      const activeRequest = swapRequests.find(sr => sr.shift_ids?.includes(shiftId) && sr.status === 'Open');
       if (activeRequest) {
         await base44.entities.SwapRequest.update(activeRequest.id, { status: 'Cancelled' });
       }
