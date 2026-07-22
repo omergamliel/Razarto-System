@@ -432,7 +432,7 @@ export default function ShiftCalendar() {
       const normalizedShift = normalizeShiftContext(shift, { allUsers, swapRequests, coverages, currentUser: authorizedPerson });
 
       // Find active swap request
-      const activeRequest = normalizedShift?.active_request || swapRequests.find(sr => sr.shift_id === shift.id && sr.status === 'Open');
+      const activeRequest = normalizedShift?.active_request || swapRequests.find(sr => sr.shift_ids?.includes(shift.id) && sr.status === 'Open');
       if (!activeRequest) throw new Error('No active swap request found');
 
       const payload = {
