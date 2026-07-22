@@ -118,7 +118,7 @@ export const normalizeShiftContext = (
 
   const activeRequest = activeRequestOverride
     || shift.active_request
-    || swapRequests?.find(sr => sr.shift_id === shift.id && sr.status !== 'Cancelled');
+    || swapRequests?.find(sr => sr.shift_ids?.includes(shift.id) && sr.status !== 'Cancelled');
   const requestType = resolveSwapType(shift, activeRequest);
   const requestWindow = resolveRequestWindow(shift, activeRequest);
   const shiftWindow = resolveShiftWindow(shift, requestWindow);
