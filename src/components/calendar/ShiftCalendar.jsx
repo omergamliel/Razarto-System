@@ -199,7 +199,8 @@ export default function ShiftCalendar() {
   });
 
 
-// --- LAZY CLEANUP: remove SwapRequests whose date has already passed, and ---
+
+  // --- LAZY CLEANUP: remove SwapRequests whose date has already passed, and ---
   // reconcile shifts left stuck in a swap-related status with no live request
   // backing them (e.g. after the SwapRequest table was cleared out-of-band).
   // Closed/Cancelled/Completed requests are left alone as history.
@@ -219,7 +220,7 @@ export default function ShiftCalendar() {
     const liveShiftIds = new Set(
       swapRequests
         .filter(sr => activeStatuses.includes(sr.status) && !staleRequestIds.has(sr.id))
-        .map(sr => sr.shift_id)
+        .flatMap(sr => sr.shift_ids || [])
     );
     const orphanedShifts = shifts.filter(s =>
       ['Swap_Requested', 'Partially_Covered'].includes(s.status) && !liveShiftIds.has(s.id)
