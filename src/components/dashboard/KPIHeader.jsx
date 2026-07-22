@@ -139,14 +139,14 @@ export default function KPIHeader({ currentUser, onKPIClick, onStartSwitchFlow }
   ];
 
   return (
-    <div className="grid grid-cols-4 gap-2 mb-6">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 mb-6">
       {kpis.map((kpi, index) => (
         <motion.div
           key={kpi.id}
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: index * 0.05 }}
-          onClick={() => onKPIClick && onKPIClick(kpi.id)}
+          onClick={() => kpi.isAction ? onStartSwitchFlow && onStartSwitchFlow() : (onKPIClick && onKPIClick(kpi.id))}
           className={`
             ${kpi.bgColor} border ${kpi.borderColor} 
             rounded-xl cursor-pointer hover:shadow-md transition-all
@@ -159,16 +159,23 @@ export default function KPIHeader({ currentUser, onKPIClick, onStartSwitchFlow }
             <kpi.icon className="w-4 h-4 md:w-6 md:h-6" />
           </div>
 
-          <div className="flex flex-col items-center md:items-start">
-            <span className={`text-xl md:text-3xl font-extrabold ${kpi.textColor} leading-none mb-1 md:mb-0`}>
-              {kpi.count}
-            </span>
-            
+          {kpi.isAction ? (
             <p className="text-[10px] md:text-xs font-bold text-gray-700 leading-tight">
               <span className="md:hidden block px-1">{kpi.mobileTitle}</span>
               <span className="hidden md:block">{kpi.desktopTitle}</span>
             </p>
-          </div>
+          ) : (
+            <div className="flex flex-col items-center md:items-start">
+              <span className={`text-xl md:text-3xl font-extrabold ${kpi.textColor} leading-none mb-1 md:mb-0`}>
+                {kpi.count}
+              </span>
+              
+              <p className="text-[10px] md:text-xs font-bold text-gray-700 leading-tight">
+                <span className="md:hidden block px-1">{kpi.mobileTitle}</span>
+                <span className="hidden md:block">{kpi.desktopTitle}</span>
+              </p>
+            </div>
+          )}
         </motion.div>
       ))}
     </div>
