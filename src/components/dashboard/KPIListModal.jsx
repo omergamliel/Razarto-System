@@ -330,7 +330,7 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
 
   const getApprovalUrl = (item) => {
       const base = typeof window !== 'undefined' ? window.location.origin : '';
-      return `${base}/approve/${item.shift_id || item.id || ''}`;
+      return `${base}/approve/${item.shift_id || item.shift_ids?.[0] || item.id || ''}`;
   };
 
   const handleReshareWhatsapp = (item) => {
