@@ -39,8 +39,9 @@ export default function ShiftDetailsModal({
     queryKey: ['shift-active-request-details', shift?.id],
     queryFn: async () => {
        if (!shift?.id) return null;
-       const reqs = await base44.entities.SwapRequest.filter({ shift_id: shift.id, status: 'Open' });
-       return reqs.length > 0 ? reqs[0] : null;
+       const reqs = await base44.entities.SwapRequest.filter({ status: 'Open' });
+       const match = reqs.find(r => r.shift_ids?.includes(shift.id));
+       return match || null;
     },
     enabled: !!shift?.id && isOpen
   });
