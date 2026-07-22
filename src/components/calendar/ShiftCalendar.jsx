@@ -76,6 +76,11 @@ export default function ShiftCalendar() {
   const [h2hTargetId, setH2hTargetId] = useState(null);
   const [h2hOfferId, setH2hOfferId] = useState(null);
 
+
+  // Switch Request Flow State (multi-shift swap)
+  // null = inactive; otherwise { step: 'own' | 'target', ownShiftIds: string[], targetShiftIds: string[] }
+  const [switchFlow, setSwitchFlow] = useState(null);
+
   // --- DEBUG LOGS (Internal Only, Hidden from UI) ---
   const appendSwapLog = (message, data) => {
     const timestamp = new Date().toLocaleTimeString('he-IL', { hour12: false });
