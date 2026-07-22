@@ -128,10 +128,10 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
   // --- Helpers ---
   const enrichRequestsWithShiftInfo = useCallback((requests) => {
       return requests.map(req => {
-          const shift = shiftsAll.find(s => s.id === req.shift_id);
+          const shift = shiftsAll.find(s => req.shift_ids?.includes(s.id));
           const user = authorizedUsers.find(u => u?.serial_id === shift?.original_user_id);
           const coverageSegments = coveragesAll
-            .filter(c => c.shift_id === req.shift_id)
+            .filter(c => c.shift_id === req.shift_ids?.[0])
             .map((c, idx) => {
               const covStart = new Date(`${c.cover_start_date || shift?.start_date}T${c.cover_start_time || shift?.start_time || '09:00'}`);
               let covEnd = new Date(`${c.cover_end_date || shift?.end_date || shift?.start_date}T${c.cover_end_time || shift?.end_time || '09:00'}`);
@@ -154,7 +154,7 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
 
   const enrichShiftsWithUserInfo = useCallback((shifts) => {
       return shifts.map(s => {
-        const activeRequest = swapRequestsAll.find(r => r.shift_id === s.id && isOpenStatus(r.status));
+        const activeRequest = swapRequestsAll.find(r => r.shift_ids?.includes(s.id) && isOpenStatus(r.status));
         const coverageType = activeRequest?.request_type?.toLowerCase() || s.coverageType || s.swap_type;
         let displayStatus = 'regular';
 
@@ -182,7 +182,7 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
     return shiftsAll.map((shift) => {
       if (shift.status === 'Active') return null;
 
-      const activeRequest = swapRequestsAll.find(r => r.shift_id === shift.id && isOpenStatus(r.status));
+      const activeRequest = swapRequestsAll.find(r => r.shift_ids?.includes(shift.id) && isOpenStatus(r.status));
       const user = authorizedUsers.find(u => u.serial_id === shift.original_user_id);
 
       const startTime = activeRequest?.req_start_time || shift.swap_start_time || shift.start_time || '09:00';
