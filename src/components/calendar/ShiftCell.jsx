@@ -115,10 +115,20 @@ export default function ShiftCell({
         ${styles.border ? `border-2 ${styles.border}` : 'border border-gray-100'}
         ${!isCurrentMonth ? 'opacity-40' : ''}
         ${today ? 'ring-2 ring-[#64B5F6] ring-offset-2' : ''}
+        ${isSwitchSelected ? 'ring-4 ring-purple-500 ring-offset-2' : ''}
+        ${isSwitchEligible && !isSwitchSelected ? 'ring-2 ring-purple-300' : ''}
+        ${isSwitchDimmed ? 'opacity-30 grayscale pointer-events-none' : ''}
         hover:shadow-lg
         group
       `}
     >
+
+      {isSwitchSelected && (
+        <div className="absolute -top-1.5 -left-1.5 z-10 w-5 h-5 rounded-full bg-purple-600 text-white flex items-center justify-center shadow">
+          <Check className="w-3 h-3" />
+        </div>
+      )}
+
       <div className={`
         absolute top-1 right-1 md:top-2 md:right-2 w-6 h-6 md:w-8 md:h-8 rounded-lg flex items-center justify-center
         ${today ? 'bg-[#64B5F6] text-white' : 'bg-gray-100 text-gray-600'}
