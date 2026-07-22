@@ -24,7 +24,8 @@ export default function CalendarGrid({
   shifts, 
   onCellClick,
   currentUserEmail,
-  isAdmin = false
+  isAdmin = false,
+  switchFlow = null
 }) {
 
   // --- 1. Fetch Authorized People for Joining Data ---
