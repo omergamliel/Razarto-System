@@ -329,7 +329,8 @@ export default function ShiftCalendar() {
       const req_end_time = isFull ? (shift.end_time || req_start_time) : (dates.endTime || shift.end_time || req_start_time);
 
       const payload = {
-        shift_id: shiftId,
+        shift_ids: [shiftId],
+        
         requesting_user_id: authorizedPerson.serial_id,
         request_type: isFull ? 'Full' : 'Partial',
         req_start_date,
