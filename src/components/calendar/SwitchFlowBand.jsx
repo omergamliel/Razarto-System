@@ -1,73 +1,71 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ArrowLeftRight, Handshake, CheckCircle2 } from 'lucide-react';
+import { Loader2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-const STEPS = [
-  { key: 'select', label: 'בחירת משמרת', icon: ArrowLeftRight },
-  { key: 'type', label: 'סוג החלפה', icon: Handshake },
-  { key: 'confirm', label: 'אישור', icon: CheckCircle2 },
-];
+export default function SwitchFlowBand({ step, ownCount, targetCount, isSubmitting, onCancel, onNext, onConfirm }) {
+  const isOwnStep = step === 'own';
 
-export default function SwitchFlowBand({ currentStep = 'select', onCancel }) {
-  const activeIndex = STEPS.findIndex((s) => s.key === currentStep);
+  const title = isOwnStep
+    ? 'בחרו את המשמרות שלכם שתרצו להציע להחלפה'
+    : 'בחרו את המשמרות של אחרים שתרצו לקחת במקום';
+
+  const counterText = isOwnStep
+    ? `${ownCount} משמרות נבחרו`
+    : `${targetCount} משמרות נבחרו`;
 
   return (
     <AnimatePresence>
       <motion.div
-        initial={{ opacity: 0, y: -12 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -12 }}
-        transition={{ duration: 0.25 }}
-        className="mb-4 rounded-2xl border-2 border-blue-200 bg-blue-50/80 backdrop-blur-sm px-3 md:px-5 py-3 shadow-sm"
-        dir="rtl"
+        initial={{ y: 80, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: 80, opacity: 0 }}
+        className="fixed bottom-0 left-0 right-0 z-50 bg-blue-600 text-white shadow-lg"
       >
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-blue-700">
-            <ArrowLeftRight className="w-5 h-5" />
-            <span className="text-sm md:text-base font-semibold">מצב החלפה</span>
+        <div className="max-w-3xl mx-auto px-4 py-3 flex flex-col sm:flex-row items-center gap-2 sm:gap-4">
+          <button
+            onClick={onCancel}
+            className="absolute top-2 left-2 sm:hidden text-blue-100 hover:text-white"
+            aria-label="ביטול"
+          >
+            <X className="w-5 h-5" />
+          </button>
+
+          <div className="flex-1 text-center sm:text-right">
+            <p className="font-bold text-sm md:text-base">{title}</p>
+            <p className="text-xs text-blue-100">{counterText}</p>
           </div>
 
-          <div className="flex items-center gap-1 md:gap-3">
-            {STEPS.map((step, idx) => {
-              const Icon = step.icon;
-              const done = idx < activeIndex;
-              const active = idx === activeIndex;
-              return (
-                <React.Fragment key={step.key}>
-                  <div
-                    className={`flex items-center gap-1.5 rounded-lg px-2 md:px-3 py-1 text-xs md:text-sm font-medium transition-colors ${
-                      active
-                        ? 'bg-blue-600 text-white'
-                        : done
-                        ? 'bg-blue-100 text-blue-700'
-                        : 'bg-white text-gray-400 border border-gray-200'
-                    }`}
-                  >
-                    <Icon className="w-3.5 h-3.5 md:w-4 md:h-4" />
-                    <span className="hidden sm:inline">{step.label}</span>
-                  </div>
-                  {idx < STEPS.length - 1 && (
-                    <div
-                      className={`h-px w-4 md:w-8 ${done ? 'bg-blue-400' : 'bg-gray-200'}`}
-                    />
-                  )}
-                </React.Fragment>
-              );
-            })}
-          </div>
-
-          {onCancel && (
+          <div className="flex gap-2 shrink-0">
             <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-blue-700 hover:bg-blue-100"
+              variant="secondary"
+              size="sm"
               onClick={onCancel}
-              aria-label="ביטול מצב החלפה"
+              disabled={isSubmitting}
             >
-              <X className="w-4 h-4" />
+              ביטול
             </Button>
-          )}
+
+            {isOwnStep ? (
+              <Button
+                size="sm"
+                onClick={onNext}
+                disabled={ownCount === 0}
+                className="bg-white text-blue-600 hover:bg-blue-50"
+              >
+                המשך
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                onClick={onConfirm}
+                disabled={targetCount === 0 || isSubmitting}
+                className="bg-white text-blue-600 hover:bg-blue-50"
+              >
+                {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'אישור ושליחה'}
+              </Button>
+            )}
+          </div>
         </div>
       </motion.div>
     </AnimatePresence>
