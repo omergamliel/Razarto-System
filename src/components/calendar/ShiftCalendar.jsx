@@ -192,6 +192,35 @@ export default function ShiftCalendar() {
     enabled: !!authorizedPerson
   });
 
+
+  // --- LAZY CLEANUP: remove SwapRequests whose date has already passed ---
+  // Runs once per mount when the swap-requests list loads. Only clears requests
+  // still in an active state (Open/Partially_Covered) — Closed/Cancelled/Completed
+  // ones are kept as history.
+  useEffect(() => {
+    if (!authorizedPerson || swapRequests.length === 0) return;
+
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const staleRequests = swapRequests.filter(sr =>
+      ['Open', 'Partially_Covered'].includes(sr.status) &&
+      (sr.req_end_date || sr.req_start_date) < today
+    );
+
+    if (staleRequests.length === 0) return;
+
+    Promise.all(
+      staleRequests.map(sr => base44.entities.SwapRequest.delete(sr.id))
+    )
+      .then(() => {
+        debugLog('🧹 [ShiftCalendar] Removed expired swap requests:', staleRequests.map(sr => sr.id));
+        queryClient.invalidateQueries(['swap-requests']);
+      })
+      .catch(error => {
+        debugLog('❌ [ShiftCalendar] Failed to clean up expired swap requests:', error);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [authorizedPerson, swapRequests]);
+
   // Enrich shifts with user data and swap status (shared across UI & deep links)
   const enrichedShifts = shifts.map(shift => normalizeShiftContext(shift, {
     allUsers,
