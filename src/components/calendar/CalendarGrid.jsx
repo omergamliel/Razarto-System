@@ -121,6 +121,7 @@ export default function CalendarGrid({
               isWeekView={viewMode === 'week'}
               currentUserEmail={currentUserEmail}
               isAdmin={isAdmin}
+              switchFlow={switchFlow}
             />
           </motion.div>
         ))}
