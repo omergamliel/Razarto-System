@@ -11,7 +11,8 @@ export default function ShiftCell({
   isWeekView = false,
   currentUserEmail,
   isAdmin = false,
-  holidayName
+  holidayName,
+  switchFlow = null
 }) {
 
   const handleClick = () => {
@@ -20,6 +21,13 @@ export default function ShiftCell({
 
   const isCurrentMonth = isSameMonth(date, currentMonth);
   const today = isToday(date);
+
+  const isPastDate = startOfDay(date) < startOfDay(new Date());
+  const isSwitchEligible = !!switchFlow && !!shift && shift.status === 'regular' && !isPastDate &&
+    (switchFlow.step === 'own' ? shift.isMine : !shift.isMine);
+  const switchSelectedIds = switchFlow?.step === 'own' ? switchFlow.ownShiftIds : switchFlow?.targetShiftIds;
+  const isSwitchSelected = isSwitchEligible && switchSelectedIds?.includes(shift.id);
+  const isSwitchDimmed = !!switchFlow && !isSwitchEligible;
 
   const getStatusStyles = () => {
     if (!shift) return {};
