@@ -1,10 +1,10 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { AlertCircle, Clock, CheckCircle, Calendar } from 'lucide-react';
+import { AlertCircle, Clock, CheckCircle, Calendar, ArrowLeftRight } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 
-export default function KPIHeader({ shifts, currentUser, onKPIClick }) {
+export default function KPIHeader({ currentUser, onKPIClick, onStartSwitchFlow }) {
 
   // --- 1. Swap Requests Count (Red) ---
   // Count ALL open SwapRequests that are of type 'Full'
@@ -124,6 +124,17 @@ export default function KPIHeader({ shifts, currentUser, onKPIClick }) {
       bgColor: 'bg-blue-50',
       textColor: 'text-blue-600',
       borderColor: 'border-blue-200'
+    },
+    {
+      id: 'switch_request',
+      isAction: true,
+      mobileTitle: 'בקשת החלפה',
+      desktopTitle: 'התחל בקשת החלפה',
+      icon: ArrowLeftRight,
+      gradient: 'from-purple-500 to-purple-600',
+      bgColor: 'bg-purple-50',
+      textColor: 'text-purple-600',
+      borderColor: 'border-purple-200'
     }
   ];
 
