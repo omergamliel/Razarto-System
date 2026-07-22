@@ -193,34 +193,52 @@ export default function ShiftCalendar() {
   });
 
 
-  // --- LAZY CLEANUP: remove SwapRequests whose date has already passed ---
-  // Runs once per mount when the swap-requests list loads. Only clears requests
-  // still in an active state (Open/Partially_Covered) — Closed/Cancelled/Completed
-  // ones are kept as history.
+// --- LAZY CLEANUP: remove SwapRequests whose date has already passed, and ---
+  // reconcile shifts left stuck in a swap-related status with no live request
+  // backing them (e.g. after the SwapRequest table was cleared out-of-band).
+  // Closed/Cancelled/Completed requests are left alone as history.
   useEffect(() => {
-    if (!authorizedPerson || swapRequests.length === 0) return;
+    if (!authorizedPerson || shifts.length === 0) return;
 
     const today = format(new Date(), 'yyyy-MM-dd');
+    const activeStatuses = ['Open', 'Partially_Covered'];
+
     const staleRequests = swapRequests.filter(sr =>
-      ['Open', 'Partially_Covered'].includes(sr.status) &&
+      activeStatuses.includes(sr.status) &&
       (sr.req_end_date || sr.req_start_date) < today
     );
+    const staleRequestIds = new Set(staleRequests.map(sr => sr.id));
 
-    if (staleRequests.length === 0) return;
+    // Shifts marked as mid-swap that no longer have a live (non-stale) active request.
+    const liveShiftIds = new Set(
+      swapRequests
+        .filter(sr => activeStatuses.includes(sr.status) && !staleRequestIds.has(sr.id))
+        .map(sr => sr.shift_id)
+    );
+    const orphanedShifts = shifts.filter(s =>
+      ['Swap_Requested', 'Partially_Covered'].includes(s.status) && !liveShiftIds.has(s.id)
+    );
 
-    Promise.all(
-      staleRequests.map(sr => base44.entities.SwapRequest.delete(sr.id))
-    )
+    if (staleRequests.length === 0 && orphanedShifts.length === 0) return;
+
+    Promise.all([
+      ...staleRequests.map(sr => base44.entities.SwapRequest.delete(sr.id)),
+      ...orphanedShifts.map(s => base44.entities.Shift.update(s.id, { status: 'Active' }))
+    ])
       .then(() => {
-        debugLog('🧹 [ShiftCalendar] Removed expired swap requests:', staleRequests.map(sr => sr.id));
+        debugLog('🧹 [ShiftCalendar] Cleaned up expired swap requests & orphaned shift statuses:', {
+          requestIds: staleRequests.map(sr => sr.id),
+          shiftIds: orphanedShifts.map(s => s.id)
+        });
         queryClient.invalidateQueries(['swap-requests']);
+        queryClient.invalidateQueries(['shifts']);
       })
       .catch(error => {
         debugLog('❌ [ShiftCalendar] Failed to clean up expired swap requests:', error);
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authorizedPerson, swapRequests]);
-
+  }, [authorizedPerson, shifts, swapRequests]);
+  
   // Enrich shifts with user data and swap status (shared across UI & deep links)
   const enrichedShifts = shifts.map(shift => normalizeShiftContext(shift, {
     allUsers,
