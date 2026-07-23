@@ -182,7 +182,9 @@ export const normalizeShiftContext = (
     request_type: activeRequest?.request_type || shift.request_type || (requestType === 'partial' ? 'Partial' : 'Full'),
     original_user_data: originalUser,
     original_user_name: ownerName,
-    isMine: currentUser ? shift.original_user_id === currentUser.serial_id : false,
+    isMine: currentUser
+      ? shift.original_user_id === currentUser.serial_id || (!!currentUser.email && shift.assigned_email === currentUser.email)
+      : false,
     isCovering: currentUser ? shiftCoverages.some(cov => cov.covering_user_id === currentUser.serial_id) : false,
     start_time: shiftWindow.startTime,
     end_time: shiftWindow.endTime,
