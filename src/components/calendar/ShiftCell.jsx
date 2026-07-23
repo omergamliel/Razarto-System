@@ -117,6 +117,7 @@ export default function ShiftCell({
       className={`
         relative cursor-pointer rounded-lg md:rounded-xl transition-all duration-200
         min-h-[85px] md:min-h-[110px] p-1 md:p-3
+        ${bgBorderClass}
         ${styles.bg}
         ${styles.border ? `border-2 ${styles.border}` : 'border border-gray-100'}
         ${!isCurrentMonth ? 'opacity-40' : ''}
