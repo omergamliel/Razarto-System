@@ -149,12 +149,12 @@ export default function ShiftCell({
           <div className="space-y-0.5">
             <div className="md:hidden space-y-0.5">
               {mobileNames.map((name) => (
-                <p key={name} className="text-center font-normal text-[10px] leading-tight text-gray-800 break-words px-0.5">
+                <p key={name} className={`text-center font-normal text-[10px] leading-tight break-words px-0.5 ${nameTextClass}`}>
                   {name}
                 </p>
               ))}
               {hiddenCount > 0 && (
-                <p className="text-center text-[9px] text-gray-500 font-medium">{`+${hiddenCount} נוספים`}</p>
+                <p className={`text-center text-[9px] font-medium ${isSwitchSelected ? 'text-blue-100' : 'text-gray-500'}`}>{`+${hiddenCount} נוספים`}</p>
               )}
             </div>
             <div className="hidden md:block space-y-0.5">
