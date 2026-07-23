@@ -159,7 +159,7 @@ export default function ShiftCell({
             </div>
             <div className="hidden md:block space-y-0.5">
               {nameLines.map((name) => (
-                <p key={name} className="text-center font-semibold text-base text-gray-800 break-words px-0.5">
+                <p key={name} className={`text-center font-semibold text-base break-words px-0.5 ${nameTextClass}`}>
                   {name}
                 </p>
               ))}
