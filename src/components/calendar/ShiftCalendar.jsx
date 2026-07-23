@@ -634,6 +634,7 @@ export default function ShiftCalendar() {
       setSwitchFlow(prev => {
         const list = prev[listKey];
         const nextList = list.includes(shift.id) ? list.filter(id => id !== shift.id) : [...list, shift.id];
+        console.log('[switchFlow select]', listKey, nextList);
         return { ...prev, [listKey]: nextList };
       });
       return;
