@@ -1,7 +1,7 @@
 import React from 'react';
 import { format, isToday, isSameMonth, startOfDay } from 'date-fns';
 import { motion } from 'framer-motion';
-import { Clock, CheckCircle2, AlertCircle, ArrowLeftRight, Check } from 'lucide-react';
+import { Clock, CheckCircle2, AlertCircle, ArrowLeftRight } from 'lucide-react';
 
 export default function ShiftCell({
   date,
