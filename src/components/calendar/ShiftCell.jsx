@@ -82,6 +82,10 @@ export default function ShiftCell({
   };
 
   const styles = getStatusStyles();
+  const nameTextClass = isSwitchSelected ? 'text-white' : 'text-gray-800';
+  const bgBorderClass = isSwitchSelected
+    ? 'bg-blue-600 border-2 border-blue-700'
+    : `${styles.bg} ${styles.border ? `border-2 ${styles.border}` : 'border border-gray-100'}`;
 
   const nameLines = React.useMemo(() => {
     if (!shift) return [];
