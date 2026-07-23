@@ -628,10 +628,7 @@ export default function ShiftCalendar() {
     const isPast = clickedDate < today;
 
     if (switchFlow) {
-      if (!shift || shift.status !== 'regular' || isPast) return;
-
-      const isEligible = switchFlow.step === 'own' ? shift.isMine : !shift.isMine;
-      if (!isEligible) return;
+      const isPlainShiftStatus = shift && ['active', 'regular'].includes(String(shift.status || 'Active').toLowerCase());
 
       const listKey = switchFlow.step === 'own' ? 'ownShiftIds' : 'targetShiftIds';
       setSwitchFlow(prev => {
