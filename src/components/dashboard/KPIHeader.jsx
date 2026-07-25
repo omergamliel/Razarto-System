@@ -32,16 +32,11 @@ export default function KPIHeader({ currentUser, onKPIClick, onStartSwitchFlow }
   );
 
   // --- 3. History / Approved (Green) ---
-  // Count Shifts with status 'Covered' (or similar logic from history)
-  // For simplicity, let's count closed requests
-  const { data: approvedCount = 0 } = useQuery({
-    queryKey: ['count-approved-swaps'],
-    queryFn: async () => {
-        const closedReqs = await base44.entities.SwapRequest.filter({ status: 'Closed' });
-        const completedReqs = await base44.entities.SwapRequest.filter({ status: 'Completed' });
-        return closedReqs.length + completedReqs.length;
-    }
-  });
+  // Count closed/completed requests
+  const approvedCount = useMemo(
+    () => swapRequests.filter(r => r.status === 'Closed' || r.status === 'Completed').length,
+    [swapRequests]
+  );
 
   // --- 4. My Future Shifts (Blue) ---
   // Complex logic: Original assignment OR Approved coverage
