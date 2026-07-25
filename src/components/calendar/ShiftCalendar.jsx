@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { format } from 'date-fns';
@@ -80,6 +80,17 @@ export default function ShiftCalendar() {
   // Switch Request Flow State (multi-shift swap)
   // null = inactive; otherwise { step: 'own' | 'target', ownShiftIds: string[], targetShiftIds: string[] }
   const [switchFlow, setSwitchFlow] = useState(null);
+  // A Head2Head request can only target shifts belonging to one other person
+  // at a time (see switchRequestMutation); this surfaces a red warning when
+  // the user tries to pick a target shift belonging to someone else.
+  const [switchFlowWarning, setSwitchFlowWarning] = useState(null);
+  const switchFlowWarningTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (switchFlowWarningTimeoutRef.current) clearTimeout(switchFlowWarningTimeoutRef.current);
+    };
+  }, []);
 
   // --- DEBUG LOGS (Internal Only, Hidden from UI) ---
   const appendSwapLog = (message, data) => {
@@ -671,7 +682,25 @@ export default function ShiftCalendar() {
     const isPast = clickedDate < today;
 
     if (switchFlow) {
+      // "Active"/"regular" both mean a plain, unswapped shift (see HeadToHeadSelectorModal's isWhiteShift check).
       const isPlainShiftStatus = shift && ['active', 'regular'].includes(String(shift.status || 'Active').toLowerCase());
+      const isEligible = !!shift && (switchFlow.step === 'own' ? shift.isMine : !shift.isMine);
+
+      if (!isPlainShiftStatus || isPast || !isEligible) return;
+
+      
+      // Target shifts can only belong to one other person per request (see
+      // switchRequestMutation, which groups offered_shift_ids by owner) — block
+      // adding a shift owned by someone else once a target owner is set.
+      if (switchFlow.step === 'target' && shift && !switchFlow.targetShiftIds.includes(shift.id) && switchFlow.targetShiftIds.length > 0) {
+        const firstTargetShift = shifts.find(s => s.id === switchFlow.targetShiftIds[0]);
+        if (firstTargetShift && firstTargetShift.original_user_id !== shift.original_user_id) {
+          if (switchFlowWarningTimeoutRef.current) clearTimeout(switchFlowWarningTimeoutRef.current);
+          setSwitchFlowWarning('אי אפשר לבחור משמרות של יותר מאדם אחד בבקשת ראש בראש אחת');
+          switchFlowWarningTimeoutRef.current = setTimeout(() => setSwitchFlowWarning(null), 3000);
+          return;
+        }
+      }
 
       const listKey = switchFlow.step === 'own' ? 'ownShiftIds' : 'targetShiftIds';
       setSwitchFlow(prev => {
