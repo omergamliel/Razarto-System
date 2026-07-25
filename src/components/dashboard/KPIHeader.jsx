@@ -6,36 +6,30 @@ import { base44 } from '@/api/base44Client';
 
 export default function KPIHeader({ currentUser, onKPIClick, onStartSwitchFlow }) {
 
-  // --- 1. Swap Requests Count (Red) ---
-  // Count ALL open SwapRequests that are of type 'Full'
-  const { data: fullRequestsCount = 0 } = useQuery({
-    queryKey: ['count-full-swap-requests'],
-    queryFn: async () => {
-        const reqs = await base44.entities.SwapRequest.filter({ 
-            status: 'Open',
-            request_type: 'Full'
-        });
-        return reqs.length;
-    }
+  // Shared cache key with ShiftCalendar's swap-requests query, so KPI counts
+  // refresh the moment a request is created/updated anywhere in the app
+  // instead of only after a full remount.
+  const { data: swapRequests = [] } = useQuery({
+    queryKey: ['swap-requests'],
+    queryFn: () => base44.entities.SwapRequest.list()
   });
 
+  // --- 1. Swap Requests Count (Red) ---
+  // Count ALL open SwapRequests that are of type 'Full'
+  const fullRequestsCount = useMemo(
+    () => swapRequests.filter(r => r.status === 'Open' && r.request_type === 'Full').length,
+    [swapRequests]
+  );
+
   // --- 2. Partial Gaps Count (Yellow) ---
-  // Count ALL open SwapRequests that are of type 'Partial'
-  const { data: partialRequestsCount = 0 } = useQuery({
-    queryKey: ['count-partial-swap-requests'],
-    queryFn: async () => {
-        const reqs = await base44.entities.SwapRequest.filter({ 
-            status: 'Open',
-            request_type: 'Partial'
-        });
-        // Also count Partially_Covered status as relevant
-        const partialStatusReqs = await base44.entities.SwapRequest.filter({ 
-            status: 'Partially_Covered'
-        });
-        
-        return reqs.length + partialStatusReqs.length;
-    }
-  });
+  // Count ALL open SwapRequests that are of type 'Partial', plus any request
+  // that's been partially covered
+  const partialRequestsCount = useMemo(
+    () => swapRequests.filter(r =>
+      (r.status === 'Open' && r.request_type === 'Partial') || r.status === 'Partially_Covered'
+    ).length,
+    [swapRequests]
+  );
 
   // --- 3. History / Approved (Green) ---
   // Count Shifts with status 'Covered' (or similar logic from history)
