@@ -93,20 +93,26 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
     if (isOpen) setVisibleCount(10);
   }, [isOpen, type]);
 
+  // Shared cache keys with ShiftCalendar's own queries (['swap-requests'],
+  // ['shifts'], ['coverages'], ['all-users']) so this modal reflects new/updated
+  // requests immediately instead of only after its own separate cache entry
+  // happens to refetch. ShiftCalendar keeps these keys populated and calls
+  // queryClient.invalidateQueries on them after every mutation; using the same
+  // keys here means those invalidations refresh this modal's data too.
   const { data: swapRequestsAll = [], isLoading: isSwapRequestsLoading } = useQuery({
-    queryKey: ['kpi-swap-requests-all'],
+    queryKey: ['swap-requests'],
     queryFn: () => base44.entities.SwapRequest.list(),
     enabled: isOpen
   });
 
   const { data: shiftsAll = [], isLoading: isShiftsLoading } = useQuery({
-    queryKey: ['kpi-shifts-all'],
+    queryKey: ['shifts'],
     queryFn: () => base44.entities.Shift.list(),
     enabled: isOpen
   });
 
   const { data: coveragesAll = [], isLoading: isCoveragesLoading } = useQuery({
-    queryKey: ['kpi-coverages-all'],
+    queryKey: ['coverages'],
     queryFn: () => base44.entities.ShiftCoverage.list(),
     // Keep this hook active for every type while the modal is mounted to avoid
     // changing the hook graph when switching KPI views mid-session.
@@ -114,7 +120,7 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
   });
 
   const { data: authorizedUsers = [], isLoading: isUsersLoading } = useQuery({
-    queryKey: ['kpi-users-all'],
+    queryKey: ['all-users'],
     queryFn: () => base44.entities.AuthorizedPerson.list(),
     enabled: isOpen
   });
