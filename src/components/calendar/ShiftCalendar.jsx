@@ -427,6 +427,37 @@ export default function ShiftCalendar() {
     }
   });
 
+  // Cancels a SwapRequest directly by its own id (used by KPIListModal, where
+  // we already have the request object in hand instead of a single shiftId).
+  // Unlike cancelSwapMutation this handles requests bundling multiple
+  // shift_ids, and avoids resetting a shift to Active if another open request
+  // still references it.
+  const cancelSwapRequestMutation = useMutation({
+    mutationFn: async (request) => {
+      await base44.entities.SwapRequest.update(request.id, { status: 'Cancelled' });
+
+      const shiftIds = request.shift_ids || [];
+      const shiftsToReset = shiftIds.filter(id =>
+        !swapRequests.some(sr =>
+          sr.id !== request.id &&
+          ['Open', 'Partially_Covered'].includes(sr.status) &&
+          sr.shift_ids?.includes(id)
+        )
+      );
+
+      await Promise.all(shiftsToReset.map(id => base44.entities.Shift.update(id, { status: 'Active' })));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['shifts']);
+      queryClient.invalidateQueries(['swap-requests']);
+      toast.success('הבקשה בוטלה והמשמרת חזרה לסטטוס רגיל');
+    },
+    onError: (error) => {
+      console.error('❌ [ShiftCalendar] Cancel swap request failed:', error);
+      toast.error(`ביטול הבקשה נכשל: ${error?.message || 'שגיאה לא ידועה'}`);
+    }
+  });
+
   const offerCoverMutation = useMutation({
     mutationFn: async ({ shift, coverData }) => {
       const normalizedShift = normalizeShiftContext(shift, { allUsers, swapRequests, coverages, currentUser: authorizedPerson });
@@ -994,6 +1025,7 @@ export default function ShiftCalendar() {
         currentUser={authorizedPerson}
         onOfferCover={handleOfferCover}
         onRequestSwap={handleOpenSwapRequest}
+        onCancelRequest={(item) => cancelSwapRequestMutation.mutate(item)}
         actionsDisabled={isViewOnly}
       />
 
