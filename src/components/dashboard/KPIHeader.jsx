@@ -15,9 +15,10 @@ export default function KPIHeader({ currentUser, onKPIClick, onStartSwitchFlow }
   });
 
   // --- 1. Swap Requests Count (Red) ---
-  // Count ALL open SwapRequests that are of type 'Full'
+  // Count ALL open SwapRequests that are of type 'Full' or 'Head2Head'
+  // (Head2Head is still a full-shift swap, just targeted at one person's shift)
   const fullRequestsCount = useMemo(
-    () => swapRequests.filter(r => r.status === 'Open' && r.request_type === 'Full').length,
+    () => swapRequests.filter(r => r.status === 'Open' && (r.request_type === 'Full' || r.request_type === 'Head2Head')).length,
     [swapRequests]
   );
 
