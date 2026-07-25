@@ -168,6 +168,7 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
               original_shift: shift,
               original_shifts: reqShifts,
               shift_count: reqShiftIds.length,
+              offered_shifts: offeredShifts.map((s, idx) => ({ ...s, owner_name: offeredUsers[idx]?.full_name || 'לא ידוע' })),
               is_request_object: true,
               coverageSegments
           };
@@ -470,6 +471,11 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
                                 {item.shift_count} משמרות
                               </span>
                             )}
+                            {item.request_type === 'Head2Head' && (
+                              <span className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200">
+                                ראש בראש
+                              </span>
+                            )}
                           </div>
 
                           <p className="text-sm text-gray-800 font-medium">{item.user_name}</p>
@@ -478,6 +484,18 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
                             <div className="mt-1 text-[11px] text-gray-500 space-y-0.5">
                               {item.original_shifts.map(s => (
                                 <p key={s.id} dir="ltr">{s.start_date}{s.start_time ? ` ${s.start_time}-${s.end_time || ''}` : ''}</p>
+                              ))}
+                            </div>
+                          )}
+
+                          {item.request_type === 'Head2Head' && item.offered_shifts?.length > 0 && (
+                            <div className="mt-2 text-[11px] text-indigo-800 bg-indigo-50 border border-indigo-200 rounded-lg p-2 space-y-0.5">
+                              <p className="font-semibold mb-1">מוצע בתמורה למשמרת של:</p>
+                              {item.offered_shifts.map(s => (
+                                <p key={s.id} className="flex justify-between" dir="ltr">
+                                  <span>{s.owner_name}</span>
+                                  <span>{s.start_date} {s.start_time}-{s.end_time || ''}</span>
+                                </p>
                               ))}
                             </div>
                           )}
@@ -552,7 +570,7 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
                             </div>
                           )}
 
-                          {item.is_request_object && !isMyRequest && type !== 'approved' && (
+                          {item.is_request_object && !isMyRequest && type !== 'approved' && item.request_type !== 'Head2Head' && (
                             <Button
                               onClick={() => { if (actionsDisabled) return; onClose(); onOfferCover(item); }}
                               size="sm"
