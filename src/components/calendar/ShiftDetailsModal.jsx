@@ -564,7 +564,7 @@ export default function ShiftDetailsModal({
               {canRequestSwap && isOwnShift && (
                 <>
                   <Button
-                    onClick={() => onRequestSwap?.(shift)}
+                    onClick={() => onRequestSwap?.("full")}
                     className="min-w-[160px] flex-1 sm:flex-none h-12 bg-[#0ea5e9] hover:bg-[#0284c7] text-white rounded-xl shadow-lg"
                   >
                     <Send className="w-4 h-4 ml-2" />
