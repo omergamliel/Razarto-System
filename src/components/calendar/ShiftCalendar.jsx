@@ -423,6 +423,8 @@ export default function ShiftCalendar() {
       queryClient.invalidateQueries(['shifts']);
       queryClient.invalidateQueries(['swap-requests']);
       toast.success('בקשות ההחלפה נשלחו בהצלחה!');
+      if (switchFlowWarningTimeoutRef.current) clearTimeout(switchFlowWarningTimeoutRef.current);
+      setSwitchFlowWarning(null);
       setSwitchFlow(null);
     },
     onError: (error) => {
@@ -896,7 +898,12 @@ export default function ShiftCalendar() {
           ownCount={switchFlow.ownShiftIds.length}
           targetCount={switchFlow.targetShiftIds.length}
           isSubmitting={switchRequestMutation.isPending}
-          onCancel={() => setSwitchFlow(null)}
+          warning={switchFlowWarning}
+          onCancel={() => {
+            if (switchFlowWarningTimeoutRef.current) clearTimeout(switchFlowWarningTimeoutRef.current);
+            setSwitchFlowWarning(null);
+            setSwitchFlow(null);
+          }}
           onNext={() => setSwitchFlow(prev => ({ ...prev, step: 'target' }))}
           onConfirm={() => switchRequestMutation.mutate({
             ownShiftIds: switchFlow.ownShiftIds,
