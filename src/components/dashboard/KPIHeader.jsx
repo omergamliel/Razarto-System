@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { AlertCircle, Clock, CheckCircle, Calendar, ArrowLeftRight } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
