@@ -388,7 +388,16 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
   const isFutureShiftsView = type === 'my_shifts';
   const filteredSwapItems = useMemo(() => {
     if (type !== 'swap_requests') return sortedData;
-    return sortedData.filter(item => swapTab === 'all' ? true : item.requesting_user_id === currentUser?.serial_id);
+    if (swapTab === 'mine') return sortedData.filter(item => item.requesting_user_id === currentUser?.serial_id);
+    if (swapTab === 'incoming') {
+      // Head2Head requests where one of the offered/target shifts is mine —
+      // i.e. someone else is proposing to swap with me specifically.
+      return sortedData.filter(item =>
+        item.requesting_user_id !== currentUser?.serial_id &&
+        item.offered_shifts?.some(s => s.original_user_id === currentUser?.serial_id)
+      );
+    }
+    return sortedData;
   }, [currentUser?.serial_id, sortedData, swapTab, type]);
 
   const displayedItems = filteredSwapItems.slice(0, visibleCount);
@@ -416,6 +425,9 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
                   </Button>
                   <Button variant={swapTab === 'mine' ? 'default' : 'outline'} size="sm" onClick={() => setSwapTab('mine')} className="flex-1">
                     הבקשות שלי
+                  </Button>
+                  <Button variant={swapTab === 'incoming' ? 'default' : 'outline'} size="sm" onClick={() => setSwapTab('incoming')} className="flex-1">
+                    בקשות אליי
                   </Button>
                 </div>
               )}
