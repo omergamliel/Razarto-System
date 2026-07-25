@@ -142,6 +142,13 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
           const shift = reqShifts[0];
           const user = authorizedUsers.find(u => u?.serial_id === req.requesting_user_id)
             || authorizedUsers.find(u => u?.serial_id === shift?.original_user_id);
+          // Head2Head requests also carry target shift(s) being asked for in
+          // exchange (offered_shift_ids), which have their own owner.
+          const offeredShiftIds = req.offered_shift_ids || [];
+          const offeredShifts = shiftsAll.filter(s => offeredShiftIds.includes(s.id));
+          const offeredUsers = offeredShifts.map(s =>
+            authorizedUsers.find(u => u?.serial_id === s.original_user_id)
+          );
           const coverageSegments = coveragesAll
             .filter(c => reqShiftIds.includes(c.shift_id))
             .map((c, idx) => {
@@ -270,7 +277,10 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
 
     const baseData = useMemo(() => {
         const openRequests = swapRequestsAll.filter(r => isOpenStatus(r.status));
-        const fullRequests = openRequests.filter(r => r.request_type === 'Full');
+        // Head2Head requests are still full-shift swaps (just targeted at a
+        // specific person's shift instead of open to anyone), so they belong
+        // in the same "בקשות להחלפה מלאה" bucket as plain Full requests.
+        const fullRequests = openRequests.filter(r => r.request_type === 'Full' || r.request_type === 'Head2Head');
         const partialRequests = openRequests.filter(r => r.request_type === 'Partial');
         const approvedReqs = swapRequestsAll.filter(r => ['Completed', 'Closed'].includes(r.status));
 
