@@ -378,10 +378,22 @@ export default function ShiftCalendar() {
       const req_start_time = ownShifts[0]?.start_time || '09:00';
       const req_end_time = ownShifts[0]?.end_time || req_start_time;
 
-      await Promise.all(targetShiftIds.map(targetId =>
+      // Group target shifts by their owner: multiple target shifts belonging
+      // to the SAME other person become one request (offered_shift_ids holds
+      // all of them). Only targets belonging to different people produce
+      // separate requests.
+      const targetShifts = shifts.filter(s => targetShiftIds.includes(s.id));
+      const targetIdsByOwner = new Map();
+      targetShifts.forEach(s => {
+        const ownerId = s.original_user_id;
+        if (!targetIdsByOwner.has(ownerId)) targetIdsByOwner.set(ownerId, []);
+        targetIdsByOwner.get(ownerId).push(s.id);
+      });
+
+      await Promise.all(Array.from(targetIdsByOwner.values()).map(offeredIdsForOwner =>
         base44.entities.SwapRequest.create({
           shift_ids: ownShiftIds,
-          offered_shift_ids: [targetId],
+          offered_shift_ids: offeredIdsForOwner,
           requesting_user_id: authorizedPerson.serial_id,
           request_type: 'Head2Head',
           req_start_date,
