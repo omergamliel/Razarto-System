@@ -128,13 +128,20 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
   // --- Helpers ---
   const enrichRequestsWithShiftInfo = useCallback((requests) => {
       return requests.map(req => {
-          const shift = shiftsAll.find(s => req.shift_ids?.includes(s.id));
-          const user = authorizedUsers.find(u => u?.serial_id === shift?.original_user_id);
+          // A request can now bundle multiple of the requester's own shifts
+          // (shift_ids is an array), so resolve every one of them rather
+          // than just the first.
+          const reqShiftIds = req.shift_ids || [];
+          const reqShifts = shiftsAll.filter(s => reqShiftIds.includes(s.id));
+          const shift = reqShifts[0];
+          const user = authorizedUsers.find(u => u?.serial_id === req.requesting_user_id)
+            || authorizedUsers.find(u => u?.serial_id === shift?.original_user_id);
           const coverageSegments = coveragesAll
-            .filter(c => c.shift_id === req.shift_ids?.[0])
+            .filter(c => reqShiftIds.includes(c.shift_id))
             .map((c, idx) => {
-              const covStart = new Date(`${c.cover_start_date || shift?.start_date}T${c.cover_start_time || shift?.start_time || '09:00'}`);
-              let covEnd = new Date(`${c.cover_end_date || shift?.end_date || shift?.start_date}T${c.cover_end_time || shift?.end_time || '09:00'}`);
+              const covShift = reqShifts.find(s => s.id === c.shift_id) || shift;
+              const covStart = new Date(`${c.cover_start_date || covShift?.start_date}T${c.cover_start_time || covShift?.start_time || '09:00'}`);
+              let covEnd = new Date(`${c.cover_end_date || covShift?.end_date || covShift?.start_date}T${c.cover_end_time || covShift?.end_time || '09:00'}`);
               if (covEnd <= covStart) covEnd = addDays(covEnd, 1);
               return { key: c.id || idx, start: covStart, end: covEnd, covering_user_id: c.covering_user_id };
             });
@@ -146,6 +153,8 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
               user_name: user?.full_name || 'לא ידוע',
               department: user?.department,
               original_shift: shift,
+              original_shifts: reqShifts,
+              shift_count: reqShiftIds.length,
               is_request_object: true,
               coverageSegments
           };
@@ -440,9 +449,22 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
                             <Calendar className="w-4 h-4 text-gray-500" />
                             <span className="font-semibold text-gray-800">{startDate ? format(new Date(startDate), 'dd/MM/yyyy') : 'תאריך לא ידוע'}</span>
                             {dayName && <span className="text-xs text-gray-500">({dayName})</span>}
+                            {item.shift_count > 1 && (
+                              <span className="text-[11px] px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 border border-purple-200">
+                                {item.shift_count} משמרות
+                              </span>
+                            )}
                           </div>
 
                           <p className="text-sm text-gray-800 font-medium">{item.user_name}</p>
+
+                          {item.shift_count > 1 && item.original_shifts?.length > 0 && (
+                            <div className="mt-1 text-[11px] text-gray-500 space-y-0.5">
+                              {item.original_shifts.map(s => (
+                                <p key={s.id} dir="ltr">{s.start_date}{s.start_time ? ` ${s.start_time}-${s.end_time || ''}` : ''}</p>
+                              ))}
+                            </div>
+                          )}
 
                           {tone.label && (
                             <span className="inline-block mt-1 text-[11px] px-2 py-1 rounded-full bg-white/70 text-gray-700 border border-gray-200">
