@@ -38,10 +38,16 @@ export default function ShiftDetailsModal({
   const { data: activeRequest, isLoading: isActiveRequestLoading } = useQuery({
     queryKey: ['shift-active-request-details', shift?.id],
     queryFn: async () => {
-       if (!shift?.id) return null;
-       const reqs = await base44.entities.SwapRequest.filter({ status: 'Open' });
-       const match = reqs.find(r => r.shift_ids?.includes(shift.id));
-       return match || null;
+      if (!shift?.id) return null;
+      // Fetch all requests and filter client-side (not just "Open") — once
+      // someone partially covers this shift, the request's status flips to
+      // "Partially_Covered" and a server-side status:"Open" filter would
+      // miss it entirely, hiding the still-active request from this modal.
+      const reqs = await base44.entities.SwapRequest.list();
+      const match = reqs.find(
+        (r) => r.shift_ids?.includes(shift.id) && r.status !== "Cancelled",
+      );
+      return match || null;
     },
     enabled: !!shift?.id && isOpen
   });
@@ -229,7 +235,11 @@ export default function ShiftDetailsModal({
   const isFullyCovered = derivedStatus === 'covered';
   const requestStatus = resolvedActiveRequest?.status;
   const hasAnyRequest = Boolean(resolvedActiveRequest);
-  const hasActiveRequest = requestStatus === 'Open';
+  // "Partially_Covered" is still an active, offer-able request — only
+  // "Closed"/"Cancelled" (excluded via isCoveredOrClosed below) truly stop it.
+  const hasActiveRequest = ["Open", "Partially_Covered"].includes(
+    requestStatus,
+  );
   const isPartialRequest = hasAnyRequest && resolvedSwapType === 'partial';
   const isFullRequest = hasAnyRequest && resolvedSwapType === 'full';
   const isRequestOwner = Boolean(
