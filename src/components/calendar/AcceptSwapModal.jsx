@@ -504,7 +504,7 @@ export default function AcceptSwapModal({
 
                       <div ref={sliderRef} className="relative h-3 bg-gray-200 rounded-full mx-8">
 
-                          {/* Taken windows: other users' approved coverage + what remains with the original owner */}
+                          {/* Taken windows: other users' approved coverage + what remains with the original owner, spanning the FULL shift */}
                           {takenBands.map((band, idx) => {
                             const right = toPercent(band.start);
                             const width = Math.max(0, toPercent(band.end) - right);
@@ -516,14 +516,32 @@ export default function AcceptSwapModal({
                                 style={{ right: `${right}%`, width: `${width}%` }}
                                 title={`${band.label}: ${format(band.start, 'HH:mm')}–${format(band.end, 'HH:mm')}`}
                               >
-                                {width > 12 && (
-                                  <span className={`absolute -top-6 right-1/2 translate-x-1/2 text-[10px] font-semibold whitespace-nowrap ${isOriginal ? 'text-blue-700' : 'text-purple-700'}`}>
+                                {width > 8 && (
+                                  <span
+                                    className={`absolute right-1/2 translate-x-1/2 text-[10px] font-semibold whitespace-nowrap ${idx % 2 === 0 ? '-top-6' : '-top-11'} ${isOriginal ? 'text-blue-700' : 'text-purple-700'}`}
+                                  >
                                     {band.label}
                                   </span>
                                 )}
                               </div>
                             );
                           })}
+
+                          {/* Boundary ticks: edges of the requestable/coverable window within the full shift */}
+                          {requestMinPercent > 0.5 && (
+                            <div
+                              className="absolute w-[2px] h-5 -top-1 bg-gray-500/60 rounded-full"
+                              style={{ right: `${requestMinPercent}%` }}
+                              title="תחילת החלון הניתן לכיסוי"
+                            />
+                          )}
+                          {requestMaxPercent < 99.5 && (
+                            <div
+                              className="absolute w-[2px] h-5 -top-1 bg-gray-500/60 rounded-full"
+                              style={{ right: `${requestMaxPercent}%` }}
+                              title="סוף החלון הניתן לכיסוי"
+                            />
+                          )}
 
                           {/* Selected Range Bar */}
                           <div
