@@ -181,7 +181,17 @@ export const normalizeShiftContext = (
     activeRequestOverride ||
     shift.active_request ||
     swapRequests?.find(
-      (sr) => sr.shift_ids?.includes(shift.id) && sr.status !== "Cancelled",
+      (sr) =>
+        sr.shift_ids?.includes(shift.id) &&
+        sr.status !== "Cancelled" &&
+        // A request only describes this shift's CURRENT state if it was made
+        // by the shift's current owner. Once acceptHeadToHeadRequestMutation
+        // reassigns original_user_id to a new owner, the old (now-Closed)
+        // request still lists this shift's id in shift_ids forever — without
+        // this check it would keep being found and force displayStatus to
+        // "covered" permanently, blocking the new owner from ever requesting
+        // a swap on their own shift again.
+        sr.requesting_user_id === shift.original_user_id,
     );
   const requestType = resolveSwapType(shift, activeRequest);
   const requestWindow = resolveRequestWindow(shift, activeRequest);
@@ -240,6 +250,13 @@ export const normalizeShiftContext = (
     displayStatus = "covered";
   } else if (
     displayStatus === "regular" &&
+    // Only treat leftover approved coverage as an active partial gap while the
+    // shift itself is still genuinely mid-swap. Once the lazy-cleanup reconciles
+    // an expired request (resets shift.status to "Active"/"regular"), any
+    // ShiftCoverage rows are just history — the original owner has reclaimed
+    // whatever nobody else took, so the shift should render as a normal shift
+    // again instead of getting stuck showing a partial-gap highlight forever.
+    ["Swap_Requested", "Partially_Covered"].includes(shift.status) &&
     shiftCoverages.some((cov) => cov.status === "Approved")
   ) {
     displayStatus = requestType === "partial" ? "partial" : "requested";
