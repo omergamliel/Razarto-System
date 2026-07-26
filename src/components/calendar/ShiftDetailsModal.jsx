@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { format, addDays } from 'date-fns';
+import { format, addDays, differenceInMinutes } from "date-fns";
 import { he } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Calendar, Clock, User, Trash2, CheckCircle, AlertCircle, CalendarPlus, Send, UserRoundPen } from 'lucide-react';
@@ -283,6 +283,41 @@ export default function ShiftDetailsModal({
     return calculateMissingSegments(shiftStartDateTime, shiftEndDateTime, approvedCoverages);
   }, [approvedCoverages, shiftEndDateTime, shiftStartDateTime]);
 
+  // Read-only visual track spanning the full shift — replaces the plain
+  // grey "owner" card with the same at-a-glance slider used in the cover
+  // flow, so it's immediately clear which windows are covered vs. still
+  // with the original owner.
+  const trackTotalMinutes =
+    shiftStartDateTime && shiftEndDateTime
+      ? differenceInMinutes(shiftEndDateTime, shiftStartDateTime)
+      : 0;
+  const toTrackPercent = (date) => {
+    if (!shiftStartDateTime || trackTotalMinutes <= 0 || !date) return 0;
+    return Math.max(
+      0,
+      Math.min(
+        100,
+        (differenceInMinutes(date, shiftStartDateTime) / trackTotalMinutes) *
+          100,
+      ),
+    );
+  };
+  const trackBands = useMemo(() => {
+    const covered = coverageRows.map((row) => ({
+      start: row.start,
+      end: row.end,
+      label: row.name,
+      variant: "covered",
+    }));
+    const remaining = ownerSegments.map((seg) => ({
+      start: seg.start,
+      end: seg.end,
+      label: ownerDisplayName,
+      variant: "original",
+    }));
+    return [...covered, ...remaining].sort((a, b) => a.start - b.start);
+  }, [coverageRows, ownerSegments, ownerDisplayName]);
+  
   const formatSegment = (start, end) => {
     const sameDay = format(start, 'dd/MM') === format(end, 'dd/MM');
     const datePart = sameDay ? format(start, 'dd/MM') : `${format(start, 'dd/MM')} → ${format(end, 'dd/MM')}`;
@@ -425,29 +460,47 @@ export default function ShiftDetailsModal({
                 </div>
 
                 <div className="space-y-3">
-                  <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 shadow-sm">
-                    <div className="flex items-start gap-3">
-                      <div className="p-2 rounded-lg bg-white text-gray-700 border border-gray-200">
-                        <User className="w-4 h-4" />
-                      </div>
-                      <div className="flex-1 space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <p className="text-sm font-semibold text-gray-900">{ownerDisplayName}</p>
-                          <span className="px-2 py-0.5 rounded-full bg-gray-200 text-[11px] text-gray-700">בעל המשמרת</span>
+                  <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 shadow-sm">
+                        <p className="text-xs font-semibold text-gray-600 mb-4">
+                          תצוגת המשמרת המלאה
+                        </p>
+                        <div className="relative h-3 bg-gray-200 rounded-full mx-6 mb-8">
+                          {trackBands.map((band, idx) => {
+                            const right = toTrackPercent(band.start);
+                            const width = Math.max(
+                              0,
+                              toTrackPercent(band.end) - right,
+                            );
+                            const isOriginal = band.variant === "original";
+                            return (
+                              <div
+                                key={idx}
+                                className={`absolute h-full rounded-full ${isOriginal ? "bg-blue-200" : "bg-purple-200"}`}
+                                style={{ right: `${right}%`, width: `${width}%` }}
+                                title={`${band.label}: ${format(band.start, "HH:mm")}–${format(band.end, "HH:mm")}`}
+                              >
+                                {width > 8 && (
+                                  <span
+                                    className={`absolute right-1/2 translate-x-1/2 text-[10px] font-semibold whitespace-nowrap ${idx % 2 === 0 ? "-top-6" : "-top-11"} ${isOriginal ? "text-blue-700" : "text-purple-700"}`}
+                                  >
+                                    {band.label}
+                                    </span>
+                            )}
+                              </div>
+                            );
+                          })}
                         </div>
-                        {ownerSegments.length > 0 ? (
-                          ownerSegments.map((seg, idx) => (
-                            <p key={`owner-seg-${idx}`} className="text-xs text-gray-700">
-                              <span className="font-semibold">בעל המשמרת עושה</span>{' '}
-                              <span dir="ltr">{formatSegmentNarrative(seg.start, seg.end)}</span>
-                            </p>
-                          ))
-                        ) : (
-                          <p className="text-xs text-gray-600">אין חלון כיסוי פעיל לבעל המשמרת</p>
-                        )}
-                        {shift.department && <p className="text-[11px] text-gray-500">מחלקה {shift.department}</p>}
-                      </div>
-                    </div>
+                        <div className="flex items-center justify-center flex-wrap gap-3 text-[11px] text-gray-500">
+                          <span className="flex items-center gap-1">
+                            <span className="w-3 h-3 rounded-full bg-blue-200 inline-block" />{" "}
+                            נשאר אצל {ownerDisplayName}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <span className="w-3 h-3 rounded-full bg-purple-200 inline-block" />{" "}
+                            מכוסה
+                          </span>
+                        </div>
+                        {shift.department && <p className="text-[11px] text-gray-500 text-center mt-3"> מחלקה {shift.department}</p>}
                   </div>
 
                   {hasCoverages && (
