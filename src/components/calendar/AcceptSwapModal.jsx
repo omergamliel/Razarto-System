@@ -83,6 +83,21 @@ export default function AcceptSwapModal({
   const baseStart = coverageSummary.baseStart;
   const baseEnd = coverageSummary.baseEnd;
 
+  // The full shift's own bounds (as opposed to baseStart/baseEnd, which are
+  // the narrower *requested* coverage window) — the slider track always
+  // spans the whole shift so every taken/free portion is visible to scale,
+  // even when the active request only covers part of it.
+  const fullShiftStart = useMemo(
+    () => buildDateTime(shiftStartDate, shiftWindow.startTime),
+    [shiftStartDate, shiftWindow.startTime]
+  );
+  const fullShiftEnd = useMemo(() => {
+    const endDateValue = shiftEndDate || shiftStartDate;
+    let end = buildDateTime(endDateValue, shiftWindow.endTime);
+    if (end && fullShiftStart && end <= fullShiftStart) end = addDays(end, 1);
+    return end;
+  }, [shiftEndDate, shiftStartDate, shiftWindow.endTime, fullShiftStart]);
+
   const coverageRows = coverageSummary.approvedCoverages;
   const missingSegments = coverageSummary.missingSegments;
 
