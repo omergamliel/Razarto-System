@@ -158,6 +158,28 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
               if (covEnd <= covStart) covEnd = addDays(covEnd, 1);
               return { key: c.id || idx, start: covStart, end: covEnd, covering_user_id: c.covering_user_id };
             });
+
+          // Once a Head2Head request is closed, acceptHeadToHeadRequestMutation has
+          // already reassigned these shifts to whoever accepted, so offeredUsers
+          // (derived from the *offered* shifts' current owner) now points at the
+          // requester instead. The accepter's identity is found the other way
+          // round: they're whoever now owns the requester's original shift_ids.
+          const isClosedRequest = ["Closed", "Completed"].includes(req.status);
+          const acceptedByNames = isClosedRequest
+            ? [
+                ...new Set(
+                  reqShifts
+                    .map(
+                      (s) =>
+                        authorizedUsers.find(
+                          (u) => u?.serial_id === s.original_user_id,
+                        )?.full_name,
+                    )
+                    .filter(Boolean),
+                ),
+              ]
+            : [];
+
           return {
               ...req,
               shift_date: shift?.start_date,
@@ -217,19 +239,6 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
       const windowStart = new Date(`${startDate}T${startTime}`);
       let windowEnd = new Date(`${endDate}T${endTime}`);
       if (windowEnd <= windowStart) windowEnd = addDays(windowEnd, 1);
-        // Once a Head2Head request is closed, acceptHeadToHeadRequestMutation has
-        // already reassigned these shifts to whoever accepted, so offeredUsers
-        // (derived from the *offered* shifts' current owner) now points at the
-        // requester instead. The accepter's identity is found the other way
-        // round: they're whoever now owns the requester's original shift_ids.
-        const isClosedRequest = ['Closed', 'Completed'].includes(req.status);
-        const acceptedByNames = isClosedRequest
-          ? [...new Set(
-              reqShifts
-                .map(s => authorizedUsers.find(u => u?.serial_id === s.original_user_id)?.full_name)
-                .filter(Boolean)
-            )]
-          : [];
 
       const coverageSegments = coveragesAll
         .filter(c => c.shift_id === shift.id)
