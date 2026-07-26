@@ -75,13 +75,13 @@ export default function ShiftActionModal({
               className="relative bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col font-sans"
             >
               {/* Header */}
-              <div className="bg-[#EF5350] p-5 text-white flex justify-between items-center shrink-0">
+              <div className="bg-blue-600 p-5 text-white flex justify-between items-center shrink-0">
                  <div className="flex items-center gap-3">
                     <div className="bg-white/20 p-2.5 rounded-xl backdrop-blur-sm shadow-inner">
                         <Calendar className="w-6 h-6" />
                     </div>
                     <div>
-                        <h2 className="text-xl font-bold tracking-wide text-blue-600">פעולות על המשמרת</h2>
+                        <h2 className="text-xl font-bold tracking-wide">פעולות על המשמרת</h2>
                     </div>
                  </div>
                  <button onClick={onClose} className="p-2 rounded-full hover:bg-white/20 transition-colors">
