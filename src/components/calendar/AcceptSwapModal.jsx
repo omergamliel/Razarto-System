@@ -575,11 +575,7 @@ export default function AcceptSwapModal({
                           {endDate ? format(new Date(endDate), 'EEEE, dd/MM', { locale: he }) : ''}
                         </p>
                       </div>
-                      <div className="flex-1">
-                        <Label className="text-xs text-gray-500 mb-1">שעת סיום</Label>
-                        <Input type="time" dir="ltr" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="text-center h-10 bg-white" />
-                        <p className="text-[11px] text-gray-500 mt-1" dir="ltr">{endTime || ''}</p>
-                      </div>
+                      
                     </div>
 
                     <div className="bg-white border border-blue-100 rounded-xl p-3 text-sm text-blue-900 space-y-1">
