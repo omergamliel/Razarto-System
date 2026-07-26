@@ -519,7 +519,13 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
                             </div>
                           )}
 
-                          {item.request_type === 'Head2Head' && item.offered_shifts?.length > 0 && (
+                          {item.request_type === 'Head2Head' && item.is_closed_request && item.accepted_by_names?.length > 0 && (
+                            <div className="mt-2 text-[11px] text-green-800 bg-green-50 border border-green-200 rounded-lg p-2">
+                              <p className="font-semibold">✓ ההחלפה אושרה — התקבלה על ידי: {item.accepted_by_names.join(', ')}</p>
+                            </div>
+                          )}
+
+                          {item.request_type === 'Head2Head' && !item.is_closed_request && item.offered_shifts?.length > 0 && (
                             <div className="mt-2 text-[11px] text-indigo-800 bg-indigo-50 border border-indigo-200 rounded-lg p-2 space-y-0.5">
                               <p className="font-semibold mb-1">מוצע בתמורה למשמרת של:</p>
                               {item.offered_shifts.map(s => (
