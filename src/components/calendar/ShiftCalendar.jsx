@@ -433,8 +433,14 @@ export default function ShiftCalendar() {
 
   const cancelSwapMutation = useMutation({
     mutationFn: async (shiftId) => {
-      // Find and cancel the swap request
-      const activeRequest = swapRequests.find(sr => sr.shift_ids?.includes(shiftId) && sr.status === 'Open');
+      // Find and cancel the swap request (including partially-covered ones —
+      // otherwise cancelling would reset the shift but leave the request
+      // dangling in "Partially_Covered" forever).
+      const activeRequest = swapRequests.find(
+        (sr) =>
+          sr.shift_ids?.includes(shiftId) &&
+          ["Open", "Partially_Covered"].includes(sr.status),
+      );
       if (activeRequest) {
         await base44.entities.SwapRequest.update(activeRequest.id, { status: 'Cancelled' });
       }
