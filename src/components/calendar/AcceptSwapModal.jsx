@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { format, addDays } from 'date-fns';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { format, addDays, addMinutes, differenceInMinutes } from 'date-fns';
 import { he } from 'date-fns/locale';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, CheckCircle, Building2 } from 'lucide-react';
+import { X, CheckCircle, Building2, Clock } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
