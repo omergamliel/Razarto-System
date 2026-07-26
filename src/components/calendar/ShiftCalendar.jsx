@@ -17,7 +17,6 @@ import UserNotRegisteredError from '../UserNotRegisteredError'; // מסך חסי
 
 // Modals
 import SwapRequestModal from './SwapRequestModal';
-import PendingRequestsModal from './PendingRequestsModal';
 import AddShiftModal from './AddShiftModal';
 import AcceptSwapModal from './AcceptSwapModal';
 import ShiftActionModal from './ShiftActionModal';
