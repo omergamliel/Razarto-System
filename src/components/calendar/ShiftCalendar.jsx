@@ -483,6 +483,53 @@ export default function ShiftCalendar() {
     }
   });
 
+
+  // Accepts an incoming Head2Head request: the accepting user gives up every
+  // shift in offered_shift_ids (their own shifts this request is asking for)
+  // in exchange for every shift in shift_ids (the requester's offered pool) —
+  // a full trade of both lists, matching how the request was created.
+  // Reassignment is done via original_user_id, the same field EditRoleModal
+  // uses; assigned_person/email/role/department are display-only and get
+  // re-derived from original_user_id when shifts render.
+  const acceptHeadToHeadRequestMutation = useMutation({
+    mutationFn: async (request) => {
+      const theirShiftIds = request.shift_ids || [];
+      const myShiftIds = request.offered_shift_ids || [];
+
+      await Promise.all([
+        ...myShiftIds.map(id => base44.entities.Shift.update(id, {
+          original_user_id: request.requesting_user_id,
+          status: 'Active'
+        })),
+        ...theirShiftIds.map(id => base44.entities.Shift.update(id, {
+          original_user_id: authorizedPerson.serial_id,
+          status: 'Active'
+        }))
+      ]);
+
+      await base44.entities.SwapRequest.update(request.id, { status: 'Closed' });
+
+      // Any other open request still trading one of these shifts (on either
+      // side) assumed an ownership that no longer holds — cancel it too.
+      const swappedIds = [...theirShiftIds, ...myShiftIds];
+      const staleSiblings = swapRequests.filter(sr =>
+        sr.id !== request.id &&
+        ['Open', 'Partially_Covered'].includes(sr.status) &&
+        (sr.shift_ids?.some(id => swappedIds.includes(id)) || sr.offered_shift_ids?.some(id => swappedIds.includes(id)))
+      );
+      await Promise.all(staleSiblings.map(sr => base44.entities.SwapRequest.update(sr.id, { status: 'Cancelled' })));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['shifts']);
+      queryClient.invalidateQueries(['swap-requests']);
+      toast.success('ההחלפה בוצעה בהצלחה!');
+    },
+    onError: (error) => {
+      console.error('❌ [ShiftCalendar] Accept head-to-head request failed:', error);
+      toast.error(`ביצוע ההחלפה נכשל: ${error?.message || 'שגיאה לא ידועה'}`);
+    }
+  });
+
   const offerCoverMutation = useMutation({
     mutationFn: async ({ shift, coverData }) => {
       const normalizedShift = normalizeShiftContext(shift, { allUsers, swapRequests, coverages, currentUser: authorizedPerson });
@@ -708,7 +755,6 @@ export default function ShiftCalendar() {
       setSwitchFlow(prev => {
         const list = prev[listKey];
         const nextList = list.includes(shift.id) ? list.filter(id => id !== shift.id) : [...list, shift.id];
-        console.log('[switchFlow select]', listKey, nextList);
         return { ...prev, [listKey]: nextList };
       });
       return;
@@ -1074,6 +1120,7 @@ export default function ShiftCalendar() {
         onOfferCover={handleOfferCover}
         onRequestSwap={handleOpenSwapRequest}
         onCancelRequest={(item) => cancelSwapRequestMutation.mutate(item)}
+        onAcceptHeadToHead={(item) => acceptHeadToHeadRequestMutation.mutate(item)}
         actionsDisabled={isViewOnly}
       />
 
