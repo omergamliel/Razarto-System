@@ -170,6 +170,8 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
               shift_count: reqShiftIds.length,
               offered_shifts: offeredShifts.map((s, idx) => ({ ...s, owner_name: offeredUsers[idx]?.full_name || 'לא ידוע' })),
               is_request_object: true,
+              is_closed_request: isClosedRequest,
+              accepted_by_names: acceptedByNames,
               coverageSegments
           };
       });
@@ -215,6 +217,19 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
       const windowStart = new Date(`${startDate}T${startTime}`);
       let windowEnd = new Date(`${endDate}T${endTime}`);
       if (windowEnd <= windowStart) windowEnd = addDays(windowEnd, 1);
+        // Once a Head2Head request is closed, acceptHeadToHeadRequestMutation has
+        // already reassigned these shifts to whoever accepted, so offeredUsers
+        // (derived from the *offered* shifts' current owner) now points at the
+        // requester instead. The accepter's identity is found the other way
+        // round: they're whoever now owns the requester's original shift_ids.
+        const isClosedRequest = ['Closed', 'Completed'].includes(req.status);
+        const acceptedByNames = isClosedRequest
+          ? [...new Set(
+              reqShifts
+                .map(s => authorizedUsers.find(u => u?.serial_id === s.original_user_id)?.full_name)
+                .filter(Boolean)
+            )]
+          : [];
 
       const coverageSegments = coveragesAll
         .filter(c => c.shift_id === shift.id)
