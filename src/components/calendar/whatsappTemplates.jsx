@@ -217,6 +217,12 @@ export const normalizeShiftContext = (
   });
 
   let displayStatus = shift.status || "regular";
+  // "Active" and "regular" both mean a plain, unswapped shift — several
+  // mutations (addShiftMutation, cancelSwapMutation, the lazy-cleanup
+  // reconciliation, acceptHeadToHeadRequestMutation) reset shifts to
+  // "Active", so normalize it here once instead of special-casing it in
+  // every downstream "is this a normal shift" check.
+  if (displayStatus.toLowerCase() === "active") displayStatus = "regular";
   if (activeRequest) {
     if (activeRequest.status === "Closed") displayStatus = "covered";
     else if (
