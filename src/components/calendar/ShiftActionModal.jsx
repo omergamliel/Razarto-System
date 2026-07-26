@@ -81,7 +81,7 @@ export default function ShiftActionModal({
                         <Calendar className="w-6 h-6" />
                     </div>
                     <div>
-                        <h2 className="text-xl font-bold tracking-wide">פעולות על המשמרת</h2>
+                        <h2 className="text-xl font-bold tracking-wide text-blue-600">פעולות על המשמרת</h2>
                     </div>
                  </div>
                  <button onClick={onClose} className="p-2 rounded-full hover:bg-white/20 transition-colors">
