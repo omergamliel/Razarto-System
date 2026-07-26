@@ -122,33 +122,66 @@ export default function AcceptSwapModal({
         .filter(Boolean),
     [coverageRows]
   );
+
+  // Gaps between a set of {start,end} segments within [rangeStart, rangeEnd] —
+  // used to find what's still left over (with the original owner) across the
+  // *whole* shift, not just inside the narrower requested window.
+  const computeGaps = (rangeStart, rangeEnd, segments) => {
+    if (!rangeStart || !rangeEnd) return [];
+    let gaps = [{ start: rangeStart, end: rangeEnd }];
+    [...segments]
+      .sort((a, b) => a.start - b.start)
+      .forEach((seg) => {
+        gaps = gaps.flatMap((g) => {
+          if (seg.end <= g.start || seg.start >= g.end) return [g];
+          const pieces = [];
+          if (seg.start > g.start) pieces.push({ start: g.start, end: seg.start });
+          if (seg.end < g.end) pieces.push({ start: seg.end, end: g.end });
+          return pieces;
+        });
+      });
+    return gaps.filter((g) => g.end > g.start);
+  };
   
   // Bands drawn on the slider track: portions already taken by other users
   // (approved coverages) and the portions still remaining with the original
-  // owner (the gaps between those coverages), so the picker can see the
-  // whole shift's coverage state at a glance while dragging their own range.
+  // owner (everything else across the FULL shift — including any part
+  // outside the narrower requested window), so the picker can see the whole
+  // shift's coverage state to scale while dragging their own range.
   const takenBands = useMemo(() => {
-    if (!baseStart || !baseEnd) return [];
+    if (!fullShiftStart || !fullShiftEnd) return [];
     const covered = approvedCoverageSegments.map((seg) => ({ ...seg, variant: 'covered' }));
-    const remaining = missingSegments.map((seg) => ({ ...seg, label: originalUserName, variant: 'original' }));
+    const remaining = computeGaps(fullShiftStart, fullShiftEnd, approvedCoverageSegments).map((seg) => ({
+      ...seg,
+      label: originalUserName,
+      variant: 'original'
+    }));
     return [...covered, ...remaining].sort((a, b) => a.start - b.start);
-  }, [approvedCoverageSegments, missingSegments, originalUserName, baseStart, baseEnd]);
+  }, [approvedCoverageSegments, originalUserName, fullShiftStart, fullShiftEnd]);
 
-  const totalMinutes = baseStart && baseEnd ? differenceInMinutes(baseEnd, baseStart) : 0;
+  const totalMinutes = fullShiftStart && fullShiftEnd ? differenceInMinutes(fullShiftEnd, fullShiftStart) : 0;
   const toPercent = (date) => {
-    if (!baseStart || totalMinutes <= 0 || !date) return 0;
-    return Math.max(0, Math.min(100, (differenceInMinutes(date, baseStart) / totalMinutes) * 100));
+    if (!fullShiftStart || totalMinutes <= 0 || !date) return 0;
+    return Math.max(0, Math.min(100, (differenceInMinutes(date, fullShiftStart) / totalMinutes) * 100));
   };
+
+  // The requestable window (baseStart/baseEnd), expressed in minutes from the
+  // full shift's start, is where drag handles are allowed to actually land —
+  // the track is wider (the whole shift) but only this slice is coverable.
+  const requestMinMinutes = baseStart && fullShiftStart ? differenceInMinutes(baseStart, fullShiftStart) : 0;
+  const requestMaxMinutes = baseEnd && fullShiftStart ? differenceInMinutes(baseEnd, fullShiftStart) : totalMinutes;
+  const requestMinPercent = totalMinutes > 0 ? Math.max(0, Math.min(100, (requestMinMinutes / totalMinutes) * 100)) : 0;
+  const requestMaxPercent = totalMinutes > 0 ? Math.max(0, Math.min(100, (requestMaxMinutes / totalMinutes) * 100)) : 100;
 
   const selectedStartDT = startDate && startTime ? buildDateTime(startDate, startTime) : null;
   const selectedEndDT = endDate && endTime ? buildDateTime(endDate, endTime) : null;
-  const startMinutes = selectedStartDT && baseStart ? differenceInMinutes(selectedStartDT, baseStart) : 0;
-  const endMinutes = selectedEndDT && baseStart ? differenceInMinutes(selectedEndDT, baseStart) : totalMinutes;
+  const startMinutes = selectedStartDT && fullShiftStart ? differenceInMinutes(selectedStartDT, fullShiftStart) : requestMinMinutes;
+  const endMinutes = selectedEndDT && fullShiftStart ? differenceInMinutes(selectedEndDT, fullShiftStart) : requestMaxMinutes;
   const startPercent = totalMinutes > 0 ? Math.max(0, Math.min(100, (startMinutes / totalMinutes) * 100)) : 0;
   const endPercent = totalMinutes > 0 ? Math.max(0, Math.min(100, (endMinutes / totalMinutes) * 100)) : 100;
 
   const handleSliderDrag = (e, handle) => {
-    if (!sliderRef.current || !baseStart || totalMinutes <= 0) return;
+    if (!sliderRef.current || !fullShiftStart || totalMinutes <= 0) return;
     const rect = sliderRef.current.getBoundingClientRect();
     const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
     const distanceFromRight = rect.right - clientX;
@@ -157,16 +190,16 @@ export default function AcceptSwapModal({
     let minutes = Math.round(percentage * totalMinutes);
     const step = 15;
     minutes = Math.round(minutes / step) * step;
-    minutes = Math.max(0, Math.min(totalMinutes, minutes));
+    minutes = Math.max(requestMinMinutes, Math.min(requestMaxMinutes, minutes));
 
     if (handle === 'start') {
-      if (minutes >= endMinutes) minutes = Math.max(0, endMinutes - step);
-      const newStart = addMinutes(baseStart, minutes);
+      if (minutes >= endMinutes) minutes = Math.max(requestMinMinutes, endMinutes - step);
+      const newStart = addMinutes(fullShiftStart, minutes);
       setStartDate(format(newStart, 'yyyy-MM-dd'));
       setStartTime(format(newStart, 'HH:mm'));
     } else {
-      if (minutes <= startMinutes) minutes = Math.min(totalMinutes, startMinutes + step);
-      const newEnd = addMinutes(baseStart, minutes);
+      if (minutes <= startMinutes) minutes = Math.min(requestMaxMinutes, startMinutes + step);
+      const newEnd = addMinutes(fullShiftStart, minutes);
       setEndDate(format(newEnd, 'yyyy-MM-dd'));
       setEndTime(format(newEnd, 'HH:mm'));
     }
