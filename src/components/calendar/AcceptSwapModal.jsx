@@ -575,7 +575,6 @@ export default function AcceptSwapModal({
                           {endDate ? format(new Date(endDate), 'EEEE, dd/MM', { locale: he }) : ''}
                         </p>
                       </div>
-                      
                     </div>
 
                     <div className="bg-white border border-blue-100 rounded-xl p-3 text-sm text-blue-900 space-y-1">
