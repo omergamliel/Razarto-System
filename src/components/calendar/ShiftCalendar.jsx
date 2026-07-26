@@ -532,8 +532,14 @@ export default function ShiftCalendar() {
     mutationFn: async ({ shift, coverData }) => {
       const normalizedShift = normalizeShiftContext(shift, { allUsers, swapRequests, coverages, currentUser: authorizedPerson });
 
-      // Find active swap request
-      const activeRequest = normalizedShift?.active_request || swapRequests.find(sr => sr.shift_ids?.includes(shift.id) && sr.status === 'Open');
+      // Find active swap request. Once one person partially covers a shift,
+      // the request's status flips to "Partially_Covered" (not "Open") so
+      // other people can keep taking the remaining windows — the lookup must
+      // accept that status too, or it'll wrongly report no active request.
+      const activeRequest = normalizedShift?.active_request || swapRequests.find(
+        (sr) =>
+            sr.shift_ids?.includes(shift.id) && sr.status !== "Cancelled",
+      );
       if (!activeRequest) throw new Error('No active swap request found');
 
       const payload = {
@@ -548,13 +554,26 @@ export default function ShiftCalendar() {
         status: 'Approved'
       };
 
-      await base44.entities.ShiftCoverage.create(payload);
+       // If the user already has a coverage on this shift, update it in place
+      // instead of creating a second row, so they can edit what they chose.
+      if (coverData.coverageId) {
+        await base44.entities.ShiftCoverage.update(
+          coverData.coverageId,
+          payload,
+        );
+      } else {
+        await base44.entities.ShiftCoverage.create(payload);
+      }
 
       // Evaluate remaining gaps after this coverage to decide status updates
       const shiftCoverages = [
-        ...coverages
-          .filter(c => c.shift_id === shift.id && c.status !== 'Cancelled'),
-        payload
+        ...coverages.filter(
+          (c) =>
+            c.shift_id === shift.id &&
+            c.status !== "Cancelled" &&
+            c.id !== coverData.coverageId,
+          ),
+        { ...payload, id: coverData.coverageId },
       ];
 
       const { missingSegments } = computeCoverageSummary({
@@ -1037,6 +1056,7 @@ export default function ShiftCalendar() {
         onClose={closeAllModals}
         shift={selectedShift}
         existingCoverages={selectedShift?.shiftCoverages || selectedShift?.coverages || []}
+        currentUserId={authorizedPerson?.serial_id}
         onAccept={(segmentData) => offerCoverMutation.mutate({ shift: selectedShift, coverData: segmentData })}
         isAccepting={offerCoverMutation.isPending}
       />
