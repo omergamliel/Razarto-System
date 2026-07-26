@@ -51,7 +51,6 @@ export default function ShiftCalendar() {
   const [selectedShift, setSelectedShift] = useState(null);
   const [showSwapRequestModal, setShowSwapRequestModal] = useState(false);
   const [swapRequestInitialType, setSwapRequestInitialType] = useState('full');
-  const [showPendingRequestsModal, setShowPendingRequestsModal] = useState(false);
   const [showAddShiftModal, setShowAddShiftModal] = useState(false);
   const [showAcceptSwapModal, setShowAcceptSwapModal] = useState(false);
   const [showActionModal, setShowActionModal] = useState(false);
@@ -701,7 +700,6 @@ export default function ShiftCalendar() {
   // --- HANDLERS ---
   const closeAllModals = () => {
     setShowSwapRequestModal(false);
-    setShowPendingRequestsModal(false);
     setShowAddShiftModal(false);
     setShowAcceptSwapModal(false);
     setShowActionModal(false);
