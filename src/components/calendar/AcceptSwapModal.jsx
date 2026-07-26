@@ -40,6 +40,7 @@ export default function AcceptSwapModal({
   const [endDate, setEndDate] = useState('');
   const [endTime, setEndTime] = useState('');
   const [selectedSegmentIdx, setSelectedSegmentIdx] = useState(0);
+  const sliderRef = useRef(null);
 
   // --- Derived Request Context (keeps logic aligned with ShiftDetailsModal) ---
   const activeRequest = useMemo(() => normalizedShift?.active_request || normalizedShift?.activeRequest || null, [normalizedShift]);
@@ -101,11 +102,60 @@ export default function AcceptSwapModal({
           let end = buildDateTime(cov.cover_end_date, cov.cover_end_time);
           if (!start || !end) return null;
           if (end <= start) end = addDays(end, 1);
-          return { start, end };
+          return { start, end, label: cov.covering_name || cov.covering_user_name || 'מחליף' };
         })
         .filter(Boolean),
     [coverageRows]
   );
+  
+  // Bands drawn on the slider track: portions already taken by other users
+  // (approved coverages) and the portions still remaining with the original
+  // owner (the gaps between those coverages), so the picker can see the
+  // whole shift's coverage state at a glance while dragging their own range.
+  const takenBands = useMemo(() => {
+    if (!baseStart || !baseEnd) return [];
+    const covered = approvedCoverageSegments.map((seg) => ({ ...seg, variant: 'covered' }));
+    const remaining = missingSegments.map((seg) => ({ ...seg, label: originalUserName, variant: 'original' }));
+    return [...covered, ...remaining].sort((a, b) => a.start - b.start);
+  }, [approvedCoverageSegments, missingSegments, originalUserName, baseStart, baseEnd]);
+
+  const totalMinutes = baseStart && baseEnd ? differenceInMinutes(baseEnd, baseStart) : 0;
+  const toPercent = (date) => {
+    if (!baseStart || totalMinutes <= 0 || !date) return 0;
+    return Math.max(0, Math.min(100, (differenceInMinutes(date, baseStart) / totalMinutes) * 100));
+  };
+
+  const selectedStartDT = startDate && startTime ? buildDateTime(startDate, startTime) : null;
+  const selectedEndDT = endDate && endTime ? buildDateTime(endDate, endTime) : null;
+  const startMinutes = selectedStartDT && baseStart ? differenceInMinutes(selectedStartDT, baseStart) : 0;
+  const endMinutes = selectedEndDT && baseStart ? differenceInMinutes(selectedEndDT, baseStart) : totalMinutes;
+  const startPercent = totalMinutes > 0 ? Math.max(0, Math.min(100, (startMinutes / totalMinutes) * 100)) : 0;
+  const endPercent = totalMinutes > 0 ? Math.max(0, Math.min(100, (endMinutes / totalMinutes) * 100)) : 100;
+
+  const handleSliderDrag = (e, handle) => {
+    if (!sliderRef.current || !baseStart || totalMinutes <= 0) return;
+    const rect = sliderRef.current.getBoundingClientRect();
+    const clientX = e.type.includes('touch') ? e.touches[0].clientX : e.clientX;
+    const distanceFromRight = rect.right - clientX;
+    let percentage = distanceFromRight / rect.width;
+    percentage = Math.max(0, Math.min(1, percentage));
+    let minutes = Math.round(percentage * totalMinutes);
+    const step = 15;
+    minutes = Math.round(minutes / step) * step;
+    minutes = Math.max(0, Math.min(totalMinutes, minutes));
+
+    if (handle === 'start') {
+      if (minutes >= endMinutes) minutes = Math.max(0, endMinutes - step);
+      const newStart = addMinutes(baseStart, minutes);
+      setStartDate(format(newStart, 'yyyy-MM-dd'));
+      setStartTime(format(newStart, 'HH:mm'));
+    } else {
+      if (minutes <= startMinutes) minutes = Math.min(totalMinutes, startMinutes + step);
+      const newEnd = addMinutes(baseStart, minutes);
+      setEndDate(format(newEnd, 'yyyy-MM-dd'));
+      setEndTime(format(newEnd, 'HH:mm'));
+    }
+  };
 
   const shouldShowMissingBanner = !coverFull && missingSegments.length > 0;
 
