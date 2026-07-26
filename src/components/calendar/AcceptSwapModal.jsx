@@ -23,7 +23,8 @@ export default function AcceptSwapModal({
   shift,
   onAccept,
   isAccepting,
-  existingCoverages = []
+  existingCoverages = [],
+  currentUserId
 }) {
   const normalizedShift = useMemo(
     () =>
@@ -42,12 +43,29 @@ export default function AcceptSwapModal({
   const [selectedSegmentIdx, setSelectedSegmentIdx] = useState(0);
   const sliderRef = useRef(null);
 
+  // The current user's own already-approved coverage on this shift, if any —
+  // when present, its window is excluded from "taken" so they can drag back
+  // into it and adjust what they previously chose instead of being locked out.
+  const myCoverage = useMemo(
+    () =>
+      existingCoverages.find(
+        (c) =>
+          c.covering_user_id === currentUserId &&
+          (c.status === 'Approved' || !c.status)
+      ) || null,
+    [existingCoverages, currentUserId]
+  );
+  const otherCoverages = useMemo(
+    () => existingCoverages.filter((c) => c.id !== myCoverage?.id),
+    [existingCoverages, myCoverage]
+  );
+
   // --- Derived Request Context (keeps logic aligned with ShiftDetailsModal) ---
   const activeRequest = useMemo(() => normalizedShift?.active_request || normalizedShift?.activeRequest || null, [normalizedShift]);
   const requestType = useMemo(() => resolveSwapType(normalizedShift, activeRequest), [activeRequest, normalizedShift]);
   const coverageSummary = useMemo(
-    () => computeCoverageSummary({ shift: normalizedShift, activeRequest, coverages: existingCoverages }),
-    [activeRequest, existingCoverages, normalizedShift]
+    () => computeCoverageSummary({ shift: normalizedShift, activeRequest, coverages: otherCoverages }),
+    [activeRequest, otherCoverages, normalizedShift]
   );
   const requestWindow = coverageSummary.requestWindow;
   const requestStartDate = requestWindow.startDate;
@@ -142,22 +160,36 @@ export default function AcceptSwapModal({
       });
     return gaps.filter((g) => g.end > g.start);
   };
-  
+
+  // The current user's own existing pick, as a date range, shown as its own
+  // band on the slider (distinct from "still with the original owner").
+  const myCoverageSegment = useMemo(() => {
+    if (!myCoverage) return null;
+    const start = buildDateTime(myCoverage.cover_start_date, myCoverage.cover_start_time);
+    let end = buildDateTime(myCoverage.cover_end_date, myCoverage.cover_end_time);
+    if (!start || !end) return null;
+    if (end <= start) end = addDays(end, 1);
+    return { start, end, label: 'הבחירה הקודמת שלך' };
+  }, [myCoverage]);
+
   // Bands drawn on the slider track: portions already taken by other users
-  // (approved coverages) and the portions still remaining with the original
-  // owner (everything else across the FULL shift — including any part
-  // outside the narrower requested window), so the picker can see the whole
-  // shift's coverage state to scale while dragging their own range.
+  // (approved coverages), your own existing pick (if you're editing one),
+  // and everything else across the FULL shift that still remains with the
+  // original owner — including any part outside the narrower requested
+  // window — so the picker can see the whole shift's coverage state to
+  // scale while dragging their own range.
   const takenBands = useMemo(() => {
     if (!fullShiftStart || !fullShiftEnd) return [];
     const covered = approvedCoverageSegments.map((seg) => ({ ...seg, variant: 'covered' }));
-    const remaining = computeGaps(fullShiftStart, fullShiftEnd, approvedCoverageSegments).map((seg) => ({
+    const mine = myCoverageSegment ? [{ ...myCoverageSegment, variant: 'mine' }] : [];
+    const exclusions = myCoverageSegment ? [...approvedCoverageSegments, myCoverageSegment] : approvedCoverageSegments;
+    const remaining = computeGaps(fullShiftStart, fullShiftEnd, exclusions).map((seg) => ({
       ...seg,
       label: originalUserName,
       variant: 'original'
     }));
-    return [...covered, ...remaining].sort((a, b) => a.start - b.start);
-  }, [approvedCoverageSegments, originalUserName, fullShiftStart, fullShiftEnd]);
+    return [...covered, ...mine, ...remaining].sort((a, b) => a.start - b.start);
+  }, [approvedCoverageSegments, myCoverageSegment, originalUserName, fullShiftStart, fullShiftEnd]);
 
   const totalMinutes = fullShiftStart && fullShiftEnd ? differenceInMinutes(fullShiftEnd, fullShiftStart) : 0;
   const toPercent = (date) => {
@@ -235,7 +267,13 @@ export default function AcceptSwapModal({
     const originalStartTime = requestStartTime || normalizedShift?.start_time || '09:00';
     const originalEndTime = requestEndTime || normalizedShift?.end_time || '09:00';
 
-    const defaultSegment = missingSegments[0] || (baseStart && baseEnd ? { start: baseStart, end: baseEnd } : null);
+    // Prefer re-showing the user's own previous pick (if they're editing one)
+    // over defaulting to the first free gap, so they see exactly what they
+    // chose last time and can adjust it from there.
+    const defaultSegment =
+      myCoverageSegment ||
+      missingSegments[0] ||
+      (baseStart && baseEnd ? { start: baseStart, end: baseEnd } : null);
     const shouldForcePartial = isPartialRequest || (existingCoverages && existingCoverages.length > 0);
 
     if (shouldForcePartial) {
@@ -275,7 +313,8 @@ export default function AcceptSwapModal({
     baseStart,
     missingSegments,
     isPartialRequest,
-    shiftWindow
+    shiftWindow,
+    myCoverageSegment
   ]);
 
   // When a user switches segment tabs, snap the inputs to the selected gap
@@ -299,7 +338,10 @@ export default function AcceptSwapModal({
         startTime: wantsFull ? (normalizedShift?.start_time || requestStartTime || '09:00') : startTime,
         endTime: wantsFull ? (normalizedShift?.end_time || requestEndTime || '09:00') : endTime,
         startDate: wantsFull ? (normalizedShift?.start_date || shiftStartDate) : startDate,
-        endDate: wantsFull ? (normalizedShift?.end_date || shiftEndDate || shiftStartDate) : endDate
+        endDate: wantsFull ? (normalizedShift?.end_date || shiftEndDate || shiftStartDate) : endDate,
+        // When set, the parent mutation updates this existing coverage instead
+        // of creating a new one — lets a user edit what they already chose.
+        coverageId: myCoverage?.id || null
     };
 
     // Validation for Partial
@@ -508,17 +550,21 @@ export default function AcceptSwapModal({
                           {takenBands.map((band, idx) => {
                             const right = toPercent(band.start);
                             const width = Math.max(0, toPercent(band.end) - right);
-                            const isOriginal = band.variant === 'original';
+                            const bandColors = {
+                              original: { bg: 'bg-blue-200', text: 'text-blue-700' },
+                              mine: { bg: 'bg-green-200', text: 'text-green-700' },
+                              covered: { bg: 'bg-purple-200', text: 'text-purple-700' }
+                            }[band.variant] || { bg: 'bg-purple-200', text: 'text-purple-700' };
                             return (
                               <div
                                 key={idx}
-                                className={`absolute h-full rounded-full ${isOriginal ? 'bg-blue-200' : 'bg-purple-200'}`}
+                                className={`absolute h-full rounded-full ${bandColors.bg}`}
                                 style={{ right: `${right}%`, width: `${width}%` }}
                                 title={`${band.label}: ${format(band.start, 'HH:mm')}–${format(band.end, 'HH:mm')}`}
                               >
                                 {width > 8 && (
                                   <span
-                                    className={`absolute right-1/2 translate-x-1/2 text-[10px] font-semibold whitespace-nowrap ${idx % 2 === 0 ? '-top-6' : '-top-11'} ${isOriginal ? 'text-blue-700' : 'text-purple-700'}`}
+                                    className={`absolute right-1/2 translate-x-1/2 text-[10px] font-semibold whitespace-nowrap ${idx % 2 === 0 ? '-top-6' : '-top-11'} ${bandColors.text}`}
                                   >
                                     {band.label}
                                   </span>
@@ -614,8 +660,11 @@ export default function AcceptSwapModal({
                       {/* Legend */}
                       <div className="flex items-center justify-center flex-wrap gap-3 mt-8 text-[11px] text-gray-500">
                           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-blue-200 inline-block" /> נשאר אצל {originalUserName}</span>
-                          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-purple-200 inline-block" /> כבר נלקח</span>
-                          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-[#EF5350] inline-block" /> הבחירה שלך</span>
+                          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-purple-200 inline-block" /> כבר נלקח ע"י אחרים</span>
+                          {myCoverageSegment && (
+                            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-green-200 inline-block" /> הבחירה הקודמת שלך</span>
+                          )}
+                          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-[#EF5350] inline-block" /> הבחירה הנוכחית שלך</span>
                       </div>
                     </div>
 
@@ -677,7 +726,7 @@ export default function AcceptSwapModal({
               disabled={isAccepting}
               className="w-full bg-gradient-to-r from-[#64B5F6] to-[#42A5F5] hover:from-[#42A5F5] hover:to-[#2196F3] text-white py-6 rounded-xl text-lg font-medium shadow-lg mt-2"
             >
-              {isAccepting ? 'מעבד...' : 'אשר כיסוי'}
+              {isAccepting ? 'מעבד...' : (myCoverage ? 'עדכן את הכיסוי שלך' : 'אשר כיסוי')}
             </Button>
 
           </form>
