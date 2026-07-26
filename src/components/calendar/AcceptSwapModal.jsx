@@ -237,6 +237,12 @@ export default function AcceptSwapModal({
     }
   };
 
+  // Once anyone (other than the person currently editing) already holds an
+  // approved slice of this shift, claiming "24 hours full" would silently
+  // swallow their slice too — so that option must no longer be offered, and
+  // must never be honored even if it somehow gets submitted anyway.
+  const hasExistingApprovedCoverage = coverageRows.length > 0;
+
   const shouldShowMissingBanner = !coverFull && missingSegments.length > 0;
 
   const fullRangeLabel = useMemo(() => {
@@ -331,7 +337,7 @@ export default function AcceptSwapModal({
     e.preventDefault();
 
     // Prepare Submission Data
-    const wantsFull = !isPartialRequest && coverageChoice === 'full';
+    const wantsFull = !isPartialRequest && coverageChoice === 'full' && !hasExistingApprovedCoverage;
     let submissionData = {
         type: wantsFull ? 'Full' : 'Partial',
         // If full, take defaults from shift, else take form inputs
@@ -463,8 +469,8 @@ export default function AcceptSwapModal({
                 </p>
               </div>
 
-              <div className={`grid grid-cols-1 ${isPartialRequest ? '' : 'sm:grid-cols-2'} gap-3`}>
-                {!isPartialRequest && (
+              <div className={`grid grid-cols-1 ${isPartialRequest || hasExistingApprovedCoverage ? '' : 'sm:grid-cols-2'} gap-3`}>
+                {!isPartialRequest && !hasExistingApprovedCoverage && (
                   <button
                     type="button"
                     onClick={() => { setCoverFull(true); setCoverageChoice('full'); }}
@@ -478,9 +484,14 @@ export default function AcceptSwapModal({
                   onClick={() => { setCoverFull(false); setCoverageChoice('partial'); }}
                   className={`w-full p-4 sm:p-5 rounded-2xl text-white font-bold text-lg transition-all shadow-md ${!coverFull ? 'bg-red-600 ring-4 ring-red-200 scale-[1.02]' : 'bg-red-500 hover:bg-red-600'}`}
                 >
-                  {isPartialRequest ? 'כיסוי חלקי' : 'לא, כיסוי חלקי'}
+                  {isPartialRequest || hasExistingApprovedCoverage ? 'כיסוי חלקי' : 'לא, כיסוי חלקי'}
                 </button>
               </div>
+              {hasExistingApprovedCoverage && !isPartialRequest && (
+                <p className="text-xs text-gray-500 text-center -mt-2">
+                  חלק מהמשמרת כבר מכוסה על ידי משתמש/ת אחר/ת, לכן ניתן לכסות רק את מה שנותר.
+                </p>
+              )}
             </div>
 
             {shouldShowMissingBanner && (
