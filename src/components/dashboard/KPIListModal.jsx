@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Calendar, ArrowRight, Clock, AlertCircle, CalendarPlus, ArrowLeftRight, ChevronDown, Send, MessageCircle, XCircle } from 'lucide-react';
+import { X, Calendar, ArrowRight, Clock, AlertCircle, CalendarPlus, ArrowLeftRight, ChevronDown, Send, MessageCircle, XCircle, CheckCircle2 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { format, differenceInMinutes, addDays, parseISO } from 'date-fns';
 import { he } from 'date-fns/locale';
@@ -83,7 +83,7 @@ const getDisplayDay = (dateStr) => {
 
 const isOpenStatus = (status) => ['Open', 'Partially_Covered'].includes(status);
 
-export default function KPIListModal({ isOpen, onClose, type, currentUser, onOfferCover, onRequestSwap, actionsDisabled = false, onCancelRequest }) {
+export default function KPIListModal({ isOpen, onClose, type, currentUser, onOfferCover, onRequestSwap, actionsDisabled = false, onCancelRequest, onAcceptHeadToHead }) {
   
   const [visibleCount, setVisibleCount] = useState(10);
   const isPartialGapsView = type === 'partial_gaps';
@@ -450,6 +450,10 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
                 {displayedItems.map((item, idx) => {
                   const isMyRequest = item.requesting_user_id === currentUser?.serial_id;
                   const isPartial = (item.request_type || '').toLowerCase() === 'partial';
+                  // Head2Head request where one of the offered/target shifts belongs to me —
+                  // i.e. someone is proposing to trade with me specifically, and I can accept/decline it.
+                  const isIncomingHeadToHead = item.request_type === 'Head2Head' && !isMyRequest &&
+                    item.offered_shifts?.some(s => s.original_user_id === currentUser?.serial_id);
 
                   const startDate = item.start_date || item.shift_date || item.req_start_date;
                   const endDate = item.end_date || item.req_end_date || startDate;
@@ -591,6 +595,29 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
                             >
                               אחליף <ArrowRight className="w-4 h-4 mr-1" />
                             </Button>
+                          )}
+
+                          {isIncomingHeadToHead && (
+                            <div className="flex gap-2">
+                              <Button
+                                onClick={() => { if (actionsDisabled) return; onAcceptHeadToHead && onAcceptHeadToHead(item); }}
+                                size="sm"
+                                disabled={actionsDisabled}
+                                className={`bg-green-500 text-white hover:bg-green-600 px-3 h-9 ${actionsDisabled ? 'opacity-60 cursor-not-allowed' : ''}`}
+                              >
+                                קבל <CheckCircle2 className="w-4 h-4 mr-1" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="rounded-full text-red-600 border-red-200"
+                                onClick={() => onCancelRequest && onCancelRequest(item)}
+                                disabled={actionsDisabled}
+                                title="דחה בקשה"
+                              >
+                                <XCircle className="w-4 h-4" />
+                              </Button>
+                            </div>
                           )}
 
                           {(item.is_shift_object || isMyRequest) && (
