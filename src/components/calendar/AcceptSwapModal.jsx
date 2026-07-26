@@ -439,28 +439,139 @@ export default function AcceptSwapModal({
                       ))}
                     </div>
 
-                    {/* Start Time */}
-                    <div className="flex flex-col sm:flex-row gap-3">
-                      <div className="flex-1">
-                        <Label className="text-xs text-gray-500 mb-1">תאריך התחלה</Label>
-                        <Input type="date" dir="ltr" value={startDate} min={shiftWindow.startDate} max={shiftWindow.endDate} onChange={(e) => setStartDate(e.target.value)} className="text-center h-10 bg-white" />
-                        <p className="text-[11px] text-gray-500 mt-1" dir="rtl">
-                          {startDate ? format(new Date(startDate), 'EEEE, dd/MM', { locale: he }) : ''}
-                        </p>
+                    {/* --- RANGE SLIDER (mirrors SwapRequestModal) --- */}
+                    <div className="px-4 py-10 select-none touch-none bg-gray-50 rounded-2xl border border-gray-100 shadow-sm relative">
+
+                      {/* Top Labels */}
+                      <div className="flex justify-between text-xs font-bold text-gray-600 mb-3 px-1">
+                          <div className="text-center">
+                              <span>התחלה</span>
+                              <div className="text-[10px] font-normal text-gray-400 mt-0.5">{startDate ? format(new Date(startDate), 'dd/MM/yyyy') : ''}</div>
+                          </div>
+                          <div className="text-center">
+                              <span>סיום</span>
+                              <div className="text-[10px] font-normal text-gray-400 mt-0.5">{endDate ? format(new Date(endDate), 'dd/MM/yyyy') : ''}</div>
+                          </div>
                       </div>
-                      <div className="flex-1">
-                        <Label className="text-xs text-gray-500 mb-1">שעת התחלה</Label>
-                        <Input type="time" dir="ltr" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="text-center h-10 bg-white" />
-                        <p className="text-[11px] text-gray-500 mt-1" dir="ltr">{startTime || ''}</p>
+
+                      <div ref={sliderRef} className="relative h-3 bg-gray-200 rounded-full mx-8">
+
+                          {/* Taken windows: other users' approved coverage + what remains with the original owner */}
+                          {takenBands.map((band, idx) => {
+                            const right = toPercent(band.start);
+                            const width = Math.max(0, toPercent(band.end) - right);
+                            const isOriginal = band.variant === 'original';
+                            return (
+                              <div
+                                key={idx}
+                                className={`absolute h-full rounded-full ${isOriginal ? 'bg-blue-200' : 'bg-purple-200'}`}
+                                style={{ right: `${right}%`, width: `${width}%` }}
+                                title={`${band.label}: ${format(band.start, 'HH:mm')}–${format(band.end, 'HH:mm')}`}
+                              >
+                                {width > 12 && (
+                                  <span className={`absolute -top-6 right-1/2 translate-x-1/2 text-[10px] font-semibold whitespace-nowrap ${isOriginal ? 'text-blue-700' : 'text-purple-700'}`}>
+                                    {band.label}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+
+                          {/* Selected Range Bar */}
+                          <div
+                              className="absolute h-full bg-[#EF5350] rounded-full opacity-90 shadow-sm ring-2 ring-white"
+                              style={{
+                                  right: `${startPercent}%`,
+                                  width: `${Math.max(0, endPercent - startPercent)}%`
+                              }}
+                          />
+
+                          {/* Start Handle */}
+                          <div
+                              className="absolute w-7 h-7 bg-white border-[3px] border-[#EF5350] rounded-full -top-2 shadow-md cursor-grab active:cursor-grabbing flex items-center justify-center z-10 hover:scale-110 transition-transform outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#EF5350]"
+                              style={{ right: `${startPercent}%`, transform: 'translateX(50%)' }}
+                              tabIndex={0}
+                              onMouseDown={() => {
+                                  const moveHandler = (moveEvent) => handleSliderDrag(moveEvent, 'start');
+                                  const upHandler = () => {
+                                      window.removeEventListener('mousemove', moveHandler);
+                                      window.removeEventListener('mouseup', upHandler);
+                                  };
+                                  window.addEventListener('mousemove', moveHandler);
+                                  window.addEventListener('mouseup', upHandler);
+                              }}
+                              onTouchStart={() => {
+                                  const moveHandler = (moveEvent) => handleSliderDrag(moveEvent, 'start');
+                                  const upHandler = () => {
+                                      window.removeEventListener('touchmove', moveHandler);
+                                      window.removeEventListener('touchend', upHandler);
+                                  };
+                                  window.addEventListener('touchmove', moveHandler);
+                                  window.addEventListener('touchend', upHandler);
+                              }}
+                          >
+                              <div className="absolute top-9 bg-[#EF5350] text-white text-xs font-bold py-1 px-2 rounded-md shadow-sm whitespace-nowrap after:content-[''] after:absolute after:bottom-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-b-[#EF5350]">
+                                  {startTime}
+                              </div>
+                          </div>
+
+                          {/* End Handle */}
+                          <div
+                              className="absolute w-7 h-7 bg-white border-[3px] border-[#EF5350] rounded-full -top-2 shadow-md cursor-grab active:cursor-grabbing flex items-center justify-center z-10 hover:scale-110 transition-transform outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#EF5350]"
+                              style={{ right: `${endPercent}%`, transform: 'translateX(50%)' }}
+                              tabIndex={0}
+                              onMouseDown={() => {
+                                  const moveHandler = (moveEvent) => handleSliderDrag(moveEvent, 'end');
+                                  const upHandler = () => {
+                                      window.removeEventListener('mousemove', moveHandler);
+                                      window.removeEventListener('mouseup', upHandler);
+                                  };
+                                  window.addEventListener('mousemove', moveHandler);
+                                  window.addEventListener('mouseup', upHandler);
+                              }}
+                              onTouchStart={() => {
+                                  const moveHandler = (moveEvent) => handleSliderDrag(moveEvent, 'end');
+                                  const upHandler = () => {
+                                      window.removeEventListener('touchmove', moveHandler);
+                                      window.removeEventListener('touchend', upHandler);
+                                  };
+                                  window.addEventListener('touchmove', moveHandler);
+                                  window.addEventListener('touchend', upHandler);
+                              }}
+                          >
+                              <div className="absolute top-9 bg-[#EF5350] text-white text-xs font-bold py-1 px-2 rounded-md shadow-sm whitespace-nowrap after:content-[''] after:absolute after:bottom-full after:left-1/2 after:-translate-x-1/2 after:border-4 after:border-transparent after:border-b-[#EF5350]">
+                                  {endTime}
+                              </div>
+                          </div>
+                      </div>
+
+                      {/* Legend */}
+                      <div className="flex items-center justify-center flex-wrap gap-3 mt-8 text-[11px] text-gray-500">
+                          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-blue-200 inline-block" /> נשאר אצל {originalUserName}</span>
+                          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-purple-200 inline-block" /> כבר נלקח</span>
+                          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-[#EF5350] inline-block" /> הבחירה שלך</span>
                       </div>
                     </div>
 
-                    {/* End Time */}
-                    <div className="flex flex-col sm:flex-row gap-3">
-                      <div className="flex-1">
-                        <Label className="text-xs text-gray-500 mb-1">תאריך סיום</Label>
-                        <Input type="date" dir="ltr" value={endDate} min={shiftWindow.startDate} max={shiftWindow.endDate} onChange={(e) => setEndDate(e.target.value)} className="text-center h-10 bg-white" />
-                        <p className="text-[11px] text-gray-500 mt-1" dir="rtl">
+                    {/* Manual Inputs */}
+                    <div className="bg-white rounded-2xl p-5 grid grid-cols-2 gap-4 border border-gray-100 shadow-sm">
+                      <div className="space-y-2">
+                        <Label className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                            <Clock className="w-4 h-4 text-gray-400" /> התחלה
+                        </Label>
+                        <Input type="time" dir="ltr" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="text-center h-12 font-mono text-lg border-gray-200 focus:border-[#EF5350] focus:ring-[#EF5350]" />
+                        <Input type="date" dir="ltr" value={startDate} min={shiftWindow.startDate} max={shiftWindow.endDate} onChange={(e) => setStartDate(e.target.value)} className="text-center h-9 text-xs bg-gray-50" />
+                        <p className="text-[11px] text-gray-500 text-center" dir="rtl">
+                          {startDate ? format(new Date(startDate), 'EEEE, dd/MM', { locale: he }) : ''}
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label className="text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                            <Clock className="w-4 h-4 text-gray-400" /> סיום
+                        </Label>
+                        <Input type="time" dir="ltr" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="text-center h-12 font-mono text-lg border-gray-200 focus:border-[#EF5350] focus:ring-[#EF5350]" />
+                        <Input type="date" dir="ltr" value={endDate} min={shiftWindow.startDate} max={shiftWindow.endDate} onChange={(e) => setEndDate(e.target.value)} className="text-center h-9 text-xs bg-gray-50" />
+                        <p className="text-[11px] text-gray-500 text-center" dir="rtl">
                           {endDate ? format(new Date(endDate), 'EEEE, dd/MM', { locale: he }) : ''}
                         </p>
                       </div>
