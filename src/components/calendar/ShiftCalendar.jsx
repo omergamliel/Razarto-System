@@ -444,6 +444,23 @@ export default function ShiftCalendar() {
       if (activeRequest) {
         await base44.entities.SwapRequest.update(activeRequest.id, { status: 'Cancelled' });
       }
+
+      // Cancelling the owner's own partial/full swap request means the whole
+      // shift just returns to them as a normal shift — any coverage other
+      // people had already been granted no longer applies.
+      await Promise.all(
+        coverages
+          .filter(
+            (c) =>
+              c.shift_id === shiftId &&
+              (c.status === "Approved" || !c.status),
+          )
+          .map((c) =>
+            base44.entities.ShiftCoverage.update(c.id, {
+              status: "Cancelled",
+            }),
+          ),
+      );
       
       // Update shift status
       return await base44.entities.Shift.update(shiftId, { status: 'Active' });
@@ -451,9 +468,64 @@ export default function ShiftCalendar() {
     onSuccess: () => {
       queryClient.invalidateQueries(['shifts']);
       queryClient.invalidateQueries(['swap-requests']);
+      queryClient.invalidateQueries(["coverages"]);
       toast.success('הבקשה בוטלה והמשמרת חזרה לסטטוס רגיל');
       setShowDetailsModal(false);
     }
+  });
+
+  // Lets a user who joined a partial swap back out of the window they took —
+  // it's removed and, by default, the original owner simply keeps that time
+  // (missingSegments already treats anything nobody covers as theirs), so no
+  // separate "give it back" step is needed beyond cancelling this coverage.
+  const cancelMyCoverageMutation = useMutation({
+    mutationFn: async (shift) => {
+      const myCoverage = coverages.find(
+        (c) =>
+          c.shift_id === shift.id &&
+          c.covering_user_id === authorizedPerson.serial_id &&
+          (c.status === "Approved" || !c.status),
+      );
+      if (!myCoverage) throw new Error("No coverage found to cancel");
+
+      await base44.entities.ShiftCoverage.update(myCoverage.id, {
+        status: "Cancelled",
+      });
+
+      const activeRequest = swapRequests.find(
+        (sr) =>
+          sr.shift_ids?.includes(shift.id) && sr.status !== "Cancelled",
+      );
+      if (activeRequest) {
+        const remainingCoverages = coverages.filter(
+          (c) =>
+            c.shift_id === shift.id &&
+            c.id !== myCoverage.id &&
+            (c.status === "Approved" || !c.status),
+        );
+        await base44.entities.SwapRequest.update(activeRequest.id, {
+          status: remainingCoverages.length > 0 ? "Partially_Covered" : "Open",
+        });
+      }
+
+      // The shift is no longer fully covered once a coverage is pulled back —
+      // it goes back to (or stays) an in-progress partial swap.
+      await base44.entities.Shift.update(shift.id, {
+        status: "Swap_Requested",
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(["shifts"]);
+      queryClient.invalidateQueries(["swap-requests"]);
+      queryClient.invalidateQueries(["coverages"]);
+      toast.success("ביטלת את השתתפותך במשמרת");
+      setShowDetailsModal(false);
+    },
+    onError: (error) => {
+      toast.error(
+        `ביטול ההשתתפות נכשל: ${error?.message || "שגיאה לא ידועה"}`,
+      );
+    },
   });
 
   // Cancels a SwapRequest directly by its own id (used by KPIListModal, where
