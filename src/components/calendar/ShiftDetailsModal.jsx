@@ -461,10 +461,13 @@ export default function ShiftDetailsModal({
 
                 <div className="space-y-3">
                   <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4 shadow-sm">
-                        <p className="text-xs font-semibold text-gray-600 mb-4">
+                        <p className="text-xs font-semibold text-gray-600">
                           תצוגת המשמרת המלאה
                         </p>
-                        <div className="relative h-3 bg-gray-200 rounded-full mx-6 mb-8">
+                        {/* Track wrapper: generous top clearance so the stacked
+                            band labels never collide with the header text above */}
+                        <div className="relative mx-6 mt-14 mb-8">
+                          <div className="relative h-3 bg-gray-200 rounded-full">
                           {trackBands.map((band, idx) => {
                             const right = toTrackPercent(band.start);
                             const width = Math.max(
@@ -489,6 +492,7 @@ export default function ShiftDetailsModal({
                               </div>
                             );
                           })}
+                        </div>
                         </div>
                         <div className="flex items-center justify-center flex-wrap gap-3 text-[11px] text-gray-500">
                           <span className="flex items-center gap-1">
