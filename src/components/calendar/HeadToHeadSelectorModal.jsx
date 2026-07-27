@@ -1,16 +1,17 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Calendar, Clock, ArrowLeftRight, Send } from 'lucide-react';
+import { X, Calendar, ArrowLeftRight, Send } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { format } from 'date-fns';
 import { he } from 'date-fns/locale';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 import { buildHeadToHeadDeepLink, buildHeadToHeadTemplate } from './whatsappTemplates';
 
 export default function HeadToHeadSelectorModal({ isOpen, onClose, targetShift, currentUser }) {
   const [selectedShift, setSelectedShift] = useState(null);
+  const queryClient = useQueryClient();
 
   const { data: allShifts = [], isLoading } = useQuery({
     queryKey: ['my-future-shifts-h2h', currentUser?.serial_id],
@@ -52,7 +53,6 @@ export default function HeadToHeadSelectorModal({ isOpen, onClose, targetShift, 
   // Builds the WhatsApp share link for this proposal — offered as an
   // optional follow-up action on the success toast, not the primary action.
   const buildWhatsappUrl = () => {
-    
     const approvalLink = buildHeadToHeadDeepLink(targetShift.id, selectedShift.id);
     const targetDate = format(new Date(targetShift.start_date), 'dd/MM', { locale: he });
     const offerDate = format(new Date(selectedShift.start_date), 'dd/MM', { locale: he });
