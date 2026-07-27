@@ -1,17 +1,22 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Calendar, ArrowLeftRight, Send } from 'lucide-react';
+import { X, Calendar, ArrowLeftRight, Send, CheckCircle2 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { format } from 'date-fns';
 import { he } from 'date-fns/locale';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { toast } from '@/components/ui/use-toast';
-import { ToastAction } from '@/components/ui/toast';
 import { buildHeadToHeadDeepLink, buildHeadToHeadTemplate } from './whatsappTemplates';
 
 export default function HeadToHeadSelectorModal({ isOpen, onClose, targetShift, currentUser }) {
   const [selectedShift, setSelectedShift] = useState(null);
+  // Neither the sonner toast (never mounted anywhere in the app) nor the
+  // project's ui/toast (its close button doesn't actually hide the toast —
+  // the custom Toast component just spreads `open` as a raw DOM prop instead
+  // of conditionally rendering) reliably work here, so this feedback is a
+  // plain, self-contained centered dialog instead of a toast.
+  const [successPrompt, setSuccessPrompt] = useState(null); // { whatsappUrl } | null
+  const [errorMessage, setErrorMessage] = useState('');
   const queryClient = useQueryClient();
 
   const { data: allShifts = [], isLoading } = useQuery({
@@ -97,40 +102,28 @@ export default function HeadToHeadSelectorModal({ isOpen, onClose, targetShift, 
       queryClient.invalidateQueries(['swap-requests']);
       queryClient.invalidateQueries(['my-future-shifts-h2h']);
 
-      const whatsappUrl = buildWhatsappUrl();
-      toast({
-        title: 'בקשת ההחלפה נשלחה בהצלחה!',
-        action: (
-          <ToastAction
-            altText="שלח גם בוואטסאפ"
-            onClick={() => window.open(whatsappUrl, '_blank')}
-          >
-            שלח גם בוואטסאפ
-          </ToastAction>
-        )
-      });
+      setSuccessPrompt({ whatsappUrl: buildWhatsappUrl() });
       onClose();
     },
     onError: () => {
-      toast({
-        title: 'שליחת בקשת ההחלפה נכשלה. נסו שוב.',
-        variant: 'destructive'
-      });
+      setErrorMessage('שליחת בקשת ההחלפה נכשלה. נסו שוב.');
     }
   });
 
   const handleSendProposal = () => {
     if (!selectedShift) {
-      toast({ title: 'נא לבחור משמרת להחלפה', variant: 'destructive' });
+      setErrorMessage('נא לבחור משמרת להחלפה');
       return;
     }
+    setErrorMessage('');
     createH2HRequestMutation.mutate();
   };
 
-  if (!isOpen || !targetShift) return null;
+  if ((!isOpen || !targetShift) && !successPrompt) return null;
 
   return (
     <AnimatePresence>
+      {isOpen && targetShift && (
       <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
         <motion.div initial={{ opacity: 0, scale: 0.95, y: 20 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.95, y: 20 }} className="relative bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
@@ -205,14 +198,66 @@ export default function HeadToHeadSelectorModal({ isOpen, onClose, targetShift, 
             </div>
           </div>
 
-          <div className="p-6 pt-0 flex gap-3 flex-shrink-0 bg-white border-t border-gray-100 mt-auto">
-            <Button onClick={onClose} variant="outline" className="flex-1 h-12 rounded-xl text-gray-600">ביטול</Button>
-            <Button onClick={handleSendProposal} disabled={!selectedShift || createH2HRequestMutation.isPending} className={`flex-1 h-12 text-white rounded-xl shadow-md transition-all ${!selectedShift ? 'bg-gray-300 cursor-not-allowed' : 'bg-gradient-to-r from-purple-500 to-purple-600'}`}>
-              <span className="flex items-center gap-2">{createH2HRequestMutation.isPending ? 'שולח...' : 'שלח בקשת החלפה'} <Send className="w-4 h-4" /></span>
-            </Button>
+          <div className="p-6 pt-0 flex-shrink-0 bg-white border-t border-gray-100 mt-auto space-y-3">
+            {errorMessage && (
+              <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-center">
+                {errorMessage}
+              </p>
+            )}
+            <div className="flex gap-3">
+              <Button onClick={onClose} variant="outline" className="flex-1 h-12 rounded-xl text-gray-600">ביטול</Button>
+              <Button onClick={handleSendProposal} disabled={!selectedShift || createH2HRequestMutation.isPending} className={`flex-1 h-12 text-white rounded-xl shadow-md transition-all ${!selectedShift ? 'bg-gray-300 cursor-not-allowed' : 'bg-gradient-to-r from-purple-500 to-purple-600'}`}>
+                <span className="flex items-center gap-2">{createH2HRequestMutation.isPending ? 'שולח...' : 'שלח בקשת החלפה'} <Send className="w-4 h-4" /></span>
+              </Button>
+            </div>
           </div>
         </motion.div>
       </div>
+      )}
+
+      {successPrompt && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setSuccessPrompt(null)}
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+          />
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            className="relative bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6 text-center space-y-4"
+          >
+            <button
+              onClick={() => setSuccessPrompt(null)}
+              className="absolute top-4 left-4 p-2 rounded-full hover:bg-gray-100 transition-colors text-gray-500"
+            >
+              <X className="w-5 h-5" />
+            </button>
+            <div className="mx-auto w-14 h-14 rounded-full bg-green-100 flex items-center justify-center">
+              <CheckCircle2 className="w-7 h-7 text-green-600" />
+            </div>
+            <p className="font-bold text-lg text-gray-800">בקשת ההחלפה נשלחה בהצלחה!</p>
+            <p className="text-sm text-gray-500">אפשר גם לשתף את ההצעה בוואטסאפ</p>
+            <div className="flex gap-3">
+              <Button onClick={() => setSuccessPrompt(null)} variant="outline" className="flex-1 h-11 rounded-xl">
+                סגור
+              </Button>
+              <Button
+                onClick={() => {
+                  window.open(successPrompt.whatsappUrl, '_blank');
+                  setSuccessPrompt(null);
+                }}
+                className="flex-1 h-11 rounded-xl bg-[#25D366] hover:bg-[#128C7E] text-white"
+              >
+                שלח בוואטסאפ
+              </Button>
+            </div>
+          </motion.div>
+        </div>
+      )}
     </AnimatePresence>
   );
 }
