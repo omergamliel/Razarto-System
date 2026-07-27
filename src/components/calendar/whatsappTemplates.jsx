@@ -341,13 +341,17 @@ export const normalizeShiftContext = (
       (requestType === "partial" ? "Partial" : "Full"),
     original_user_data: originalUser,
     original_user_name: ownerName,
+    // Number() guards against original_user_id/covering_user_id occasionally
+    // being stored as a string on some records — a strict === would
+    // silently misreport ownership for the very same person (this is the
+    // same class of bug fixed elsewhere in ShiftDetailsModal/KPIListModal).
     isMine: currentUser
-      ? shift.original_user_id === currentUser.serial_id ||
+      ? Number(shift.original_user_id) === Number(currentUser.serial_id) ||
         (!!currentUser.email && shift.assigned_email === currentUser.email)
       : false,
     isCovering: currentUser
       ? shiftCoverages.some(
-          (cov) => cov.covering_user_id === currentUser.serial_id,
+          (cov) => Number(cov.covering_user_id) === Number(currentUser.serial_id),
         )
       : false,
     start_time: shiftWindow.startTime,
