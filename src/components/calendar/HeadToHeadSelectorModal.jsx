@@ -48,13 +48,9 @@ export default function HeadToHeadSelectorModal({ isOpen, onClose, targetShift, 
     setSelectedShift(shift);
   };
 
-  const handleSendProposal = () => {
-    if (!selectedShift) {
-      toast.error('נא לבחור משמרת להחלפה');
-      return;
-    }
-    // Logic: Create H2H request in SwapRequest table (done via parent handler usually, or we do it here)
-    // For now, simulating the message construction
+  // Builds the WhatsApp share link for this proposal — offered as an
+  // optional follow-up action on the success toast, not the primary action.
+  const buildWhatsappUrl = () => {
     
     const approvalLink = buildHeadToHeadDeepLink(targetShift.id, selectedShift.id);
     const targetDate = format(new Date(targetShift.start_date), 'dd/MM', { locale: he });
@@ -70,10 +66,55 @@ export default function HeadToHeadSelectorModal({ isOpen, onClose, targetShift, 
       uniqueApprovalUrl: approvalLink
     });
 
-    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
-    window.open(whatsappUrl, '_blank');
-    toast.success('ההצעה נשלחה בהצלחה!');
-    onClose();
+    return `https://wa.me/?text=${encodeURIComponent(message)}`;
+  };
+
+  const createH2HRequestMutation = useMutation({
+    mutationFn: async () => {
+      const req_start_date = selectedShift.start_date;
+      const req_end_date = selectedShift.end_date || selectedShift.start_date;
+      const req_start_time = selectedShift.start_time || '09:00';
+      const req_end_time = selectedShift.end_time || req_start_time;
+
+      await base44.entities.SwapRequest.create({
+        shift_ids: [selectedShift.id],
+        offered_shift_ids: [targetShift.id],
+        requesting_user_id: currentUser.serial_id,
+        request_type: 'Head2Head',
+        req_start_date,
+        req_end_date,
+        req_start_time,
+        req_end_time,
+        status: 'Open'
+      });
+
+      await base44.entities.Shift.update(selectedShift.id, { status: 'Swap_Requested' });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['shifts']);
+      queryClient.invalidateQueries(['swap-requests']);
+      queryClient.invalidateQueries(['my-future-shifts-h2h']);
+
+      const whatsappUrl = buildWhatsappUrl();
+      toast.success('בקשת ההחלפה נשלחה בהצלחה!', {
+        action: {
+          label: 'שלח גם בוואטסאפ',
+          onClick: () => window.open(whatsappUrl, '_blank')
+        }
+      });
+      onClose();
+    },
+    onError: () => {
+      toast.error('שליחת בקשת ההחלפה נכשלה. נסו שוב.');
+    }
+  });
+
+  const handleSendProposal = () => {
+    if (!selectedShift) {
+      toast.error('נא לבחור משמרת להחלפה');
+      return;
+    }
+    createH2HRequestMutation.mutate();
   };
 
   if (!isOpen || !targetShift) return null;
