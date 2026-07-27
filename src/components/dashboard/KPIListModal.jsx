@@ -422,8 +422,8 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
   const { title, color, textColor } = getTitleAndColor();
   const secondaryHeaderText = type === 'my_shifts' ? 'text-[#0b3a5e]/80' : 'text-white/90';
   const isFutureShiftsView = type === 'my_shifts';
-  const filteredSwapItems = useMemo(() => {
-    if (type !== 'swap_requests') return sortedData;
+  const filteredItems = useMemo(() => {
+    if (type === "swap_requests") {
     if (swapTab === 'mine') return sortedData.filter(item => item.requesting_user_id === currentUser?.serial_id);
     if (swapTab === 'incoming') {
       // Head2Head requests where one of the offered/target shifts is mine —
@@ -434,7 +434,20 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
       );
     }
     return sortedData;
-  }, [currentUser?.serial_id, sortedData, swapTab, type]);
+  }
+
+    if (type === "partial_gaps" && partialGapsTab === "mine") {
+      // "Mine" covers both being the shift's owner AND having joined it as a
+      // covering user — either way it's a partial gap the user is involved in.
+      return sortedData.filter(
+        (item) =>
+          item.original_user_id === currentUser?.serial_id ||
+          item.covering_user_ids?.includes(currentUser?.serial_id),
+      );
+    }
+
+    return sortedData;
+  }, [currentUser?.serial_id, partialGapsTab, sortedData, swapTab, type]);
 
   const displayedItems = filteredSwapItems.slice(0, visibleCount);
   const hasMore = filteredSwapItems.length > visibleCount;
