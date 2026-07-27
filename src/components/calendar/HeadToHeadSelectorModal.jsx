@@ -6,7 +6,8 @@ import { format } from 'date-fns';
 import { he } from 'date-fns/locale';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
-import { toast } from 'sonner';
+import { toast } from '@/components/ui/use-toast';
+import { ToastAction } from '@/components/ui/toast';
 import { buildHeadToHeadDeepLink, buildHeadToHeadTemplate } from './whatsappTemplates';
 
 export default function HeadToHeadSelectorModal({ isOpen, onClose, targetShift, currentUser }) {
@@ -97,22 +98,30 @@ export default function HeadToHeadSelectorModal({ isOpen, onClose, targetShift, 
       queryClient.invalidateQueries(['my-future-shifts-h2h']);
 
       const whatsappUrl = buildWhatsappUrl();
-      toast.success('בקשת ההחלפה נשלחה בהצלחה!', {
-        action: {
-          label: 'שלח גם בוואטסאפ',
-          onClick: () => window.open(whatsappUrl, '_blank')
-        }
+      toast({
+        title: 'בקשת ההחלפה נשלחה בהצלחה!',
+        action: (
+          <ToastAction
+            altText="שלח גם בוואטסאפ"
+            onClick={() => window.open(whatsappUrl, '_blank')}
+          >
+            שלח גם בוואטסאפ
+          </ToastAction>
+        )
       });
       onClose();
     },
     onError: () => {
-      toast.error('שליחת בקשת ההחלפה נכשלה. נסו שוב.');
+      toast({
+        title: 'שליחת בקשת ההחלפה נכשלה. נסו שוב.',
+        variant: 'destructive'
+      });
     }
   });
 
   const handleSendProposal = () => {
     if (!selectedShift) {
-      toast.error('נא לבחור משמרת להחלפה');
+      toast({ title: 'נא לבחור משמרת להחלפה', variant: 'destructive' });
       return;
     }
     createH2HRequestMutation.mutate();
