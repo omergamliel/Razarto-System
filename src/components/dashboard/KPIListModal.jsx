@@ -449,8 +449,8 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
     return sortedData;
   }, [currentUser?.serial_id, partialGapsTab, sortedData, swapTab, type]);
 
-  const displayedItems = filteredSwapItems.slice(0, visibleCount);
-  const hasMore = filteredSwapItems.length > visibleCount;
+  const displayedItems = filteredItems.slice(0, visibleCount);
+  const hasMore = filteredItems.length > visibleCount;
 
   if (!isOpen) return null;
 
@@ -480,13 +480,33 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
                   </Button>
                 </div>
               )}
+              {type === "partial_gaps" && (
+              <div className="flex items-center gap-2 mb-4">
+                <Button
+                  variant={partialGapsTab === "all" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setPartialGapsTab("all")}
+                  className="flex-1"
+                >
+                  כל הפערים החלקיים
+                </Button>
+                <Button
+                  variant={partialGapsTab === "mine" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setPartialGapsTab("mine")}
+                  className="flex-1"
+                >
+                  הפערים שלי
+                </Button>
+              </div>
+            )}
               {isLoading ? (
                 <div className="space-y-3" aria-label="טעינת נתונים">
                   <LoadingSkeleton className="h-16 w-full" />
                   <LoadingSkeleton className="h-16 w-full" />
                   <LoadingSkeleton className="h-16 w-full" />
                 </div>
-              ) : filteredSwapItems.length === 0 ? (
+              ) : filteredItems.length === 0 ? (
                 <div className="text-center py-12 text-gray-500">
                   <div className="mx-auto w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center mb-3">
                     <AlertCircle className="w-6 h-6 text-gray-400" />
