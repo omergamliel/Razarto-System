@@ -333,7 +333,11 @@ export default function ShiftDetailsModal({
 
   const canOfferCover = hasActiveRequest && !isOwnShift && !isCoveredOrClosed;
   const canHeadToHead = !isOwnShift && !isCoveredOrClosed && !isPartialRequest && !isPastShift && (isWhiteShift || isFullRequest);
-  const canRequestSwap = isOwnShift && !hasActiveRequest;
+  // Missing !isPastShift here let an owner request a swap on their own
+  // already-past shift via this modal, even though the ShiftActionModal
+  // route (opened directly from the calendar cell) already correctly
+  // blocks that — this closes that side door.
+  const canRequestSwap = isOwnShift && !hasActiveRequest && !isPastShift;
   const canWhatsappShare = hasActiveRequest && isRequestOwner;
   const canAddToCalendarOrEmail = isOwnShift;
 
