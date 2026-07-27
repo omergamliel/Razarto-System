@@ -515,12 +515,20 @@ export default function ShiftDetailsModal({
                             <span className="w-3 h-3 rounded-full bg-blue-200 inline-block" />{" "}
                             נשאר אצל {ownerDisplayName}
                           </span>
-                          <span className="flex items-center gap-1">
-                            <span className="w-3 h-3 rounded-full bg-purple-200 inline-block" />{" "}
-                            מכוסה
-                          </span>
+                          {Array.from(coveringColorMap.entries()).map(
+                            ([name, colorIdx]) => (
+                              <span
+                                key={name}
+                                className="flex items-center gap-1"
+                              >
+                                <span
+                                  className={`w-3 h-3 rounded-full inline-block ${getCoverageColor(colorIdx).dot}`}
+                                />{" "}
+                                {name}
+                              </span>
+                            ),
+                          )}
                         </div>
-                        {shift.department && <p className="text-[11px] text-gray-500 text-center mt-3"> מחלקה {shift.department}</p>}
                   </div>
 
                   {hasCoverages && (
