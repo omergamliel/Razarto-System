@@ -483,7 +483,7 @@ export default function ShiftCalendar() {
       const myCoverage = coverages.find(
         (c) =>
           c.shift_id === shift.id &&
-          c.covering_user_id === authorizedPerson.serial_id &&
+          Number(c.covering_user_id) === Number(authorizedPerson.serial_id) &&
           (c.status === "Approved" || !c.status),
       );
       if (!myCoverage) throw new Error("No coverage found to cancel");
