@@ -546,11 +546,28 @@ export default function ShiftCalendar() {
         )
       );
 
+      // As with cancelSwapMutation: any coverage already granted on these
+      // shifts no longer applies once the request itself is cancelled.
+      await Promise.all(
+        coverages
+          .filter(
+            (c) =>
+              shiftsToReset.includes(c.shift_id) &&
+              (c.status === "Approved" || !c.status),
+          )
+          .map((c) =>
+            base44.entities.ShiftCoverage.update(c.id, {
+              status: "Cancelled",
+            }),
+          ),
+      );
+
       await Promise.all(shiftsToReset.map(id => base44.entities.Shift.update(id, { status: 'Active' })));
     },
     onSuccess: () => {
       queryClient.invalidateQueries(['shifts']);
       queryClient.invalidateQueries(['swap-requests']);
+      queryClient.invalidateQueries(["coverages"]);
       toast.success('הבקשה בוטלה והמשמרת חזרה לסטטוס רגיל');
     },
     onError: (error) => {
