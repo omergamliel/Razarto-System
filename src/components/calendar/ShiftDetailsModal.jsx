@@ -72,14 +72,15 @@ export default function ShiftDetailsModal({
   const reassignMutation = useMutation({
     mutationFn: async (newUserId) => {
       // Reassigning hands the WHOLE shift to the new person — so any
-      // in-progress partial swap request and the coverage grants tied to it
-      // no longer apply. Cancel them first, otherwise a partially-covered
-      // shift would keep its stale partial state after being handed to
-      // someone else instead of becoming a clean full shift for them.
-      if (
-        resolvedActiveRequest &&
-        !["Cancelled", "Closed"].includes(resolvedActiveRequest.status)
-      ) {
+       // in-progress (or already fully-covered) partial swap request and the
+      // coverage grants tied to it no longer apply. Cancel it regardless of
+      // its status (Open/Partially_Covered/Closed) — leaving a "Closed"
+      // request in place would keep being found as this shift's active
+      // request by this modal's own query (which, unlike
+      // normalizeShiftContext's lookup, doesn't check whether the request
+      // still belongs to the shift's current owner), permanently showing
+      // stale partial-shift UI after the reassignment.
+      if (resolvedActiveRequest && resolvedActiveRequest.status !== "Cancelled") {
         await base44.entities.SwapRequest.update(resolvedActiveRequest.id, {
           status: "Cancelled",
         });
@@ -102,6 +103,13 @@ export default function ShiftDetailsModal({
       queryClient.invalidateQueries(['shifts']);
       queryClient.invalidateQueries(["swap-requests"]);
       queryClient.invalidateQueries(["coverages"]);
+      // This modal keeps its own local queries (unlike cancelSwapMutation's
+      // callers, it doesn't close afterwards), keyed separately from the
+      // app-wide ["swap-requests"]/["coverages"] lists above — those must be
+      // invalidated too, or this modal keeps showing the pre-reassignment
+      // partial-shift UI even though the underlying request was cancelled.
+      queryClient.invalidateQueries(["shift-active-request-details"]);
+      queryClient.invalidateQueries(["shift-coverages-details"]);
       toast.success('המשמרת הועברה למשתמש החדש');
       setShowReassignModal(false);
       setSelectedUserId('');
@@ -118,7 +126,13 @@ export default function ShiftDetailsModal({
     }
   }, [isOpen, shift]);
 
-  const resolvedActiveRequest = useMemo(() => activeRequest || shift?.active_request || null, [activeRequest, shift]);
+  const resolvedActiveRequest = useMemo(
+    () =>
+      isActiveRequestLoading
+        ? shift?.active_request ?? null
+        : (activeRequest ?? null),
+    [activeRequest, isActiveRequestLoading, shift],
+  );
   const resolvedSwapType = useMemo(
     () => resolveSwapType(shift, resolvedActiveRequest),
     [resolvedActiveRequest, shift]
