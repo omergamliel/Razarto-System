@@ -171,7 +171,11 @@ export default function ShiftDetailsModal({
   const userEmail = currentUser?.email || currentUser?.Email;
   const isOwnShift = Boolean(
     currentUser?.serial_id
-      ? shift?.original_user_id === currentUser.serial_id
+      ? // Number() guards against original_user_id occasionally being stored
+        // as a string on older/imported Shift records, which would silently
+        // break this comparison (and every button gated on it) for a real
+        // owner viewing their own shift.
+        Number(shift?.original_user_id) === Number(currentUser.serial_id)
       : (userEmail && shift?.assigned_email === userEmail) ||
           (currentUser?.full_name && shift?.user_name === currentUser.full_name)
   );
@@ -291,7 +295,7 @@ export default function ShiftDetailsModal({
     () =>
       coverages.find(
         (c) =>
-          c.covering_user_id === currentUser?.serial_id &&
+          Number(c.covering_user_id) === Number(currentUser?.serial_id) &&
           (c.status === "Approved" || !c.status),
       ) || null,
     [coverages, currentUser?.serial_id],
