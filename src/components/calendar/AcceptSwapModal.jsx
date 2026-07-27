@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from 'sonner';
-import { buildDateTime, resolveSwapType, normalizeShiftContext, computeCoverageSummary, resolveShiftWindow, getCoverageColor } from './whatsappTemplates';
+import { buildDateTime, resolveSwapType, normalizeShiftContext, computeCoverageSummary, resolveShiftWindow, getCoverageColor, subtractSegments } from './whatsappTemplates';
 
 const formatSegmentText = (segment) => {
   const sameDay = format(segment.start, 'dd/MM') === format(segment.end, 'dd/MM');
@@ -152,26 +152,6 @@ export default function AcceptSwapModal({
     return map;
   }, [approvedCoverageSegments]);
 
-  // Gaps between a set of {start,end} segments within [rangeStart, rangeEnd] —
-  // used to find what's still left over (with the original owner) across the
-  // *whole* shift, not just inside the narrower requested window.
-  const computeGaps = (rangeStart, rangeEnd, segments) => {
-    if (!rangeStart || !rangeEnd) return [];
-    let gaps = [{ start: rangeStart, end: rangeEnd }];
-    [...segments]
-      .sort((a, b) => a.start - b.start)
-      .forEach((seg) => {
-        gaps = gaps.flatMap((g) => {
-          if (seg.end <= g.start || seg.start >= g.end) return [g];
-          const pieces = [];
-          if (seg.start > g.start) pieces.push({ start: g.start, end: seg.start });
-          if (seg.end < g.end) pieces.push({ start: seg.end, end: g.end });
-          return pieces;
-        });
-      });
-    return gaps.filter((g) => g.end > g.start);
-  };
-
   // The current user's own existing pick, as a date range, shown as its own
   // band on the slider (distinct from "still with the original owner").
   const myCoverageSegment = useMemo(() => {
@@ -194,7 +174,7 @@ export default function AcceptSwapModal({
     const covered = approvedCoverageSegments.map((seg) => ({ ...seg, variant: 'covered' }));
     const mine = myCoverageSegment ? [{ ...myCoverageSegment, variant: 'mine' }] : [];
     const exclusions = myCoverageSegment ? [...approvedCoverageSegments, myCoverageSegment] : approvedCoverageSegments;
-    const remaining = computeGaps(fullShiftStart, fullShiftEnd, exclusions).map((seg) => ({
+    const remaining = subtractSegments(fullShiftStart, fullShiftEnd, exclusions).map((seg) => ({
       ...seg,
       label: originalUserName,
       variant: 'original'
