@@ -212,6 +212,16 @@ export default function AcceptSwapModal({
   const startPercent = totalMinutes > 0 ? Math.max(0, Math.min(100, (startMinutes / totalMinutes) * 100)) : 0;
   const endPercent = totalMinutes > 0 ? Math.max(0, Math.min(100, (endMinutes / totalMinutes) * 100)) : 100;
 
+  // Free windows (missingSegments), expressed in minutes from the full
+  // shift's start — used to stop a handle from being dragged into/through a
+  // window someone else already has approved coverage on.
+  const missingSegmentsInMinutes = fullShiftStart
+    ? missingSegments.map((seg) => ({
+        start: differenceInMinutes(seg.start, fullShiftStart),
+        end: differenceInMinutes(seg.end, fullShiftStart)
+      }))
+    : [];
+
   const handleSliderDrag = (e, handle) => {
     if (!sliderRef.current || !fullShiftStart || totalMinutes <= 0) return;
     const rect = sliderRef.current.getBoundingClientRect();
@@ -224,13 +234,24 @@ export default function AcceptSwapModal({
     minutes = Math.round(minutes / step) * step;
     minutes = Math.max(requestMinMinutes, Math.min(requestMaxMinutes, minutes));
 
+    // The handle being dragged can't cross past the free window the OTHER
+    // (anchored) handle currently sits in — that window's bounds are the
+    // hard limit, so the selection can never overlap an already-taken slice.
+    const anchorMinutes = handle === 'start' ? endMinutes : startMinutes;
+    const activeSegment =
+      missingSegmentsInMinutes.find(
+        (seg) => anchorMinutes >= seg.start && anchorMinutes <= seg.end
+      ) || { start: requestMinMinutes, end: requestMaxMinutes };
+
     if (handle === 'start') {
-      if (minutes >= endMinutes) minutes = Math.max(requestMinMinutes, endMinutes - step);
+      minutes = Math.max(activeSegment.start, minutes);
+      if (minutes >= endMinutes) minutes = Math.max(activeSegment.start, endMinutes - step);
       const newStart = addMinutes(fullShiftStart, minutes);
       setStartDate(format(newStart, 'yyyy-MM-dd'));
       setStartTime(format(newStart, 'HH:mm'));
     } else {
-      if (minutes <= startMinutes) minutes = Math.min(requestMaxMinutes, startMinutes + step);
+      minutes = Math.min(activeSegment.end, minutes);
+      if (minutes <= startMinutes) minutes = Math.min(activeSegment.end, startMinutes + step);
       const newEnd = addMinutes(fullShiftStart, minutes);
       setEndDate(format(newEnd, 'yyyy-MM-dd'));
       setEndTime(format(newEnd, 'HH:mm'));
@@ -541,10 +562,10 @@ export default function AcceptSwapModal({
                     </div>
 
                     {/* --- RANGE SLIDER (mirrors SwapRequestModal) --- */}
-                    <div className="px-4 py-10 select-none touch-none bg-gray-50 rounded-2xl border border-gray-100 shadow-sm relative">
+                    <div className="px-4 pt-4 pb-4 select-none touch-none bg-gray-50 rounded-2xl border border-gray-100 shadow-sm relative">
 
                       {/* Top Labels */}
-                      <div className="flex justify-between text-xs font-bold text-gray-600 mb-3 px-1">
+                      <div className="flex justify-between text-xs font-bold text-gray-600 px-1">
                           <div className="text-center">
                               <span>התחלה</span>
                               <div className="text-[10px] font-normal text-gray-400 mt-0.5">{startDate ? format(new Date(startDate), 'dd/MM/yyyy') : ''}</div>
@@ -555,7 +576,9 @@ export default function AcceptSwapModal({
                           </div>
                       </div>
 
-                      <div ref={sliderRef} className="relative h-3 bg-gray-200 rounded-full mx-8">
+                      {/* Track wrapper: generous clearance above (stacked band labels) and below (handle time tooltips) so nothing overlaps the top date labels or the legend */}
+                      <div className="relative mx-8 mt-16 mb-20">
+                      <div ref={sliderRef} className="relative h-3 bg-gray-200 rounded-full">
 
                           {/* Taken windows: other users' approved coverage + what remains with the original owner, spanning the FULL shift */}
                           {takenBands.map((band, idx) => {
@@ -667,9 +690,10 @@ export default function AcceptSwapModal({
                               </div>
                           </div>
                       </div>
+                      </div>
 
                       {/* Legend */}
-                      <div className="flex items-center justify-center flex-wrap gap-3 mt-8 text-[11px] text-gray-500">
+                      <div className="flex items-center justify-center flex-wrap gap-3 text-[11px] text-gray-500">
                           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-blue-200 inline-block" /> נשאר אצל {originalUserName}</span>
                           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-purple-200 inline-block" /> כבר נלקח ע"י אחרים</span>
                           {myCoverageSegment && (
@@ -678,6 +702,7 @@ export default function AcceptSwapModal({
                           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-[#EF5350] inline-block" /> הבחירה הנוכחית שלך</span>
                       </div>
                     </div>
+                    
 
                     {/* Manual Inputs */}
                     <div className="bg-white rounded-2xl p-5 grid grid-cols-2 gap-4 border border-gray-100 shadow-sm">
