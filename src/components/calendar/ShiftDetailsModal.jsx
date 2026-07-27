@@ -329,6 +329,31 @@ export default function ShiftDetailsModal({
     });
     return map;
   }, [coverageRows]);
+
+  // Faithful history: who covered what, in the order they actually claimed
+  // it (by creation time, falling back to segment start when unavailable),
+  // and whether each step still left part of the shift uncovered or was the
+  // one that finally completed it — instead of a hardcoded "X requested a
+  // full swap, Y fully covered it" narrative that doesn't fit multi-person
+  // partial coverage.
+  const coverageHistory = useMemo(() => {
+    if (!shiftStartDateTime || !shiftEndDateTime) return [];
+    const sorted = [...coverageRows].sort((a, b) => {
+      const aTime = a.createdAt ? new Date(a.createdAt).getTime() : a.start.getTime();
+      const bTime = b.createdAt ? new Date(b.createdAt).getTime() : b.start.getTime();
+      return aTime - bTime;
+    });
+    const appliedSoFar = [];
+    return sorted.map((row) => {
+      appliedSoFar.push(row);
+      const remainingGaps = subtractSegments(
+        shiftStartDateTime,
+        shiftEndDateTime,
+        appliedSoFar,
+      );
+      return { ...row, completesShift: remainingGaps.length === 0 };
+    });
+  }, [coverageRows, shiftEndDateTime, shiftStartDateTime]);
   
   const formatSegment = (start, end) => {
     const sameDay = format(start, 'dd/MM') === format(end, 'dd/MM');
@@ -586,7 +611,10 @@ export default function ShiftDetailsModal({
               </div>
             )}
 
-            {/* FIXED: History logs */}
+            {/* History log — built from the actual request + coverage
+                    records (in the order they were claimed), instead of a
+                    fixed "requested full / covered full" narrative, so it
+                    stays accurate for multi-person partial coverage too. */}
             {isCoveredSwap && (
               <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 space-y-3 shadow-sm">
                 <div className="flex items-center gap-2">
@@ -595,11 +623,26 @@ export default function ShiftDetailsModal({
                 </div>
                 <div className="space-y-2 text-sm text-gray-700">
                   <div className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm">
-                    המשתמש/ת <span className="font-bold">{shift.user_name}</span> ביקש החלפה מלאה למשמרת
+                    <span className="font-bold">{ownerDisplayName}</span>{" "}
+                        ביקש/ה {isPartial ? "החלפה חלקית" : "החלפה מלאה"}{" "}
+                        למשמרת
                   </div>
-                  <div className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm">
-                    המשתמש <span className="font-bold">{shift.user_name}</span> הוחלף בצורה מלאה ע"י <span className="font-bold">{coveringUserName}</span>
-                  </div>
+                   {coverageHistory.map((row) => (
+                        <div
+                          key={row.id}
+                          className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm"
+                        >
+                          המשתמש/ת{" "}
+                          <span className="font-bold">{row.name}</span>{" "}
+                          {row.completesShift
+                            ? "השלים/ה את כיסוי המשמרת בטווח"
+                            : "כיסה/תה חלק מהמשמרת בטווח"}{" "}
+                          <span dir="ltr" className="font-mono text-xs">
+                            {format(row.start, "HH:mm")}–
+                            {format(row.end, "HH:mm")}
+                          </span>
+                        </div>
+                    ))}
                 </div>
               </div>
             )}
