@@ -1,6 +1,23 @@
 import { format, addDays } from "date-fns";
 import { he } from "date-fns/locale";
 
+// Distinct colors for each person helping cover a shift, so multiple
+// simultaneous helpers can be told apart at a glance on the coverage
+// sliders. Full class names are spelled out (not built from a template
+// string) so Tailwind's JIT scanner can find and keep them.
+export const COVERAGE_COLOR_PALETTE = [
+  { bg: "bg-purple-200", text: "text-purple-700", dot: "bg-purple-200" },
+  { bg: "bg-orange-200", text: "text-orange-700", dot: "bg-orange-200" },
+  { bg: "bg-teal-200", text: "text-teal-700", dot: "bg-teal-200" },
+  { bg: "bg-pink-200", text: "text-pink-700", dot: "bg-pink-200" },
+  { bg: "bg-amber-200", text: "text-amber-700", dot: "bg-amber-200" },
+  { bg: "bg-cyan-200", text: "text-cyan-700", dot: "bg-cyan-200" },
+  { bg: "bg-lime-200", text: "text-lime-700", dot: "bg-lime-200" },
+  { bg: "bg-fuchsia-200", text: "text-fuchsia-700", dot: "bg-fuchsia-200" },
+];
+export const getCoverageColor = (index) =>
+  COVERAGE_COLOR_PALETTE[index % COVERAGE_COLOR_PALETTE.length];
+
 // --- Shared swap helpers (centralized to avoid duplication across modals) ---
 export const resolveSwapType = (shift, activeRequest) => {
   const explicit =
