@@ -301,6 +301,13 @@ export default function ShiftDetailsModal({
     [coverages, currentUser?.serial_id],
   );
   const canCancelCoverage = Boolean(myCoverageEntry) && !isPastShift;
+  // The owner can undo their own swap/partial-coverage request even after it
+  // was fully accepted by one or more helpers — cancelling reclaims the
+  // whole shift back as a normal full shift for them, voiding whatever
+  // coverage was granted. Unlike canOfferCover/canHeadToHead this must NOT
+  // be blocked by isCoveredOrClosed, since "already fully covered" is
+  // precisely the state this needs to be able to undo.
+  const canCancelOwnSwap = isOwnShift && hasAnyRequest;
 
   const canOfferCover = hasActiveRequest && !isOwnShift && !isCoveredOrClosed;
   const canHeadToHead = !isOwnShift && !isCoveredOrClosed && !isPartialRequest && !isPastShift && (isWhiteShift || isFullRequest);
@@ -696,7 +703,7 @@ export default function ShiftDetailsModal({
 
             {/* Action Buttons */}
             <div className="flex flex-wrap gap-3 justify-center">
-              {hasActiveRequest && isOwnShift && !isCoveredOrClosed && (
+              {canCancelOwnSwap && (
                 <Button
                   onClick={() => onCancelRequest?.(shift)}
                   className="min-w-[160px] flex-1 sm:flex-none h-12 bg-red-600 hover:bg-red-700 text-white rounded-xl shadow-lg"
