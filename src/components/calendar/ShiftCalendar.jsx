@@ -1135,6 +1135,7 @@ export default function ShiftCalendar() {
             setShowHeadToHeadSelector(true);
         }}
         onCancelRequest={(shift) => cancelSwapMutation.mutate(shift.id)}
+        onCancelCoverage={(shift) => cancelMyCoverageMutation.mutate(shift)}
         onDelete={deleteShiftMutation.mutate}
         onApprove={() => approveSwapMutation.mutate(selectedShift)}
         onRequestSwap={() => {
@@ -1232,6 +1233,9 @@ export default function ShiftCalendar() {
         onOfferCover={handleOfferCover}
         onRequestSwap={handleOpenSwapRequest}
         onCancelRequest={(item) => cancelSwapRequestMutation.mutate(item)}
+        onCancelCoverage={(item) =>
+          cancelMyCoverageMutation.mutate({ id: item.shift_id })
+        }
         onAcceptHeadToHead={(item) => acceptHeadToHeadRequestMutation.mutate(item)}
         actionsDisabled={isViewOnly}
       />
