@@ -83,11 +83,12 @@ const getDisplayDay = (dateStr) => {
 
 const isOpenStatus = (status) => ['Open', 'Partially_Covered'].includes(status);
 
-export default function KPIListModal({ isOpen, onClose, type, currentUser, onOfferCover, onRequestSwap, actionsDisabled = false, onCancelRequest, onAcceptHeadToHead }) {
+export default function KPIListModal({ isOpen, onClose, type, currentUser, onOfferCover, onRequestSwap, actionsDisabled = false, onCancelRequest, onCancelCoverage, onAcceptHeadToHead }) {
   
   const [visibleCount, setVisibleCount] = useState(10);
   const isPartialGapsView = type === 'partial_gaps';
   const [swapTab, setSwapTab] = useState('all');
+  const [partialGapsTab, setPartialGapsTab] = useState("all");
 
   useEffect(() => {
     if (isOpen) setVisibleCount(10);
@@ -150,7 +151,11 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
             authorizedUsers.find(u => u?.serial_id === s.original_user_id)
           );
           const coverageSegments = coveragesAll
-            .filter(c => reqShiftIds.includes(c.shift_id))
+            .filter(
+              (c) =>
+                c.shift_id === shift.id &&
+                (c.status === "Approved" || !c.status),
+            )
             .map((c, idx) => {
               const covShift = reqShifts.find(s => s.id === c.shift_id) || shift;
               const covStart = new Date(`${c.cover_start_date || covShift?.start_date}T${c.cover_start_time || covShift?.start_time || '09:00'}`);
@@ -194,6 +199,10 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
               is_request_object: true,
               is_closed_request: isClosedRequest,
               accepted_by_names: acceptedByNames,
+              original_user_id: shift?.original_user_id ?? req.requesting_user_id,
+              covering_user_ids: coverageSegments
+                .map((c) => c.covering_user_id)
+                .filter(Boolean),
               coverageSegments
           };
       });
@@ -265,6 +274,9 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
         shift_date: startDate,
         request_type: 'Partial',
         requesting_user_id: activeRequest?.requesting_user_id || shift.original_user_id,
+        original_user_id: shift.original_user_id, covering_user_ids: coverageSegments
+            .map((c) => c.covering_user_id)
+            .filter(Boolean),
         missingSegments: missing,
         coverageSegments,
         is_request_object: true,
