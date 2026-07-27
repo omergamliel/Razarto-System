@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
-import { buildShiftDeepLink, buildSwapTemplate, calculateMissingSegments, resolveSwapType, buildDateTime, computeCoverageSummary, getCoverageColor } from './whatsappTemplates';
+import { buildShiftDeepLink, buildSwapTemplate, calculateMissingSegments, resolveSwapType, buildDateTime, computeCoverageSummary, getCoverageColor, subtractSegments } from './whatsappTemplates';
 import LoadingSkeleton from '../LoadingSkeleton';
 
 export default function ShiftDetailsModal({
@@ -192,7 +192,8 @@ export default function ShiftDetailsModal({
           name: user?.full_name || cov.covering_name || 'מתנדב',
           start,
           end,
-          department: user?.department || cov.covering_department
+          department: user?.department || cov.covering_department,
+          createdAt: cov.created_at || cov.created_date || null,
         };
       })
       .filter(Boolean);
