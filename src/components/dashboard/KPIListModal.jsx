@@ -526,13 +526,19 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
                   // Whether the viewer owns this partial-gap shift, or
                   // joined it as a covering user — each gets a different
                   // cancel action (give up the whole request vs. just their
-                  // own claimed window).
+                  // own claimed window). Compared via Number() because
+                  // original_user_id can come from the raw Shift record
+                  // (occasionally stored as a string) while
+                  // currentUser.serial_id is numeric.
+                  const currentUserIdNum = Number(currentUser?.serial_id);
                   const isPartialGapOwner =
                     type === "partial_gaps" &&
-                    item.original_user_id === currentUser?.serial_id;
+                    Number(item.original_user_id) === currentUserIdNum;
                   const isPartialGapCovering =
                     type === "partial_gaps" &&
-                    item.covering_user_ids?.includes(currentUser?.serial_id);
+                    item.covering_user_ids?.some(
+                      (id) => Number(id) === currentUserIdNum,
+                    );
                   // Real backing SwapRequest entities carry a status field;
                   // the synthetic partial-gap fallback item (built when there's
                   // no live request, just leftover coverage rows) doesn't.
@@ -617,6 +623,39 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
                             <div className="text-[11px] text-gray-500">התחלה: {startDate}</div>
                             <div className="text-[11px] text-gray-500">סיום: {endDate}</div>
                           </div>
+
+                          {type === "partial_gaps" &&
+                            item.coverageSegments?.length > 0 && (
+                              <div className="mt-2 bg-green-50 border border-green-200 rounded-lg p-2">
+                                <p className="font-semibold text-green-800 text-xs mb-1">
+                                  מי מכסה עד כה
+                                </p>
+                                <div className="space-y-1">
+                                  {item.coverageSegments.map((seg, segIdx) => {
+                                    const coveringUser = authorizedUsers.find(
+                                      (u) =>
+                                        Number(u.serial_id) ===
+                                        Number(seg.covering_user_id),
+                                    );
+                                    return (
+                                      <p
+                                        key={`partial-seg-${segIdx}`}
+                                        className="flex justify-between text-xs text-green-700"
+                                        dir="ltr"
+                                      >
+                                        <span>
+                                          {coveringUser?.full_name || "מחליף"}
+                                        </span>
+                                        <span>
+                                          {format(seg.start, "HH:mm")} -{" "}
+                                          {format(seg.end, "HH:mm")}
+                                        </span>
+                                      </p>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
 
                           {type === 'partial_gaps' && item.missingSegments?.length > 0 && (
                             <div className="mt-2 text-xs text-yellow-800 bg-yellow-100 border border-yellow-200 rounded-lg p-2">
