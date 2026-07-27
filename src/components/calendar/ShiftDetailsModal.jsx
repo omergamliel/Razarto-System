@@ -134,8 +134,11 @@ export default function ShiftDetailsModal({
     [activeRequest, isActiveRequestLoading, shift],
   );
   const resolvedSwapType = useMemo(
-    () => resolveSwapType(shift, resolvedActiveRequest),
-    [resolvedActiveRequest, shift]
+    () =>
+      resolvedActiveRequest
+        ? resolveSwapType(shift, resolvedActiveRequest)
+        : "full",
+    [resolvedActiveRequest, shift],
   );
   const coverageSummary = useMemo(
     () => computeCoverageSummary({ shift, activeRequest: resolvedActiveRequest, coverages }),
@@ -179,7 +182,7 @@ export default function ShiftDetailsModal({
   const isSwapMode = !!resolvedActiveRequest;
   const isPartial = resolvedSwapType === 'partial';
   const isFull = resolvedSwapType === 'full';
-  const isPartialLike = isPartial || shift?.status === 'partial' || shift?.coverageType === 'partial';
+  const isPartialLike = isSwapMode && (isPartial || shift?.status === "partial" || shift?.coverageType === "partial");
   const isDetailsLoading = isActiveRequestLoading || isCoveragesLoading;
 
   const userEmail = currentUser?.email || currentUser?.Email;
@@ -212,7 +215,12 @@ export default function ShiftDetailsModal({
     }
   }
 
-  const coverageType = shift?.coverageType || shift?.swap_type || (isPartial ? 'partial' : 'full');
+  // Same staleness guard as resolvedSwapType/isPartialLike: only trust the
+  // shift's own coverageType/swap_type fields while there's an actual
+  // backing request. Without one, it's unambiguously a full shift.
+  const coverageType = isSwapMode
+    ? shift?.coverageType || shift?.swap_type || resolvedSwapType
+    : "full";
   const approvedCoverages = coverageSummary.approvedCoverages;
   const hasCoverages = approvedCoverages.length > 0;
   const isCoveredSwap = (shift?.status === 'covered' || shift?.status === 'Covered') && hasCoverages;
