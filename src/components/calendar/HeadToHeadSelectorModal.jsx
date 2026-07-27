@@ -20,8 +20,9 @@ export default function HeadToHeadSelectorModal({ isOpen, onClose, targetShift, 
 
   // Filter Shifts: Only Mine, Future, and eligible statuses (white or full request)
   const myFutureFullShifts = allShifts.filter(shift => {
-    // 1. Is Mine? (Using ID)
-    const isMyShift = shift.original_user_id === currentUser?.serial_id;
+    // 1. Is Mine? (Using ID; Number() guards against original_user_id
+    // occasionally being stored as a string on some records)
+    const isMyShift = Number(shift.original_user_id) === Number(currentUser?.serial_id);
     if (!isMyShift) return false;
     
     // 2. Is Future?
@@ -197,8 +198,8 @@ export default function HeadToHeadSelectorModal({ isOpen, onClose, targetShift, 
 
           <div className="p-6 pt-0 flex gap-3 flex-shrink-0 bg-white border-t border-gray-100 mt-auto">
             <Button onClick={onClose} variant="outline" className="flex-1 h-12 rounded-xl text-gray-600">ביטול</Button>
-            <Button onClick={handleSendProposal} disabled={!selectedShift} className={`flex-1 h-12 text-white rounded-xl shadow-md transition-all ${!selectedShift ? 'bg-gray-300 cursor-not-allowed' : 'bg-gradient-to-r from-purple-500 to-purple-600'}`}>
-              <span className="flex items-center gap-2">שלח הצעה בוואטסאפ <Send className="w-4 h-4" /></span>
+            <Button onClick={handleSendProposal} disabled={!selectedShift || createH2HRequestMutation.isPending} className={`flex-1 h-12 text-white rounded-xl shadow-md transition-all ${!selectedShift ? 'bg-gray-300 cursor-not-allowed' : 'bg-gradient-to-r from-purple-500 to-purple-600'}`}>
+              <span className="flex items-center gap-2">{createH2HRequestMutation.isPending ? 'שולח...' : 'שלח בקשת החלפה'} <Send className="w-4 h-4" /></span>
             </Button>
           </div>
         </motion.div>
