@@ -523,6 +523,20 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
                   // i.e. someone is proposing to trade with me specifically, and I can accept/decline it.
                   const isIncomingHeadToHead = item.request_type === 'Head2Head' && !isMyRequest &&
                     item.offered_shifts?.some(s => s.original_user_id === currentUser?.serial_id);
+                  // Whether the viewer owns this partial-gap shift, or
+                  // joined it as a covering user — each gets a different
+                  // cancel action (give up the whole request vs. just their
+                  // own claimed window).
+                  const isPartialGapOwner =
+                    type === "partial_gaps" &&
+                    item.original_user_id === currentUser?.serial_id;
+                  const isPartialGapCovering =
+                    type === "partial_gaps" &&
+                    item.covering_user_ids?.includes(currentUser?.serial_id);
+                  // Real backing SwapRequest entities carry a status field;
+                  // the synthetic partial-gap fallback item (built when there's
+                  // no live request, just leftover coverage rows) doesn't.
+                  const hasBackingRequest = Boolean(item.status);
 
                   const startDate = item.start_date || item.shift_date || item.req_start_date;
                   const endDate = item.end_date || item.req_end_date || startDate;
@@ -659,6 +673,36 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
                                 <MessageCircle className="w-4 h-4" />
                               </Button>
                             </div>
+                          )}
+
+                          {isPartialGapOwner && hasBackingRequest && (
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="rounded-full text-red-600 border-red-200"
+                              onClick={() =>
+                                onCancelRequest && onCancelRequest(item)
+                              }
+                              disabled={actionsDisabled}
+                              title="בטל בקשת החלפה"
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </Button>
+                          )}
+
+                          {isPartialGapCovering && (
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="rounded-full text-orange-600 border-orange-200"
+                              onClick={() =>
+                                onCancelCoverage && onCancelCoverage(item)
+                              }
+                              disabled={actionsDisabled}
+                              title="בטל השתתפות במשמרת"
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </Button>
                           )}
 
                           {item.is_request_object && !isMyRequest && type !== 'approved' && item.request_type !== 'Head2Head' && (
