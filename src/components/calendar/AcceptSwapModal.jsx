@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from 'sonner';
-import { buildDateTime, resolveSwapType, normalizeShiftContext, computeCoverageSummary, resolveShiftWindow } from './whatsappTemplates';
+import { buildDateTime, resolveSwapType, normalizeShiftContext, computeCoverageSummary, resolveShiftWindow, getCoverageColor } from './whatsappTemplates';
 
 const formatSegmentText = (segment) => {
   const sameDay = format(segment.start, 'dd/MM') === format(segment.end, 'dd/MM');
@@ -140,6 +140,17 @@ export default function AcceptSwapModal({
         .filter(Boolean),
     [coverageRows]
   );
+
+  // Assigns each distinct helper a stable, distinguishable color (by order
+  // of first appearance) so multiple people covering different windows of
+  // the same shift can be told apart on the slider and in the legend.
+  const coveringColorMap = useMemo(() => {
+    const map = new Map();
+    approvedCoverageSegments.forEach((seg) => {
+      if (!map.has(seg.label)) map.set(seg.label, map.size);
+    });
+    return map;
+  }, [approvedCoverageSegments]);
 
   // Gaps between a set of {start,end} segments within [rangeStart, rangeEnd] —
   // used to find what's still left over (with the original owner) across the
@@ -584,11 +595,12 @@ export default function AcceptSwapModal({
                           {takenBands.map((band, idx) => {
                             const right = toPercent(band.start);
                             const width = Math.max(0, toPercent(band.end) - right);
-                            const bandColors = {
-                              original: { bg: 'bg-blue-200', text: 'text-blue-700' },
-                              mine: { bg: 'bg-green-200', text: 'text-green-700' },
-                              covered: { bg: 'bg-purple-200', text: 'text-purple-700' }
-                            }[band.variant] || { bg: 'bg-purple-200', text: 'text-purple-700' };
+                            const bandColors =
+                              band.variant === 'original'
+                                ? { bg: 'bg-blue-200', text: 'text-blue-700' }
+                                : band.variant === 'mine'
+                                ? { bg: 'bg-green-200', text: 'text-green-700' }
+                                : getCoverageColor(coveringColorMap.get(band.label) ?? 0);
                             return (
                               <div
                                 key={idx}
