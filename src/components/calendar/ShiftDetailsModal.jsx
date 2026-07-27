@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
-import { buildShiftDeepLink, buildSwapTemplate, calculateMissingSegments, resolveSwapType, buildDateTime, computeCoverageSummary } from './whatsappTemplates';
+import { buildShiftDeepLink, buildSwapTemplate, calculateMissingSegments, resolveSwapType, buildDateTime, computeCoverageSummary, getCoverageColor } from './whatsappTemplates';
 import LoadingSkeleton from '../LoadingSkeleton';
 
 export default function ShiftDetailsModal({
@@ -317,6 +317,17 @@ export default function ShiftDetailsModal({
     }));
     return [...covered, ...remaining].sort((a, b) => a.start - b.start);
   }, [coverageRows, ownerSegments, ownerDisplayName]);
+
+  // Assigns each distinct helper a stable, distinguishable color (by order
+  // of first appearance) so multiple people covering different windows of
+  // the same shift can be told apart on the track and in the legend.
+  const coveringColorMap = useMemo(() => {
+    const map = new Map();
+    coverageRows.forEach((row) => {
+      if (!map.has(row.name)) map.set(row.name, map.size);
+    });
+    return map;
+  }, [coverageRows]);
   
   const formatSegment = (start, end) => {
     const sameDay = format(start, 'dd/MM') === format(end, 'dd/MM');
@@ -475,16 +486,21 @@ export default function ShiftDetailsModal({
                               toTrackPercent(band.end) - right,
                             );
                             const isOriginal = band.variant === "original";
+                            const bandColors = isOriginal
+                                ? { bg: "bg-blue-200", text: "text-blue-700" }
+                                : getCoverageColor(
+                                    coveringColorMap.get(band.label) ?? 0,
+                                  );
                             return (
                               <div
                                 key={idx}
-                                className={`absolute h-full rounded-full ${isOriginal ? "bg-blue-200" : "bg-purple-200"}`}
+                                className={`absolute h-full rounded-full ${bandColors.bg}`}
                                 style={{ right: `${right}%`, width: `${width}%` }}
                                 title={`${band.label}: ${format(band.start, "HH:mm")}–${format(band.end, "HH:mm")}`}
                               >
                                 {width > 8 && (
                                   <span
-                                    className={`absolute right-1/2 translate-x-1/2 text-[10px] font-semibold whitespace-nowrap ${idx % 2 === 0 ? "-top-6" : "-top-11"} ${isOriginal ? "text-blue-700" : "text-purple-700"}`}
+                                    className={`absolute right-1/2 translate-x-1/2 text-[10px] font-semibold whitespace-nowrap ${idx % 2 === 0 ? "-top-6" : "-top-11"} ${bandColors.text}`}
                                   >
                                     {band.label}
                                     </span>
