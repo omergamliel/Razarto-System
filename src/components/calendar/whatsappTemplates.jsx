@@ -18,6 +18,27 @@ export const COVERAGE_COLOR_PALETTE = [
 export const getCoverageColor = (index) =>
   COVERAGE_COLOR_PALETTE[index % COVERAGE_COLOR_PALETTE.length];
 
+// Subtracts a set of {start,end} Date-object segments from a [rangeStart,
+// rangeEnd] range, returning the gaps left over. Unlike calculateMissingSegments
+// (which reads raw cover_start_date/cover_start_time string fields), this works
+// directly on already-resolved Date objects.
+export const subtractSegments = (rangeStart, rangeEnd, segments = []) => {
+  if (!rangeStart || !rangeEnd) return [];
+  let gaps = [{ start: rangeStart, end: rangeEnd }];
+  [...segments]
+    .sort((a, b) => a.start - b.start)
+    .forEach((seg) => {
+      gaps = gaps.flatMap((g) => {
+        if (seg.end <= g.start || seg.start >= g.end) return [g];
+        const pieces = [];
+        if (seg.start > g.start) pieces.push({ start: g.start, end: seg.start });
+        if (seg.end < g.end) pieces.push({ start: seg.end, end: g.end });
+        return pieces;
+      });
+    });
+  return gaps.filter((g) => g.end > g.start);
+};
+
 // --- Shared swap helpers (centralized to avoid duplication across modals) ---
 export const resolveSwapType = (shift, activeRequest) => {
   const explicit =
