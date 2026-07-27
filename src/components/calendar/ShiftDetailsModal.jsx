@@ -21,6 +21,7 @@ export default function ShiftDetailsModal({
   onOfferCover,
   onHeadToHead,
   onCancelRequest,
+  onCancelCoverage,
   onDelete,
   onApprove,
   onRequestSwap,
@@ -70,10 +71,37 @@ export default function ShiftDetailsModal({
 
   const reassignMutation = useMutation({
     mutationFn: async (newUserId) => {
-      return base44.entities.Shift.update(shift.id, { original_user_id: parseInt(newUserId, 10) });
+      // Reassigning hands the WHOLE shift to the new person — so any
+      // in-progress partial swap request and the coverage grants tied to it
+      // no longer apply. Cancel them first, otherwise a partially-covered
+      // shift would keep its stale partial state after being handed to
+      // someone else instead of becoming a clean full shift for them.
+      if (
+        resolvedActiveRequest &&
+        !["Cancelled", "Closed"].includes(resolvedActiveRequest.status)
+      ) {
+        await base44.entities.SwapRequest.update(resolvedActiveRequest.id, {
+          status: "Cancelled",
+        });
+      }
+      await Promise.all(
+        coverages
+          .filter((c) => c.status === "Approved" || !c.status)
+          .map((c) =>
+            base44.entities.ShiftCoverage.update(c.id, {
+              status: "Cancelled",
+            }),
+          ),
+      );
+      return base44.entities.Shift.update(shift.id, { 
+        original_user_id: parseInt(newUserId, 10),
+        status: "Active",
+        });
     },
     onSuccess: () => {
       queryClient.invalidateQueries(['shifts']);
+      queryClient.invalidateQueries(["swap-requests"]);
+      queryClient.invalidateQueries(["coverages"]);
       toast.success('המשמרת הועברה למשתמש החדש');
       setShowReassignModal(false);
       setSelectedUserId('');
@@ -254,6 +282,21 @@ export default function ShiftDetailsModal({
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const isPastShift = startDateObj < today;
+
+  // The current user's own approved coverage on this shift, if they joined
+  // a partial swap — lets them back out and hand their window back to the
+  // original owner, regardless of whether the shift has since become fully
+  // covered (backing out should reopen that gap, not be blocked by it).
+  const myCoverageEntry = useMemo(
+    () =>
+      coverages.find(
+        (c) =>
+          c.covering_user_id === currentUser?.serial_id &&
+          (c.status === "Approved" || !c.status),
+      ) || null,
+    [coverages, currentUser?.serial_id],
+  );
+  const canCancelCoverage = Boolean(myCoverageEntry) && !isPastShift;
 
   const canOfferCover = hasActiveRequest && !isOwnShift && !isCoveredOrClosed;
   const canHeadToHead = !isOwnShift && !isCoveredOrClosed && !isPartialRequest && !isPastShift && (isWhiteShift || isFullRequest);
@@ -669,6 +712,17 @@ export default function ShiftDetailsModal({
                 >
                   <img src="https://cdn-icons-png.flaticon.com/128/9363/9363987.png" alt="עזרה" className="w-5 h-5" />
                   אני רוצה לעזור!
+                </Button>
+              )}
+
+              {canCancelCoverage && (
+                <Button
+                  onClick={() => onCancelCoverage?.(shift)}
+                  variant="outline"
+                  className="min-w-[160px] flex-1 sm:flex-none h-12 rounded-xl border-2 border-orange-300 text-orange-600 hover:bg-orange-50"
+                >
+                  <Trash2 className="w-4 h-4 ml-2" />
+                  בטל השתתפות במשמרת
                 </Button>
               )}
 
