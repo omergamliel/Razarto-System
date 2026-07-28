@@ -3,16 +3,39 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
-export default function SwitchFlowBand({ step, ownCount, targetCount, isSubmitting, onCancel, onNext, onConfirm, warning }) {
+export default function SwitchFlowBand({
+  step,
+  ownCount,
+  targetCount,
+  isSubmitting,
+  onCancel,
+  onNext,
+  onConfirm,
+  onSkip,
+  warning,
+  isCounterOffer = false,
+  targetOwnerName,
+}) {
   const isOwnStep = step === 'own';
 
-  const title = isOwnStep
-    ? 'בחרו את המשמרות שלכם שתרצו להציע להחלפה'
-    : 'בחרו את המשמרות של אחרים שתרצו לקחת במקום';
+  let title;
+  if (isCounterOffer) {
+    title = targetOwnerName
+      ? `בחרו את המשמרות שלכם להצעה ראש בראש מול ${targetOwnerName}`
+      : 'בחרו את המשמרות שלכם להצעת החלפה ראש בראש';
+  } else if (isOwnStep) {
+    title = 'בחרו את המשמרות שלכם שתרצו להציע להחלפה';
+  } else {
+    title = 'בחרו את המשמרות של אחרים שתרצו לקחת במקום';
+  }
 
   const counterText = isOwnStep
     ? `${ownCount} משמרות נבחרו`
     : `${targetCount} משמרות נבחרו`;
+
+  const submitLabel = isSubmitting
+    ? <Loader2 className="w-4 h-4 animate-spin" />
+    : 'אישור ושליחה';
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50">
@@ -49,7 +72,7 @@ export default function SwitchFlowBand({ step, ownCount, targetCount, isSubmitti
               <p className="text-xs text-blue-100">{counterText}</p>
             </div>
 
-            <div className="flex gap-2 shrink-0">
+            <div className="flex gap-2 shrink-0 flex-wrap justify-center">
               <Button
                 variant="secondary"
                 size="sm"
@@ -59,7 +82,7 @@ export default function SwitchFlowBand({ step, ownCount, targetCount, isSubmitti
                 ביטול
               </Button>
 
-              {isOwnStep ? (
+              {!isCounterOffer && isOwnStep && (
                 <Button
                   size="sm"
                   onClick={onNext}
@@ -68,14 +91,38 @@ export default function SwitchFlowBand({ step, ownCount, targetCount, isSubmitti
                 >
                   המשך
                 </Button>
-              ) : (
+              )}
+
+              {!isCounterOffer && !isOwnStep && (
+                <>
+                  <Button
+                    size="sm"
+                    onClick={onSkip}
+                    disabled={isSubmitting}
+                    className="bg-blue-100 text-blue-700 hover:bg-blue-200"
+                    title="שלח כבקשה פתוחה שכל אחד יכול לקחת או להגיב עליה"
+                  >
+                    שלח כבקשה כללית
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={onConfirm}
+                    disabled={targetCount === 0 || isSubmitting}
+                    className="bg-white text-blue-600 hover:bg-blue-50"
+                  >
+                    {submitLabel}
+                  </Button>
+                </>
+              )}
+
+              {isCounterOffer && (
                 <Button
                   size="sm"
                   onClick={onConfirm}
-                  disabled={targetCount === 0 || isSubmitting}
+                  disabled={ownCount === 0 || isSubmitting}
                   className="bg-white text-blue-600 hover:bg-blue-50"
                 >
-                  {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'אישור ושליחה'}
+                  {submitLabel}
                 </Button>
               )}
             </div>

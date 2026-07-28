@@ -431,6 +431,109 @@ export default function ShiftCalendar() {
     }
   });
 
+  // "Skip" path of the switch flow: send the selected own shifts as an open,
+  // general swap request (request_type 'General', empty offered_shift_ids) so
+  // ANY other user can either take them outright ("accept without terms") or
+  // reply with a head-to-head counter-offer by picking their own shifts.
+  const generalSwitchRequestMutation = useMutation({
+    mutationFn: async ({ ownShiftIds }) => {
+      const ownShifts = shifts.filter(s => ownShiftIds.includes(s.id));
+      if (ownShifts.length === 0) throw new Error('No shifts selected');
+      const req_start_date = ownShifts.map(s => s.start_date).sort()[0];
+      const req_end_date = ownShifts.map(s => s.end_date || s.start_date).sort().slice(-1)[0];
+      const req_start_time = ownShifts[0]?.start_time || '09:00';
+      const req_end_time = ownShifts[0]?.end_time || req_start_time;
+
+      await base44.entities.SwapRequest.create({
+        shift_ids: ownShiftIds,
+        offered_shift_ids: [],
+        requesting_user_id: authorizedPerson.serial_id,
+        request_type: 'General',
+        req_start_date,
+        req_end_date,
+        req_start_time,
+        req_end_time,
+        status: 'Open'
+      });
+
+      await Promise.all(ownShiftIds.map(id =>
+        base44.entities.Shift.update(id, { status: 'Swap_Requested' })
+      ));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['shifts']);
+      queryClient.invalidateQueries(['swap-requests']);
+      toast.success('בקשת ההחלפה הכללית נשלחה!');
+      if (switchFlowWarningTimeoutRef.current) clearTimeout(switchFlowWarningTimeoutRef.current);
+      setSwitchFlowWarning(null);
+      setSwitchFlow(null);
+    },
+    onError: (error) => {
+      debugLog('❌ [ShiftCalendar] General switch request failed:', error);
+      toast.error('שליחת בקשת ההחלפה נכשלה. נסו שוב.');
+    }
+  });
+
+  // Accepting a general/open request "without terms": the accepting user
+  // simply takes every shift the requester offered (nothing offered back),
+  // the request closes, and any other open request referencing those shifts
+  // (e.g. a pending counter-offer) is cancelled as no longer valid.
+  const acceptGeneralRequestMutation = useMutation({
+    mutationFn: async (request) => {
+      const theirShiftIds = request.shift_ids || [];
+      if (theirShiftIds.length === 0) return;
+
+      await Promise.all(theirShiftIds.map(id => base44.entities.Shift.update(id, {
+        original_user_id: authorizedPerson.serial_id,
+        status: 'Active'
+      })));
+
+      await base44.entities.SwapRequest.update(request.id, { status: 'Closed' });
+
+      const staleSiblings = swapRequests.filter(sr =>
+        sr.id !== request.id &&
+        ['Open', 'Partially_Covered'].includes(sr.status) &&
+        (sr.shift_ids?.some(id => theirShiftIds.includes(id)) ||
+          sr.offered_shift_ids?.some(id => theirShiftIds.includes(id)))
+      );
+      await Promise.all(staleSiblings.map(sr =>
+        base44.entities.SwapRequest.update(sr.id, { status: 'Cancelled' })
+      ));
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(['shifts']);
+      queryClient.invalidateQueries(['swap-requests']);
+      toast.success('המשמרות נלקחו בהצלחה!');
+    },
+    onError: (error) => {
+      console.error('❌ [ShiftCalendar] Accept general request failed:', error);
+      toast.error(`ביצוע ההחלפה נכשל: ${error?.message || 'שגיאה לא ידועה'}`);
+    }
+  });
+
+  // Start a head-to-head counter-offer against someone else's general/open
+  // request: the target (the requester's offered shifts) is pre-filled, and
+  // the user only picks their OWN shifts to offer in exchange. Reuses
+  // switchRequestMutation, which builds a Head2Head request from the current
+  // user to the target owner; the original requester then accepts it from
+  // their incoming requests (acceptHeadToHeadRequestMutation).
+  const handleStartCounterOffer = (request) => {
+    const targetShiftIds = request.shift_ids || [];
+    if (targetShiftIds.length === 0) return;
+    const targetShift = shifts.find(s => s.id === targetShiftIds[0]);
+    const targetOwner = allUsers.find(u => u.serial_id === targetShift?.original_user_id);
+    setShowKPIListModal(false);
+    if (switchFlowWarningTimeoutRef.current) clearTimeout(switchFlowWarningTimeoutRef.current);
+    setSwitchFlowWarning(null);
+    setSwitchFlow({
+      step: 'own',
+      ownShiftIds: [],
+      targetShiftIds,
+      isCounterOffer: true,
+      targetOwnerName: targetOwner?.full_name || ''
+    });
+  };
+
   const cancelSwapMutation = useMutation({
     mutationFn: async (shiftId) => {
       // Find and cancel the swap request — including ones already fully
@@ -1058,14 +1161,19 @@ export default function ShiftCalendar() {
           step={switchFlow.step}
           ownCount={switchFlow.ownShiftIds.length}
           targetCount={switchFlow.targetShiftIds.length}
-          isSubmitting={switchRequestMutation.isPending}
+          isSubmitting={switchRequestMutation.isPending || generalSwitchRequestMutation.isPending}
           warning={switchFlowWarning}
+          isCounterOffer={switchFlow.isCounterOffer}
+          targetOwnerName={switchFlow.targetOwnerName}
           onCancel={() => {
             if (switchFlowWarningTimeoutRef.current) clearTimeout(switchFlowWarningTimeoutRef.current);
             setSwitchFlowWarning(null);
             setSwitchFlow(null);
           }}
           onNext={() => setSwitchFlow(prev => ({ ...prev, step: 'target' }))}
+          onSkip={() => generalSwitchRequestMutation.mutate({
+            ownShiftIds: switchFlow.ownShiftIds
+          })}
           onConfirm={() => switchRequestMutation.mutate({
             ownShiftIds: switchFlow.ownShiftIds,
             targetShiftIds: switchFlow.targetShiftIds
@@ -1241,6 +1349,8 @@ export default function ShiftCalendar() {
           cancelMyCoverageMutation.mutate({ id: item.shift_id })
         }
         onAcceptHeadToHead={(item) => acceptHeadToHeadRequestMutation.mutate(item)}
+        onAcceptGeneralRequest={(item) => acceptGeneralRequestMutation.mutate(item)}
+        onStartCounterOffer={(item) => handleStartCounterOffer(item)}
         actionsDisabled={isViewOnly}
       />
 

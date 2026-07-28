@@ -83,7 +83,7 @@ const getDisplayDay = (dateStr) => {
 
 const isOpenStatus = (status) => ['Open', 'Partially_Covered'].includes(status);
 
-export default function KPIListModal({ isOpen, onClose, type, currentUser, onOfferCover, onRequestSwap, actionsDisabled = false, onCancelRequest, onCancelCoverage, onAcceptHeadToHead }) {
+export default function KPIListModal({ isOpen, onClose, type, currentUser, onOfferCover, onRequestSwap, actionsDisabled = false, onCancelRequest, onCancelCoverage, onAcceptHeadToHead, onAcceptGeneralRequest, onStartCounterOffer }) {
   
   const [visibleCount, setVisibleCount] = useState(10);
   const isPartialGapsView = type === 'partial_gaps';
@@ -317,7 +317,7 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
         // Head2Head requests are still full-shift swaps (just targeted at a
         // specific person's shift instead of open to anyone), so they belong
         // in the same "בקשות להחלפה מלאה" bucket as plain Full requests.
-        const fullRequests = openRequests.filter(r => r.request_type === 'Full' || r.request_type === 'Head2Head');
+        const fullRequests = openRequests.filter(r => ['Full', 'Head2Head', 'General'].includes(r.request_type));
         const partialRequests = openRequests.filter(r => r.request_type === 'Partial');
         const approvedReqs = swapRequestsAll.filter(r => ['Completed', 'Closed'].includes(r.status));
 
@@ -543,6 +543,14 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
                   // the synthetic partial-gap fallback item (built when there's
                   // no live request, just leftover coverage rows) doesn't.
                   const hasBackingRequest = Boolean(item.status);
+                  // General/open swap request (request_type 'General') created
+                  // via the switch flow's "send as general request" skip path —
+                  // open to everyone: any other user can take the offered shifts
+                  // outright ("accept without terms") or reply with a head-to-
+                  // head counter-offer; the owner can cancel it.
+                  const isGeneralRequestOpen = item.request_type === 'General' && isOpenStatus(item.status);
+                  const isGeneralRequestForOthers = isGeneralRequestOpen && !isMyRequest;
+                  const isGeneralRequestMine = isGeneralRequestOpen && isMyRequest;
 
                   const startDate = item.start_date || item.shift_date || item.req_start_date;
                   const endDate = item.end_date || item.req_end_date || startDate;
@@ -579,6 +587,11 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
                             {item.request_type === 'Head2Head' && (
                               <span className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200">
                                 ראש בראש
+                              </span>
+                            )}
+                            {item.request_type === 'General' && (
+                              <span className="text-[11px] px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 border border-teal-200">
+                                כללית
                               </span>
                             )}
                           </div>
@@ -744,7 +757,41 @@ export default function KPIListModal({ isOpen, onClose, type, currentUser, onOff
                             </Button>
                           )}
 
-                          {item.is_request_object && !isMyRequest && type !== 'approved' && item.request_type !== 'Head2Head' && (
+                          {isGeneralRequestForOthers && (
+                            <div className="flex gap-2">
+                              <Button
+                                onClick={() => { if (actionsDisabled) return; onAcceptGeneralRequest && onAcceptGeneralRequest(item); }}
+                                size="sm"
+                                disabled={actionsDisabled}
+                                className={`bg-green-500 text-white hover:bg-green-600 px-3 h-9 ${actionsDisabled ? 'opacity-60 cursor-not-allowed' : ''}`}
+                              >
+                                קח את המשמרות <ArrowRight className="w-4 h-4 mr-1" />
+                              </Button>
+                              <Button
+                                onClick={() => { if (actionsDisabled) return; onStartCounterOffer && onStartCounterOffer(item); }}
+                                size="sm"
+                                disabled={actionsDisabled}
+                                className={`bg-indigo-500 text-white hover:bg-indigo-600 px-3 h-9 ${actionsDisabled ? 'opacity-60 cursor-not-allowed' : ''}`}
+                              >
+                                הצע ראש בראש <ArrowLeftRight className="w-4 h-4 mr-1" />
+                              </Button>
+                            </div>
+                          )}
+
+                          {isGeneralRequestMine && (
+                            <Button
+                              variant="outline"
+                              size="icon"
+                              className="rounded-full text-red-600 border-red-200"
+                              onClick={() => onCancelRequest && onCancelRequest(item)}
+                              disabled={actionsDisabled}
+                              title="בטל בקשת החלפה"
+                            >
+                              <XCircle className="w-4 h-4" />
+                            </Button>
+                          )}
+
+                          {item.is_request_object && !isMyRequest && type !== 'approved' && item.request_type !== 'Head2Head' && item.request_type !== 'General' && (
                             <Button
                               onClick={() => { if (actionsDisabled) return; onClose(); onOfferCover(item); }}
                               size="sm"
