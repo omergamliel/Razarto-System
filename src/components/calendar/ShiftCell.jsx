@@ -29,7 +29,7 @@ export default function ShiftCell({
     (switchFlow.step === 'own' ? shift.isMine : !shift.isMine);
   const switchSelectedIds = switchFlow?.step === 'own' ? switchFlow.ownShiftIds : switchFlow?.targetShiftIds;
   const isSwitchSelected = isSwitchEligible && switchSelectedIds?.includes(shift.id);
-  const isSwitchDimmed = !!switchFlow && !isSwitchEligible;
+  const isSwitchDimmed = !!switchFlow && !!shift && !isSwitchEligible;
 
   const getStatusStyles = () => {
     if (!shift) return {};

@@ -1137,7 +1137,22 @@ export default function ShiftCalendar() {
                setKpiListType(type);
                setShowKPIListModal(true);
              }}
-             onStartSwitchFlow={() => setSwitchFlow({ step: 'own', ownShiftIds: [], targetShiftIds: [] })}
+             onStartSwitchFlow={() => {
+               // Jump to the first month where the user actually has a future
+               // shift they can offer. Otherwise the switch-flow band shows
+               // every cell dimmed (the current month's own shifts may all be
+               // in the past) and it looks like nothing is selectable.
+               const todayStr = format(new Date(), 'yyyy-MM-dd');
+               const myFutureShifts = enrichedShifts.filter(s =>
+                 s.isMine && s.start_date && s.start_date >= todayStr &&
+                 ['active', 'regular'].includes(String(s.status || 'Active').toLowerCase())
+               );
+               if (myFutureShifts.length > 0) {
+                 const earliest = myFutureShifts.map(s => s.start_date).sort()[0];
+                 setCurrentDate(new Date(earliest + 'T00:00:00'));
+               }
+               setSwitchFlow({ step: 'own', ownShiftIds: [], targetShiftIds: [] });
+             }}
            />
         </div>
 
