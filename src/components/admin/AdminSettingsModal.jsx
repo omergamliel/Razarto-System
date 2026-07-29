@@ -624,7 +624,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
 
         {/* Content */}
         <div className="flex-1 min-h-0 overflow-hidden bg-[#F9FAFB] p-4 md:p-8 flex flex-col gap-4 md:gap-6">
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex-1 min-h-0 overflow-hidden flex flex-col">
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 shrink-0 flex flex-col p-3">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-2">
                 <span className="px-3 py-1 text-[11px] rounded-full bg-blue-50 text-blue-700 font-semibold border border-blue-100">
@@ -672,7 +672,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
           </div>
 
           {activeTab === "users" && (
-            <div className="h-full flex flex-col gap-4 md:gap-6">
+            <div className="flex-1 min-h-0 flex flex-col gap-4 md:gap-6">
               {/* Toolbar */}
               <div className="bg-white p-3 md:p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col md:flex-row items-center justify-between gap-3 md:gap-4">
                 <div className="relative w-full md:w-80 lg:w-96">
