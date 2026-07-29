@@ -210,11 +210,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     [],
   );
 
-  const logEntries = useMemo(
-    () => [
-    ],
-    [],
-  );
+  const logEntries = useMemo(() => [], []);
 
   const logTypeOptions = [
     "בקשות החלפה",
@@ -381,9 +377,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       setDistributionError("");
     },
     onError: (error) => {
-      setDistributionError(
-        error?.message || "חלוקת המשמרות נכשלה. נסו שוב.",
-      );
+      setDistributionError(error?.message || "חלוקת המשמרות נכשלה. נסו שוב.");
       setDistributionResult(null);
     },
   });
@@ -1582,18 +1576,19 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                       מפזר משמרות רק על ימים פנויים בטווח שנבחר, בלי לגעת
                       במשמרות קיימות: עד שתי משמרות לעובד/ת בשבוע (א'-ש'),
                       שישי-שבת תמיד יחד לאותו אדם, וכך גם ימי חג (לפי
-                      useHolidays). הבחירה מתבססת על טבלת "צדק" — מי שצבר/ה
-                      הכי מעט משמרות עד כה מקבל/ת עדיפות.
+                      useHolidays). הבחירה מתבססת על טבלת "צדק" — מי שצבר/ה הכי
+                      מעט משמרות עד כה מקבל/ת עדיפות.
                     </p>
                   </div>
                   <Scale className="w-5 h-5 text-blue-500 shrink-0" />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3" dir="rtl">
+                <div
+                  className="grid grid-cols-1 md:grid-cols-2 gap-3"
+                  dir="rtl"
+                >
                   <div className="grid gap-1">
-                    <Label className="text-sm text-gray-700">
-                      תאריך התחלה
-                    </Label>
+                    <Label className="text-sm text-gray-700">תאריך התחלה</Label>
                     <Input
                       type="date"
                       value={distributionRange.startDate}
@@ -1608,9 +1603,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                     />
                   </div>
                   <div className="grid gap-1">
-                    <Label className="text-sm text-gray-700">
-                      תאריך סיום
-                    </Label>
+                    <Label className="text-sm text-gray-700">תאריך סיום</Label>
                     <Input
                       type="date"
                       value={distributionRange.endDate}
@@ -1655,8 +1648,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                   <div className="flex items-center gap-2 text-emerald-700">
                     <CheckCircle2 className="w-5 h-5" />
                     <p className="text-sm font-semibold">
-                      נוצרו {distributionResult.assignments.length} משמרות
-                      חדשות
+                      נוצרו {distributionResult.assignments.length} משמרות חדשות
                     </p>
                   </div>
 
@@ -1684,8 +1676,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                   {distributionResult.skipped.length > 0 && (
                     <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3">
                       <p className="text-xs font-semibold text-yellow-800 mb-1">
-                        ימים שלא שובצו (אין עובד/ת זמין/ה עם מכסה שבועית
-                        פנויה)
+                        ימים שלא שובצו (אין עובד/ת זמין/ה עם מכסה שבועית פנויה)
                       </p>
                       <div className="text-xs text-yellow-800 space-y-0.5">
                         {distributionResult.skipped.map((s, idx) => (
