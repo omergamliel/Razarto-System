@@ -10,20 +10,21 @@ const toDateKey = (date) => format(date, "yyyy-MM-dd");
 // elsewhere in the app (CalendarGrid's { weekStartsOn: 0 }).
 const getWeekKey = (date) => toDateKey(startOfWeek(date, { weekStartsOn: 0 }));
 
-// Seeds the fairness ("justice") table and the per-week shift counts from
-// every existing shift a person already has — all-time for justice (so
-// someone under-scheduled in the past is prioritized now), and per-week for
-// the hard weekly cap (so a week that's already partly staffed before this
-// run started is respected).
-function initJusticeAndWeekly(people, existingShifts) {
+// Seeds the fairness ("justice") table, the per-week shift counts, and each
+// person's most recent assigned day — all from shifts that fall INSIDE
+// [startDate, endDate] only. The algorithm intentionally has no knowledge of
+// anything outside the given range: fairness is decided purely within the
+// range being distributed, not by anyone's shift history before it.
+function initState(people, inRangeShifts) {
   const justice = new Map();
   const weekly = new Map();
+  const lastAssignedDate = new Map();
   people.forEach((p) => {
     justice.set(p.serial_id, 0);
     weekly.set(p.serial_id, new Map());
   });
 
-  existingShifts.forEach((s) => {
+  inRangeShifts.forEach((s) => {
     const personId = s.original_user_id;
     if (!justice.has(personId)) return; // not an eligible/tracked person
     justice.set(personId, justice.get(personId) + 1);
@@ -33,52 +34,90 @@ function initJusticeAndWeekly(people, existingShifts) {
     const weekKey = getWeekKey(d);
     const perWeek = weekly.get(personId);
     perWeek.set(weekKey, (perWeek.get(weekKey) || 0) + 1);
+
+    const prevLast = lastAssignedDate.get(personId);
+    if (!prevLast || d > prevLast) lastAssignedDate.set(personId, d);
   });
 
-  return { justice, weekly };
+  return { justice, weekly, lastAssignedDate };
 }
 
 const remainingCapacity = (weekly, personId, weekKey) =>
   WEEKLY_CAP - (weekly.get(personId)?.get(weekKey) || 0);
 
-function recordAssignment(justice, weekly, personId, weekKey) {
+// New rule (spread): a person shouldn't land two calendar-adjacent days by
+// accident (e.g. Tuesday then Wednesday from two unrelated decisions). This
+// only looks at days already assigned so far in this run — togetherness
+// bundles (rules b/c) are exempt since those are one deliberate decision, not
+// an accidental back-to-back.
+const isAdjacentToLastAssignment = (lastAssignedDate, personId, date) => {
+  const last = lastAssignedDate.get(personId);
+  if (!last) return false;
+  return Math.abs(differenceInCalendarDays(date, last)) === 1;
+};
+
+function recordAssignment(justice, weekly, lastAssignedDate, personId, weekKey, date) {
   justice.set(personId, (justice.get(personId) || 0) + 1);
   const perWeek = weekly.get(personId) || new Map();
   perWeek.set(weekKey, (perWeek.get(weekKey) || 0) + 1);
   weekly.set(personId, perWeek);
+  const prevLast = lastAssignedDate.get(personId);
+  if (!prevLast || date > prevLast) lastAssignedDate.set(personId, date);
 }
 
-// Picks the fairest (lowest all-time shift count) eligible person who still
-// has at least `minCapacity` free slots in this specific week.
-function pickCandidate(people, justice, weekly, weekKey, minCapacity, excludeIds) {
-  const candidates = people
-    .filter((p) => !excludeIds.has(p.serial_id))
-    .map((p) => ({
-      person: p,
-      capacity: remainingCapacity(weekly, p.serial_id, weekKey),
-      count: justice.get(p.serial_id) || 0,
-    }))
-    .filter((c) => c.capacity >= minCapacity)
-    .sort(
-      (a, b) =>
-        a.count - b.count ||
-        (a.person.full_name || "").localeCompare(b.person.full_name || ""),
-    );
-  return candidates[0]?.person || null;
+// Picks the fairest (lowest in-range shift count) eligible person who still
+// has at least `minCapacity` free slots in this specific week. When
+// `anchorDate` is given, candidates who'd land immediately adjacent to their
+// own last-assigned day are preferred against — but only as long as that
+// still leaves someone to pick; an uncomfortable spread is allowed rather
+// than leaving a day unstaffed.
+function pickCandidate(people, justice, weekly, weekKey, minCapacity, excludeIds, { lastAssignedDate, anchorDate } = {}) {
+  const buildCandidates = (avoidAdjacent) =>
+    people
+      .filter((p) => !excludeIds.has(p.serial_id))
+      .filter(
+        (p) =>
+          !avoidAdjacent ||
+          !lastAssignedDate ||
+          !anchorDate ||
+          !isAdjacentToLastAssignment(lastAssignedDate, p.serial_id, anchorDate),
+      )
+      .map((p) => ({
+        person: p,
+        capacity: remainingCapacity(weekly, p.serial_id, weekKey),
+        count: justice.get(p.serial_id) || 0,
+      }))
+      .filter((c) => c.capacity >= minCapacity)
+      .sort(
+        (a, b) =>
+          a.count - b.count ||
+          (a.person.full_name || "").localeCompare(b.person.full_name || ""),
+      );
+
+  if (lastAssignedDate && anchorDate) {
+    const comfortable = buildCandidates(true);
+    if (comfortable.length > 0) return comfortable[0].person;
+  }
+  return buildCandidates(false)[0]?.person || null;
 }
 
 /**
  * Distributes shifts across [startDate, endDate] as fairly as possible.
+ * Only shifts that fall inside this range are ever looked at — the
+ * algorithm has no dependency on shift history from before `startDate`.
  *
- * Rules (from tasks.txt):
+ * Rules (from tasks.txt), all applied together:
  *   a. No more than two shifts for one person within a single Sun-Sat week.
  *   b. Friday + Saturday go together to one person, not split.
  *   c. Same togetherness rule as (b), but for holidays.
+ *   d. Shifts should be spread out comfortably — a person shouldn't land two
+ *      calendar-adjacent days by accident from two separate decisions.
  *
- * Only days with no existing Shift record are touched — anything already
- * assigned is left alone. Fairness ("justice") ranks people by their
- * all-time total shift count, so whoever has historically had the fewest
- * shifts is preferred for each open slot.
+ * Only days with no existing Shift record (within the given range) are
+ * touched — anything already assigned in-range is left alone. Fairness
+ * ("justice") ranks people by their shift count within this range only, so
+ * whoever has the fewest shifts so far in THIS distribution run is preferred
+ * for each open slot.
  *
  * Implementation note on (b)/(c): Friday/Saturday and holiday dates are
  * marked "special", and any run of *consecutive* special calendar days
@@ -89,9 +128,12 @@ function pickCandidate(people, justice, weekly, weekKey, minCapacity, excludeIds
  * capacity limit rather than ever exceeding the weekly cap; this only
  * matters for unusually long holiday runs and is called out in `skipped`.
  *
+ * Implementation note on (d): it's a soft preference, not a hard rule — if
+ * avoiding adjacency would leave a day unstaffed, the day still gets staffed.
+ *
  * @param {Object} params
  * @param {Array<{serial_id: number, full_name: string}>} params.people - eligible people
- * @param {Array<{original_user_id: number, start_date: string}>} params.existingShifts - ALL shifts, all-time (for fairness + weekly-cap seeding)
+ * @param {Array<{original_user_id: number, start_date: string}>} params.existingShifts - shifts to check against; only ones inside [startDate, endDate] are used
  * @param {string} params.startDate - 'yyyy-MM-dd'
  * @param {string} params.endDate - 'yyyy-MM-dd'
  * @param {Set<string>} [params.holidayDates] - Set of 'yyyy-MM-dd' holiday dates
@@ -104,14 +146,21 @@ export function distributeShifts({
   endDate,
   holidayDates = new Set(),
 }) {
-  const { justice, weekly } = initJusticeAndWeekly(people, existingShifts);
-
-  const existingByDate = new Map();
-  existingShifts.forEach((s) => existingByDate.set(s.start_date, s));
-
   const start = new Date(startDate);
   const end = new Date(endDate);
   const totalDays = differenceInCalendarDays(end, start) + 1;
+
+  // Only shifts inside the given range are relevant — this is the boundary
+  // that keeps the algorithm from depending on anything before `startDate`.
+  const inRangeShifts = (existingShifts || []).filter((s) => {
+    if (!s.start_date) return false;
+    return s.start_date >= startDate && s.start_date <= endDate;
+  });
+
+  const { justice, weekly, lastAssignedDate } = initState(people, inRangeShifts);
+
+  const existingByDate = new Map();
+  inRangeShifts.forEach((s) => existingByDate.set(s.start_date, s));
 
   const days = [];
   for (let i = 0; i < totalDays; i++) {
@@ -169,13 +218,20 @@ export function distributeShifts({
 
       const anchorPerson =
         anchorId != null ? people.find((p) => p.serial_id === anchorId) : null;
+      const segmentAnchorDate = emptyDays[0].date;
 
       let chosen =
         anchorPerson &&
         remainingCapacity(weekly, anchorId, segment.weekKey) >= emptyDays.length
           ? anchorPerson
-          : pickCandidate(people, justice, weekly, segment.weekKey, emptyDays.length, new Set()) ||
-            pickCandidate(people, justice, weekly, segment.weekKey, 1, new Set());
+          : pickCandidate(people, justice, weekly, segment.weekKey, emptyDays.length, new Set(), {
+              lastAssignedDate,
+              anchorDate: segmentAnchorDate,
+            }) ||
+            pickCandidate(people, justice, weekly, segment.weekKey, 1, new Set(), {
+              lastAssignedDate,
+              anchorDate: segmentAnchorDate,
+            });
 
       if (!chosen) {
         emptyDays.forEach((d) =>
@@ -191,7 +247,7 @@ export function distributeShifts({
         const toAssign = remaining.slice(0, capacity);
         toAssign.forEach((d) => {
           assignments.push({ date: d.key, personId: chosen.serial_id });
-          recordAssignment(justice, weekly, chosen.serial_id, segment.weekKey);
+          recordAssignment(justice, weekly, lastAssignedDate, chosen.serial_id, segment.weekKey, d.date);
         });
         remaining = remaining.slice(capacity);
         tried.add(chosen.serial_id);
@@ -199,7 +255,10 @@ export function distributeShifts({
         // (e.g. a long holiday run near everyone's cap) fall to the next
         // fairest available person instead of breaking the weekly cap.
         chosen = remaining.length > 0
-          ? pickCandidate(people, justice, weekly, segment.weekKey, 1, tried)
+          ? pickCandidate(people, justice, weekly, segment.weekKey, 1, tried, {
+              lastAssignedDate,
+              anchorDate: remaining[0].date,
+            })
           : null;
       }
       remaining.forEach((d) =>
