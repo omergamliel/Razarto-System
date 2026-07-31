@@ -166,6 +166,14 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   const [distributionResult, setDistributionResult] = useState(null);
   const [distributionError, setDistributionError] = useState("");
 
+  // --- Delete shifts in a date range ---
+  const [deleteShiftsRange, setDeleteShiftsRange] = useState({
+    startDate: "",
+    endDate: "",
+  });
+  const [deleteShiftsError, setDeleteShiftsError] = useState("");
+  const [isDeleteShiftsConfirmOpen, setIsDeleteShiftsConfirmOpen] = useState(false);
+
   const queryClient = useQueryClient();
 
   const monitorChecks = useMemo(
@@ -253,10 +261,10 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     enabled: isOpen,
   });
 
-  // All shifts, all-time — the distribution algorithm needs the FULL history
-  // (not just the target range) both to seed each person's all-time
-  // "justice" fairness count and to know who's already booked in the weeks
-  // the target range touches, so it never pushes anyone over the weekly cap.
+  // Fetches all shifts (shares the ['shifts'] cache with the rest of the app),
+  // but shiftDistributionAlgorithm only ever looks at the ones that fall
+  // inside the chosen [startDate, endDate] range — it has no dependency on
+  // shift history from before the range.
   const { data: allShiftsForDistribution = [] } = useQuery({
     queryKey: ["shifts"],
     queryFn: () => base44.entities.Shift.list(),
@@ -395,6 +403,50 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     setDistributionError("");
     setDistributionResult(null);
     runDistributionMutation.mutate({ startDate, endDate });
+  };
+
+  // 5. Delete all shifts within a chosen date range (e.g. to undo a bad
+  // distribution run or clear out a period before re-running it).
+  const shiftsInDeleteRange = useMemo(() => {
+    const { startDate, endDate } = deleteShiftsRange;
+    if (!startDate || !endDate) return [];
+    return allShiftsForDistribution.filter(
+      (s) => s.start_date >= startDate && s.start_date <= endDate,
+    );
+  }, [allShiftsForDistribution, deleteShiftsRange]);
+
+  const deleteShiftsRangeMutation = useMutation({
+    mutationFn: async (shiftIds) => {
+      await Promise.all(shiftIds.map((id) => base44.entities.Shift.delete(id)));
+      return shiftIds.length;
+    },
+    onSuccess: (count) => {
+      queryClient.invalidateQueries(["shifts"]);
+      toast.success(`נמחקו ${count} משמרות בהצלחה`);
+      setIsDeleteShiftsConfirmOpen(false);
+      setDeleteShiftsRange({ startDate: "", endDate: "" });
+    },
+    onError: (error) => {
+      toast.error(error?.message || "מחיקת המשמרות נכשלה. נסו שוב.");
+    },
+  });
+
+  const handleRequestDeleteShiftsRange = () => {
+    const { startDate, endDate } = deleteShiftsRange;
+    if (!startDate || !endDate) {
+      setDeleteShiftsError("נא לבחור תאריך התחלה וסיום");
+      return;
+    }
+    if (new Date(endDate) < new Date(startDate)) {
+      setDeleteShiftsError("תאריך הסיום חייב להיות אחרי תאריך ההתחלה");
+      return;
+    }
+    setDeleteShiftsError("");
+    setIsDeleteShiftsConfirmOpen(true);
+  };
+
+  const handleConfirmDeleteShiftsRange = () => {
+    deleteShiftsRangeMutation.mutate(shiftsInDeleteRange.map((s) => s.id));
   };
 
   // --- HANDLERS ---
@@ -1576,8 +1628,9 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                       מפזר משמרות רק על ימים פנויים בטווח שנבחר, בלי לגעת
                       במשמרות קיימות: עד שתי משמרות לעובד/ת בשבוע (א'-ש'),
                       שישי-שבת תמיד יחד לאותו אדם, וכך גם ימי חג (לפי
-                      useHolidays). הבחירה מתבססת על טבלת "צדק" — מי שצבר/ה הכי
-                      מעט משמרות עד כה מקבל/ת עדיפות.
+                      useHolidays), והפיזור בין המשמרות של כל עובד/ת נשמר נוח
+                      ולא יום אחרי יום בטעות. הבחירה מתבססת על טבלת "צדק" — מי
+                      שצבר/ה הכי מעט משמרות בטווח שנבחר מקבל/ת עדיפות.
                     </p>
                   </div>
                   <Scale className="w-5 h-5 text-blue-500 shrink-0" />
@@ -1640,6 +1693,72 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                       <Scale className="w-4 h-4" /> הפעל חלוקה הוגנת
                     </>
                   )}
+                </Button>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">
+                      מחיקת משמרות בטווח תאריכים
+                    </p>
+                    <p className="text-xs text-gray-500 max-w-xl">
+                      מוחק לצמיתות את כל המשמרות בטווח שנבחר (כולל שני
+                      התאריכים). שימושי לניקוי טווח לפני הרצה מחדש של חלוקה
+                      הוגנת. פעולה זו אינה הפיכה.
+                    </p>
+                  </div>
+                  <Trash2 className="w-5 h-5 text-red-500 shrink-0" />
+                </div>
+
+                <div
+                  className="grid grid-cols-1 md:grid-cols-2 gap-3"
+                  dir="rtl"
+                >
+                  <div className="grid gap-1">
+                    <Label className="text-sm text-gray-700">תאריך התחלה</Label>
+                    <Input
+                      type="date"
+                      value={deleteShiftsRange.startDate}
+                      onChange={(e) =>
+                        setDeleteShiftsRange((prev) => ({
+                          ...prev,
+                          startDate: e.target.value,
+                        }))
+                      }
+                      className="rounded-xl"
+                      dir="ltr"
+                    />
+                  </div>
+                  <div className="grid gap-1">
+                    <Label className="text-sm text-gray-700">תאריך סיום</Label>
+                    <Input
+                      type="date"
+                      value={deleteShiftsRange.endDate}
+                      onChange={(e) =>
+                        setDeleteShiftsRange((prev) => ({
+                          ...prev,
+                          endDate: e.target.value,
+                        }))
+                      }
+                      className="rounded-xl"
+                      dir="ltr"
+                    />
+                  </div>
+                </div>
+
+                {deleteShiftsError && (
+                  <p className="mt-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-center">
+                    {deleteShiftsError}
+                  </p>
+                )}
+
+                <Button
+                  onClick={handleRequestDeleteShiftsRange}
+                  variant="destructive"
+                  className="w-full md:w-auto mt-4 h-11 rounded-xl gap-2"
+                >
+                  <Trash2 className="w-4 h-4" /> מחק משמרות בטווח
                 </Button>
               </div>
 
@@ -2117,6 +2236,54 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                 חזרה למחיקה רגילה
               </Button>
             )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* --- DELETE SHIFTS IN RANGE CONFIRMATION --- */}
+      <Dialog
+        open={isDeleteShiftsConfirmOpen}
+        onOpenChange={setIsDeleteShiftsConfirmOpen}
+      >
+        <DialogContent className="sm:max-w-[400px] text-right" dir="rtl">
+          <DialogHeader className="text-right">
+            <DialogTitle className="flex items-center gap-2 text-xl text-red-600">
+              <div className="bg-red-100 p-2 rounded-full">
+                <AlertTriangle className="w-5 h-5 text-red-600" />
+              </div>
+              מחיקת משמרות
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="py-4">
+            <p className="text-gray-600">
+              האם הנך בטוח שברצונך למחוק{" "}
+              <b>{shiftsInDeleteRange.length} משמרות</b> בטווח{" "}
+              <span dir="ltr">
+                {deleteShiftsRange.startDate} - {deleteShiftsRange.endDate}
+              </span>
+              ?
+              <br />
+              פעולה זו אינה הפיכה.
+            </p>
+          </div>
+
+          <DialogFooter className="flex gap-2 w-full">
+            <Button
+              onClick={handleConfirmDeleteShiftsRange}
+              disabled={deleteShiftsRangeMutation.isPending}
+              className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+            >
+              {deleteShiftsRangeMutation.isPending ? "מוחק..." : "כן, מחיקה"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setIsDeleteShiftsConfirmOpen(false)}
+              disabled={deleteShiftsRangeMutation.isPending}
+              className="flex-1"
+            >
+              לא, ביטול
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
