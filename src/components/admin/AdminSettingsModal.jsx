@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { format } from "date-fns";
 import { distributeShifts } from "../calendar/shiftDistributionAlgorithm";
 import { useHolidays } from "../calendar/useHolidays";
@@ -60,60 +60,19 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 
-// A date input formatted for Israeli use (dd/mm/yyyy) rather than the
-// browser-locale-dependent display of a native <input type="date">. Stores
-// and emits the value as 'yyyy-MM-dd' (like the native input did) so it's a
-// drop-in replacement everywhere that string is consumed — only the typing/
-// display format changes.
-const isoToDisplay = (iso) => {
-  if (!iso) return "";
-  const [y, m, d] = iso.split("-");
-  if (!y || !m || !d) return "";
-  return `${d}/${m}/${y}`;
-};
-
+// A native <input type="date"> keeps the OS/browser date picker (calendar
+// icon, click-to-pick, keyboard entry) — only its DISPLAYED format is
+// locale-dependent, which is what made it show up as mm/dd/yyyy for some
+// users. Setting lang="en-GB" on the input forces the dd/mm/yyyy display
+// Israeli users expect, in every Chromium/Firefox browser, while .value
+// keeps emitting/accepting the same 'yyyy-MM-dd' string as before.
 function DateInputIL({ value, onChange, className = "" }) {
-  const [text, setText] = useState(() => isoToDisplay(value));
-
-  useEffect(() => {
-    setText(isoToDisplay(value));
-  }, [value]);
-
-  const handleChange = (e) => {
-    const digits = e.target.value.replace(/\D/g, "").slice(0, 8);
-    let formatted = digits;
-    if (digits.length > 4) {
-      formatted = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
-    } else if (digits.length > 2) {
-      formatted = `${digits.slice(0, 2)}/${digits.slice(2)}`;
-    }
-    setText(formatted);
-
-    if (digits.length < 8) {
-      onChange("");
-      return;
-    }
-
-    const day = digits.slice(0, 2);
-    const month = digits.slice(2, 4);
-    const year = digits.slice(4, 8);
-    const iso = `${year}-${month}-${day}`;
-    const parsed = new Date(iso);
-    const isValid =
-      !Number.isNaN(parsed.getTime()) &&
-      parsed.getUTCDate() === Number(day) &&
-      parsed.getUTCMonth() + 1 === Number(month);
-    onChange(isValid ? iso : "");
-  };
-
   return (
     <Input
-      type="text"
-      inputMode="numeric"
-      placeholder="dd/mm/yyyy"
-      value={text}
-      onChange={handleChange}
-      maxLength={10}
+      type="date"
+      lang="en-GB"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
       dir="ltr"
       className={className}
     />
@@ -2319,8 +2278,11 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
               האם הנך בטוח שברצונך למחוק{" "}
               <b>{shiftsInDeleteRange.length} משמרות</b> בטווח{" "}
               <span dir="ltr">
-                {isoToDisplay(deleteShiftsRange.startDate)} -{" "}
-                {isoToDisplay(deleteShiftsRange.endDate)}
+                {deleteShiftsRange.startDate &&
+                  format(new Date(deleteShiftsRange.startDate), "dd/MM/yyyy")}{" "}
+                -{" "}
+                {deleteShiftsRange.endDate &&
+                  format(new Date(deleteShiftsRange.endDate), "dd/MM/yyyy")}
               </span>
               ?
               <br />
