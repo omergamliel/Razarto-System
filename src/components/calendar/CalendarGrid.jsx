@@ -8,7 +8,6 @@ import {
   format,
   isSameDay
 } from 'date-fns';
-import { he } from 'date-fns/locale';
 import { motion } from 'framer-motion';
 import ShiftCell from './ShiftCell';
 import { useQuery } from '@tanstack/react-query';
@@ -67,7 +66,8 @@ export default function CalendarGrid({
 
   const days = getDaysToDisplay();
 
-  const { data: holidaysByDate = {} } = useHolidays(days.map((d) => d.getFullYear()));
+  const { data: holidaysData } = useHolidays(days.map((d) => d.getFullYear()));
+  const holidaysByDate = holidaysData?.labels || {};
 
   const getShiftForDate = (date) => {
     const rawShift = shifts.find((shift) => {
@@ -149,7 +149,7 @@ export default function CalendarGrid({
           <div className="w-4 h-4 rounded bg-gradient-to-br from-[#FFFDE7] to-[#FFF9C4] border border-[#FDD835]" />
           <span className="text-gray-600">כיסוי חלקי - פער</span>
         </div>
-          <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
           <div className="w-4 h-4 rounded bg-purple-100 border border-purple-300" />
           <span className="text-gray-600">חג / מועד</span>
         </div>
