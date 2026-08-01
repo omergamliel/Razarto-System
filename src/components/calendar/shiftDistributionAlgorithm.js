@@ -45,7 +45,7 @@ function initState(people, inRangeShifts) {
 const remainingCapacity = (weekly, personId, weekKey) =>
   WEEKLY_CAP - (weekly.get(personId)?.get(weekKey) || 0);
 
-// New rule (spread): a person shouldn't land two calendar-adjacent days by
+// Rule (d) "spread": a person shouldn't land two calendar-adjacent days by
 // accident (e.g. Tuesday then Wednesday from two unrelated decisions). This
 // only looks at days already assigned so far in this run — togetherness
 // bundles (rules b/c) are exempt since those are one deliberate decision, not
@@ -65,40 +65,64 @@ function recordAssignment(justice, weekly, lastAssignedDate, personId, weekKey, 
   if (!prevLast || date > prevLast) lastAssignedDate.set(personId, date);
 }
 
+const sortByFairness = (candidates) =>
+  candidates.sort(
+    (a, b) =>
+      a.count - b.count ||
+      (a.person.full_name || "").localeCompare(b.person.full_name || ""),
+  );
+
+const buildCandidateRows = (people, justice, weekly, weekKey, excludeIds) =>
+  people
+    .filter((p) => !excludeIds.has(p.serial_id))
+    .map((p) => ({
+      person: p,
+      capacity: remainingCapacity(weekly, p.serial_id, weekKey),
+      count: justice.get(p.serial_id) || 0,
+    }));
+
+const notAdjacent = (row, lastAssignedDate, anchorDate) =>
+  !lastAssignedDate ||
+  !anchorDate ||
+  !isAdjacentToLastAssignment(lastAssignedDate, row.person.serial_id, anchorDate);
+
 // Picks the fairest (lowest in-range shift count) eligible person who still
 // has at least `minCapacity` free slots in this specific week. When
 // `anchorDate` is given, candidates who'd land immediately adjacent to their
 // own last-assigned day are preferred against — but only as long as that
 // still leaves someone to pick; an uncomfortable spread is allowed rather
-// than leaving a day unstaffed.
+// than leaving a day unstaffed. Used for ordinary (non-togetherness) days,
+// where the weekly cap (rule a) is a hard limit.
 function pickCandidate(people, justice, weekly, weekKey, minCapacity, excludeIds, { lastAssignedDate, anchorDate } = {}) {
-  const buildCandidates = (avoidAdjacent) =>
-    people
-      .filter((p) => !excludeIds.has(p.serial_id))
-      .filter(
-        (p) =>
-          !avoidAdjacent ||
-          !lastAssignedDate ||
-          !anchorDate ||
-          !isAdjacentToLastAssignment(lastAssignedDate, p.serial_id, anchorDate),
-      )
-      .map((p) => ({
-        person: p,
-        capacity: remainingCapacity(weekly, p.serial_id, weekKey),
-        count: justice.get(p.serial_id) || 0,
-      }))
-      .filter((c) => c.capacity >= minCapacity)
-      .sort(
-        (a, b) =>
-          a.count - b.count ||
-          (a.person.full_name || "").localeCompare(b.person.full_name || ""),
-      );
+  const rows = buildCandidateRows(people, justice, weekly, weekKey, excludeIds).filter(
+    (c) => c.capacity >= minCapacity,
+  );
 
   if (lastAssignedDate && anchorDate) {
-    const comfortable = buildCandidates(true);
+    const comfortable = sortByFairness(rows.filter((r) => notAdjacent(r, lastAssignedDate, anchorDate)));
     if (comfortable.length > 0) return comfortable[0].person;
   }
-  return buildCandidates(false)[0]?.person || null;
+  return sortByFairness(rows)[0]?.person || null;
+}
+
+// Picks who a togetherness bundle (weekend, and/or a chag + its erev — see
+// rules b/c) should go to as ONE block. Unlike pickCandidate, the weekly cap
+// is a soft preference here, not a hard wall: these bundles are "not split"
+// per rules b/c, so if nobody has full capacity left, the fairest person
+// with at least SOME room wins, and only if truly nobody has any room left
+// does it fall back to whoever's fairest regardless of the cap. Comfort
+// (rule d) is still preferred wherever it doesn't cost availability.
+function pickTogetherCandidate(people, justice, weekly, weekKey, excludeIds, { lastAssignedDate, anchorDate } = {}) {
+  const rows = buildCandidateRows(people, justice, weekly, weekKey, excludeIds);
+  const comfortableRows = rows.filter((r) => notAdjacent(r, lastAssignedDate, anchorDate));
+
+  return (
+    sortByFairness(comfortableRows.filter((r) => r.capacity > 0))[0]?.person ||
+    sortByFairness(rows.filter((r) => r.capacity > 0))[0]?.person ||
+    sortByFairness(comfortableRows)[0]?.person ||
+    sortByFairness(rows)[0]?.person ||
+    null
+  );
 }
 
 /**
@@ -109,7 +133,15 @@ function pickCandidate(people, justice, weekly, weekKey, minCapacity, excludeIds
  * Rules (from tasks.txt), all applied together:
  *   a. No more than two shifts for one person within a single Sun-Sat week.
  *   b. Friday + Saturday go together to one person, not split.
- *   c. Same togetherness rule as (b), but for holidays.
+ *   c. Same togetherness rule as (b), but for holidays — including the chag's
+ *      erev (the evening the shift effectively starts, same idea as Friday
+ *      being Erev Shabbat): if erev-chag falls on Fri/Sat it's already part
+ *      of the weekend block; if it falls on Thursday, the block extends
+ *      Thursday through Saturday for the same person. Chol HaMoed days (the
+ *      intermediate, "ordinary" days of Sukkot/Pesach) are the exception —
+ *      they are deliberately NOT pulled into this togetherness block, so a
+ *      two-week chag doesn't pin one person down for its whole span; each
+ *      Chol HaMoed day is instead distributed like a normal day (rules a/d).
  *   d. Shifts should be spread out comfortably — a person shouldn't land two
  *      calendar-adjacent days by accident from two separate decisions.
  *
@@ -119,14 +151,17 @@ function pickCandidate(people, justice, weekly, weekKey, minCapacity, excludeIds
  * whoever has the fewest shifts so far in THIS distribution run is preferred
  * for each open slot.
  *
- * Implementation note on (b)/(c): Friday/Saturday and holiday dates are
- * marked "special", and any run of *consecutive* special calendar days
- * (a weekend, a holiday, or a holiday that runs into a weekend) forms one
- * "bundle" that goes to a single person. Rule (a) is treated as a hard
- * limit, so a bundle that spans more than one Sun-Sat week — or that is
- * longer than 2 days within one week — is split at the week boundary /
- * capacity limit rather than ever exceeding the weekly cap; this only
- * matters for unusually long holiday runs and is called out in `skipped`.
+ * Implementation note on (b)/(c): a day is "togetherness-worthy" if it's a
+ * Friday/Saturday OR a holiday day that ISN'T Chol HaMoed (that covers both
+ * real chag days and, once erev-chag dates are included in `holidayDates`,
+ * the eve of the chag too). Any run of *consecutive* togetherness-worthy
+ * calendar days forms one "bundle" that goes to a single person as a block —
+ * rule (a)'s weekly cap is a soft preference for these blocks (see
+ * pickTogetherCandidate), since "not split" is the whole point of the rule,
+ * but a bundle that crosses a Sun-Sat week boundary is still split there
+ * (fairness bookkeeping is per-week). Chol HaMoed days (and every other
+ * ordinary day) are each their own length-1 bundle, going through the
+ * strict-cap `pickCandidate` path instead.
  *
  * Implementation note on (d): it's a soft preference, not a hard rule — if
  * avoiding adjacency would leave a day unstaffed, the day still gets staffed.
@@ -136,7 +171,8 @@ function pickCandidate(people, justice, weekly, weekKey, minCapacity, excludeIds
  * @param {Array<{original_user_id: number, start_date: string}>} params.existingShifts - shifts to check against; only ones inside [startDate, endDate] are used
  * @param {string} params.startDate - 'yyyy-MM-dd'
  * @param {string} params.endDate - 'yyyy-MM-dd'
- * @param {Set<string>} [params.holidayDates] - Set of 'yyyy-MM-dd' holiday dates
+ * @param {Set<string>} [params.holidayDates] - Set of 'yyyy-MM-dd' holiday dates (chag days AND erev-chag days)
+ * @param {Set<string>} [params.cholHamoedDates] - Set of 'yyyy-MM-dd' Chol HaMoed dates (subset of holidayDates that should NOT be treated as togetherness-worthy)
  * @returns {{assignments: Array<{date: string, personId: number}>, skipped: Array<{date: string, reason: string}>, justiceTable: Array<{personId: number, name: string, totalShifts: number}>}}
  */
 export function distributeShifts({
@@ -145,6 +181,7 @@ export function distributeShifts({
   startDate,
   endDate,
   holidayDates = new Set(),
+  cholHamoedDates = new Set(),
 }) {
   const start = new Date(startDate);
   const end = new Date(endDate);
@@ -168,24 +205,29 @@ export function distributeShifts({
     const key = toDateKey(d);
     const dow = d.getDay(); // 0=Sun..6=Sat
     const isWeekend = dow === 5 || dow === 6; // Friday or Saturday
+    // Chol HaMoed doesn't count as togetherness-worthy on its own, but a
+    // Chol HaMoed day that's also a Friday/Saturday is still Shabbat, so the
+    // weekend check wins regardless (rule b always applies to Shabbat).
+    const isChagTogetherness = holidayDates.has(key) && !cholHamoedDates.has(key);
     days.push({
       date: d,
       key,
       weekKey: getWeekKey(d),
-      isSpecial: isWeekend || holidayDates.has(key),
+      together: isWeekend || isChagTogetherness,
       existing: existingByDate.get(key) || null,
     });
   }
 
-  // Group into bundles: consecutive "special" days form one bundle each;
-  // every non-special day is its own bundle of length 1.
+  // Group into bundles: consecutive togetherness-worthy days form one bundle
+  // each; every other day (ordinary, or Chol HaMoed) is its own bundle of
+  // length 1.
   const bundles = [];
   let current = null;
   days.forEach((day) => {
-    if (day.isSpecial && current?.special) {
+    if (day.together && current?.together) {
       current.days.push(day);
     } else {
-      current = { special: day.isSpecial, days: [day] };
+      current = { together: day.together, days: [day] };
       bundles.push(current);
     }
   });
@@ -200,7 +242,8 @@ export function distributeShifts({
     const anchorId = anchorShift?.original_user_id ?? null;
 
     // A bundle can't be assigned as one block if it crosses a week boundary
-    // (the weekly cap is per-week), so split it into per-week segments first.
+    // (fairness/capacity bookkeeping is per-week), so split it into per-week
+    // segments first.
     const segments = [];
     let seg = null;
     bundle.days.forEach((day) => {
@@ -220,6 +263,35 @@ export function distributeShifts({
         anchorId != null ? people.find((p) => p.serial_id === anchorId) : null;
       const segmentAnchorDate = emptyDays[0].date;
 
+      if (bundle.together) {
+        // Togetherness block: always goes to ONE person for every day in
+        // this segment — rule (a)'s weekly cap yields to "not split" here
+        // (see pickTogetherCandidate). Only fails if there's truly nobody.
+        const chosen =
+          anchorPerson ||
+          pickTogetherCandidate(people, justice, weekly, segment.weekKey, new Set(), {
+            lastAssignedDate,
+            anchorDate: segmentAnchorDate,
+          });
+
+        if (!chosen) {
+          emptyDays.forEach((d) =>
+            skipped.push({ date: d.key, reason: "אין עובד/ת זמין/ה בכלל" }),
+          );
+          return;
+        }
+
+        emptyDays.forEach((d) => {
+          assignments.push({ date: d.key, personId: chosen.serial_id });
+          recordAssignment(justice, weekly, lastAssignedDate, chosen.serial_id, segment.weekKey, d.date);
+        });
+        return;
+      }
+
+      // Ordinary day (including Chol HaMoed): strict weekly cap applies, and
+      // if capacity runs out mid-segment (only possible for a rare >1-day
+      // ordinary segment) it falls to the next fairest available person
+      // rather than ever exceeding the cap.
       let chosen =
         anchorPerson &&
         remainingCapacity(weekly, anchorId, segment.weekKey) >= emptyDays.length
@@ -251,9 +323,6 @@ export function distributeShifts({
         });
         remaining = remaining.slice(capacity);
         tried.add(chosen.serial_id);
-        // Any days that didn't fit this person's remaining weekly capacity
-        // (e.g. a long holiday run near everyone's cap) fall to the next
-        // fairest available person instead of breaking the weekly cap.
         chosen = remaining.length > 0
           ? pickCandidate(people, justice, weekly, segment.weekKey, 1, tried, {
               lastAssignedDate,
