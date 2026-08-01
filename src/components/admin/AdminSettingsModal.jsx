@@ -315,10 +315,27 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
           (person.serial_id || 0) > max ? person.serial_id : max,
         0,
       );
-      return await base44.entities.AuthorizedPerson.create({
+      const created = await base44.entities.AuthorizedPerson.create({
         ...userData,
         serial_id: maxId + 1,
       });
+
+      // Also provision the person as a platform User so they can actually
+      // log in — AuthorizedPerson alone is just an in-app permissions
+      // whitelist and is never synced to the platform's own Users table.
+      try {
+        await base44.users.inviteUser(
+          userData.email,
+          userData.permissions === "Admin" ? "admin" : "user",
+        );
+      } catch (inviteError) {
+        console.error("Failed to invite user to platform:", inviteError);
+        toast.error(
+          "המשתמש נוסף למערכת אך שליחת ההזמנה להתחברות נכשלה. יש להזמין אותו ידנית.",
+        );
+      }
+
+      return created;
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries(["authorized-people"]);
