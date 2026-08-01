@@ -282,7 +282,9 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     return years;
   }, [distributionRange]);
 
-  const { data: holidaysByDate = {} } = useHolidays(distributionYears);
+  const { data: holidaysData } = useHolidays(distributionYears);
+  const holidaysByDate = holidaysData?.labels || {};
+  const cholHamoedDates = holidaysData?.cholHamoedDates || new Set();
 
   // --- MUTATIONS ---
 
@@ -362,6 +364,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         startDate,
         endDate,
         holidayDates,
+        cholHamoedDates,
       });
 
       await Promise.all(
@@ -1627,10 +1630,14 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                     <p className="text-xs text-gray-500 max-w-xl">
                       מפזר משמרות רק על ימים פנויים בטווח שנבחר, בלי לגעת
                       במשמרות קיימות: עד שתי משמרות לעובד/ת בשבוע (א'-ש'),
-                      שישי-שבת תמיד יחד לאותו אדם, וכך גם ימי חג (לפי
-                      useHolidays), והפיזור בין המשמרות של כל עובד/ת נשמר נוח
-                      ולא יום אחרי יום בטעות. הבחירה מתבססת על טבלת "צדק" — מי
-                      שצבר/ה הכי מעט משמרות בטווח שנבחר מקבל/ת עדיפות.
+                      שישי-שבת תמיד יחד לאותו אדם, וכך גם ערב חג וימי החג
+                      (למשל ערב חג שחל בחמישי — המשמרת נשארת אצל אותו אדם עד
+                      שבת). ימי חול המועד (בסוכות ובפסח) לא נכללים בצירוף הזה
+                      ומתחלקים כרגיל בין העובדים, כדי שמשמרת החג לא תימשך
+                      יותר מדי אצל אדם אחד. הפיזור בין המשמרות של כל עובד/ת
+                      נשמר נוח ולא יום אחרי יום בטעות. הבחירה מתבססת על טבלת
+                      "צדק" — מי שצבר/ה הכי מעט משמרות בטווח שנבחר מקבל/ת
+                      עדיפות.
                     </p>
                   </div>
                   <Scale className="w-5 h-5 text-blue-500 shrink-0" />
