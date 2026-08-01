@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { format } from "date-fns";
 import { distributeShifts } from "../calendar/shiftDistributionAlgorithm";
 import { useHolidays } from "../calendar/useHolidays";
@@ -59,6 +59,66 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
+
+// A date input formatted for Israeli use (dd/mm/yyyy) rather than the
+// browser-locale-dependent display of a native <input type="date">. Stores
+// and emits the value as 'yyyy-MM-dd' (like the native input did) so it's a
+// drop-in replacement everywhere that string is consumed — only the typing/
+// display format changes.
+const isoToDisplay = (iso) => {
+  if (!iso) return "";
+  const [y, m, d] = iso.split("-");
+  if (!y || !m || !d) return "";
+  return `${d}/${m}/${y}`;
+};
+
+function DateInputIL({ value, onChange, className = "" }) {
+  const [text, setText] = useState(() => isoToDisplay(value));
+
+  useEffect(() => {
+    setText(isoToDisplay(value));
+  }, [value]);
+
+  const handleChange = (e) => {
+    const digits = e.target.value.replace(/\D/g, "").slice(0, 8);
+    let formatted = digits;
+    if (digits.length > 4) {
+      formatted = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+    } else if (digits.length > 2) {
+      formatted = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    }
+    setText(formatted);
+
+    if (digits.length < 8) {
+      onChange("");
+      return;
+    }
+
+    const day = digits.slice(0, 2);
+    const month = digits.slice(2, 4);
+    const year = digits.slice(4, 8);
+    const iso = `${year}-${month}-${day}`;
+    const parsed = new Date(iso);
+    const isValid =
+      !Number.isNaN(parsed.getTime()) &&
+      parsed.getUTCDate() === Number(day) &&
+      parsed.getUTCMonth() + 1 === Number(month);
+    onChange(isValid ? iso : "");
+  };
+
+  return (
+    <Input
+      type="text"
+      inputMode="numeric"
+      placeholder="dd/mm/yyyy"
+      value={text}
+      onChange={handleChange}
+      maxLength={10}
+      dir="ltr"
+      className={className}
+    />
+  );
+}
 
 export default function AdminSettingsModal({ isOpen, onClose }) {
   const [searchTerm, setSearchTerm] = useState("");
@@ -1649,32 +1709,28 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                 >
                   <div className="grid gap-1">
                     <Label className="text-sm text-gray-700">תאריך התחלה</Label>
-                    <Input
-                      type="date"
+                    <DateInputIL
                       value={distributionRange.startDate}
-                      onChange={(e) =>
+                      onChange={(iso) =>
                         setDistributionRange((prev) => ({
                           ...prev,
-                          startDate: e.target.value,
+                          startDate: iso,
                         }))
                       }
                       className="rounded-xl"
-                      dir="ltr"
                     />
                   </div>
                   <div className="grid gap-1">
                     <Label className="text-sm text-gray-700">תאריך סיום</Label>
-                    <Input
-                      type="date"
+                    <DateInputIL
                       value={distributionRange.endDate}
-                      onChange={(e) =>
+                      onChange={(iso) =>
                         setDistributionRange((prev) => ({
                           ...prev,
-                          endDate: e.target.value,
+                          endDate: iso,
                         }))
                       }
                       className="rounded-xl"
-                      dir="ltr"
                     />
                   </div>
                 </div>
@@ -1724,32 +1780,28 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                 >
                   <div className="grid gap-1">
                     <Label className="text-sm text-gray-700">תאריך התחלה</Label>
-                    <Input
-                      type="date"
+                    <DateInputIL
                       value={deleteShiftsRange.startDate}
-                      onChange={(e) =>
+                      onChange={(iso) =>
                         setDeleteShiftsRange((prev) => ({
                           ...prev,
-                          startDate: e.target.value,
+                          startDate: iso,
                         }))
                       }
                       className="rounded-xl"
-                      dir="ltr"
                     />
                   </div>
                   <div className="grid gap-1">
                     <Label className="text-sm text-gray-700">תאריך סיום</Label>
-                    <Input
-                      type="date"
+                    <DateInputIL
                       value={deleteShiftsRange.endDate}
-                      onChange={(e) =>
+                      onChange={(iso) =>
                         setDeleteShiftsRange((prev) => ({
                           ...prev,
-                          endDate: e.target.value,
+                          endDate: iso,
                         }))
                       }
                       className="rounded-xl"
-                      dir="ltr"
                     />
                   </div>
                 </div>
@@ -2267,7 +2319,8 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
               האם הנך בטוח שברצונך למחוק{" "}
               <b>{shiftsInDeleteRange.length} משמרות</b> בטווח{" "}
               <span dir="ltr">
-                {deleteShiftsRange.startDate} - {deleteShiftsRange.endDate}
+                {isoToDisplay(deleteShiftsRange.startDate)} -{" "}
+                {isoToDisplay(deleteShiftsRange.endDate)}
               </span>
               ?
               <br />
