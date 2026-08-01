@@ -139,9 +139,12 @@ function pickTogetherCandidate(people, justice, weekly, weekKey, excludeIds, { l
  *      of the weekend block; if it falls on Thursday, the block extends
  *      Thursday through Saturday for the same person. Chol HaMoed days (the
  *      intermediate, "ordinary" days of Sukkot/Pesach) are the exception —
- *      they are deliberately NOT pulled into this togetherness block, so a
- *      two-week chag doesn't pin one person down for its whole span; each
- *      Chol HaMoed day is instead distributed like a normal day (rules a/d).
+ *      they are deliberately NOT pulled into this togetherness block (so a
+ *      two-week chag doesn't pin one person down for its whole span), but a
+ *      consecutive RUN of Chol HaMoed days is still grouped and handed out
+ *      in weekly-cap-sized (~2 day) chunks per person, same as any other
+ *      multi-day stretch — not atomized to a different person every single
+ *      day (that would fail rule (d)'s "not by accident" spirit too).
  *   d. Shifts should be spread out comfortably — a person shouldn't land two
  *      calendar-adjacent days by accident from two separate decisions.
  *
@@ -151,17 +154,20 @@ function pickTogetherCandidate(people, justice, weekly, weekKey, excludeIds, { l
  * whoever has the fewest shifts so far in THIS distribution run is preferred
  * for each open slot.
  *
- * Implementation note on (b)/(c): a day is "togetherness-worthy" if it's a
- * Friday/Saturday OR a holiday day that ISN'T Chol HaMoed (that covers both
+ * Implementation note on (b)/(c): each day is classified as "together"
+ * (Friday/Saturday, or a holiday day that isn't Chol HaMoed — covering both
  * real chag days and, once erev-chag dates are included in `holidayDates`,
- * the eve of the chag too). Any run of *consecutive* togetherness-worthy
- * calendar days forms one "bundle" that goes to a single person as a block —
- * rule (a)'s weekly cap is a soft preference for these blocks (see
- * pickTogetherCandidate), since "not split" is the whole point of the rule,
- * but a bundle that crosses a Sun-Sat week boundary is still split there
- * (fairness bookkeeping is per-week). Chol HaMoed days (and every other
- * ordinary day) are each their own length-1 bundle, going through the
- * strict-cap `pickCandidate` path instead.
+ * the eve of the chag too), "cholHamoed", or "regular". Consecutive days of
+ * the SAME kind chain into one "bundle", except "regular" days, which always
+ * stay their own length-1 bundle. A "together" bundle goes to a single
+ * person as one block regardless of the weekly cap (see
+ * pickTogetherCandidate) — "not split" is the whole point of rules b/c. A
+ * "cholHamoed" bundle (and every "regular" day) goes through the strict-cap
+ * `pickCandidate` path, which — for a bundle longer than the cap — hands it
+ * out in cap-sized chunks to a sequence of fairest people rather than ever
+ * exceeding the cap for one person or rotating day-by-day. Either kind of
+ * bundle that crosses a Sun-Sat week boundary is still split there (fairness
+ * bookkeeping is per-week).
  *
  * Implementation note on (d): it's a soft preference, not a hard rule — if
  * avoiding adjacency would leave a day unstaffed, the day still gets staffed.
@@ -205,29 +211,37 @@ export function distributeShifts({
     const key = toDateKey(d);
     const dow = d.getDay(); // 0=Sun..6=Sat
     const isWeekend = dow === 5 || dow === 6; // Friday or Saturday
+    const isCholHamoed = cholHamoedDates.has(key) && !isWeekend;
     // Chol HaMoed doesn't count as togetherness-worthy on its own, but a
     // Chol HaMoed day that's also a Friday/Saturday is still Shabbat, so the
     // weekend check wins regardless (rule b always applies to Shabbat).
     const isChagTogetherness = holidayDates.has(key) && !cholHamoedDates.has(key);
+    let kind = "regular";
+    if (isWeekend || isChagTogetherness) kind = "together";
+    else if (isCholHamoed) kind = "cholHamoed";
     days.push({
       date: d,
       key,
       weekKey: getWeekKey(d),
-      together: isWeekend || isChagTogetherness,
+      kind,
       existing: existingByDate.get(key) || null,
     });
   }
 
-  // Group into bundles: consecutive togetherness-worthy days form one bundle
-  // each; every other day (ordinary, or Chol HaMoed) is its own bundle of
-  // length 1.
+  // Group into bundles: consecutive days of the SAME kind chain into one
+  // bundle — except "regular" days, which always stay their own length-1
+  // bundle (an ordinary week shouldn't get chained together by accident;
+  // that's what rule (d) exists to prevent). "together" runs (weekend/chag/
+  // erev) and "cholHamoed" runs each chain with their own kind so the
+  // per-week segment splitting below can group them properly, while a
+  // "cholHamoed" day never merges into a "together" run or vice versa.
   const bundles = [];
   let current = null;
   days.forEach((day) => {
-    if (day.together && current?.together) {
+    if (day.kind !== "regular" && current?.kind === day.kind) {
       current.days.push(day);
     } else {
-      current = { together: day.together, days: [day] };
+      current = { kind: day.kind, days: [day] };
       bundles.push(current);
     }
   });
@@ -263,7 +277,7 @@ export function distributeShifts({
         anchorId != null ? people.find((p) => p.serial_id === anchorId) : null;
       const segmentAnchorDate = emptyDays[0].date;
 
-      if (bundle.together) {
+      if (bundle.kind === "together") {
         // Togetherness block: always goes to ONE person for every day in
         // this segment — rule (a)'s weekly cap yields to "not split" here
         // (see pickTogetherCandidate). Only fails if there's truly nobody.
@@ -288,10 +302,11 @@ export function distributeShifts({
         return;
       }
 
-      // Ordinary day (including Chol HaMoed): strict weekly cap applies, and
-      // if capacity runs out mid-segment (only possible for a rare >1-day
-      // ordinary segment) it falls to the next fairest available person
-      // rather than ever exceeding the cap.
+      // Ordinary day, or a Chol HaMoed run: strict weekly cap applies. A
+      // Chol HaMoed segment longer than the cap doesn't go to one person —
+      // it's assigned in cap-sized (~2 day) consecutive chunks, each to the
+      // next fairest available person, so the chag doesn't pin anyone down
+      // for its whole span but people still aren't rotated one day at a time.
       let chosen =
         anchorPerson &&
         remainingCapacity(weekly, anchorId, segment.weekKey) >= emptyDays.length
