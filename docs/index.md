@@ -3,7 +3,7 @@
 ברוך הבא לתיקיית התיעוד. קבצים מומלצים לקריאה לפי סדר:
 
 1. **`overview.md`** – סקירה כללית של המערכת.
-2. **`architecture.md`** – ארכיטקטורה ומבנה לוגי.
+2. **`architecture.md`** – ארכיטקטורה ומבנה לוגי (ותרשים UML מלווה ב-`architecture.drawio`, נפתח ב-[draw.io](https://app.diagrams.net)).
 3. **`folder_structure.md`** – עץ תיקיות עם הסברים.
 4. **`entrypoints.md`** – קבצי אתחול ו־CSS.
 5. **`api_overview.md`** – שכבת API מבוססת Base44.
@@ -15,6 +15,7 @@
 11. **`components_admin.md`** – ניהול משתמשים והרשאות.
 12. **`components_onboarding.md`** – מסכי הצטרפות.
 13. **`components_shared.md`** – קומפוננטות משותפות.
-14. **`ui_components.md`** – ספריית קומפוננטות בסיסית.
-15. **`utils.md`** – Utilities כלליים.
+14. **`ui_components.md`** – ספריית קומפוננטות בסיסית (shadcn/ui).
+15. **`hooks.md`** – Hooks מותאמים.
 16. **`configuration.md`** – תצורת פרויקט וקבצי מערכת.
+17. **`manager.md`** – קטלוג תהליכים לפי רמת הרשאה (מה כל משתמש/מנהל יכול לעשות בפועל), מקושר לקומפוננטה האחראית על כל תהליך.
