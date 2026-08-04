@@ -129,7 +129,7 @@ export default function KPIHeader({ currentUser, onKPIClick, onStartSwitchFlow }
   ];
 
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 mb-6">
+    <div className="grid grid-cols-5 gap-1 sm:gap-2 mb-6">
       {kpis.map((kpi, index) => (
         <motion.div
           key={kpi.id}

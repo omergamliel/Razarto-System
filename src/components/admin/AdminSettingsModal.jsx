@@ -732,7 +732,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
             </div>
 
             <div
-              className="mt-3 flex gap-2 overflow-x-auto hide-scrollbar py-2"
+              className="mt-3 flex flex-wrap gap-2 py-2"
               dir="rtl"
             >
               {tabs.map((tab) => (

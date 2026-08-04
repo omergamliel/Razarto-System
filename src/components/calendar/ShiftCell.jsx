@@ -128,7 +128,7 @@ export default function ShiftCell({
 
       <div className={`
         absolute top-1 right-1 md:top-2 md:right-2 w-6 h-6 md:w-8 md:h-8 rounded-lg flex items-center justify-center
-        ${today ? 'bg-[#64B5F6] text-white' : 'bg-gray-100 text-gray-600'}
+        ${today ? 'bg-[#64B5F6] text-white' : holidayName ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}
         font-semibold text-xs md:text-sm
       `}>
         {format(date, 'd')}
@@ -136,7 +136,7 @@ export default function ShiftCell({
 
       {holidayName && (
         <div
-          className="absolute top-1 left-1 md:top-2 md:left-2 max-w-[58%] truncate rounded-md bg-purple-100 text-purple-700 text-[8px] md:text-[10px] font-semibold px-1 py-0.5"
+          className="hidden md:block absolute top-2 left-2 max-w-[58%] truncate rounded-md bg-purple-100 text-purple-700 text-[10px] font-semibold px-1 py-0.5"
           title={holidayName}
         >
           {holidayName}
@@ -145,6 +145,11 @@ export default function ShiftCell({
 
       {shift && (
         <div className="mt-6 md:mt-10 space-y-1 md:space-y-1.5">
+          {holidayName && (
+            <p className="md:hidden text-center text-[9px] font-semibold text-purple-700 truncate px-0.5 leading-tight">
+              {holidayName}
+            </p>
+          )}
           {/* Assignees / Covering Users */}
           <div className="space-y-0.5">
             <div className="md:hidden space-y-0.5">
@@ -172,6 +177,12 @@ export default function ShiftCell({
         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
           <span className="text-xs text-gray-400">לחץ להוספה</span>
         </div>
+      )}
+
+      {!shift && holidayName && (
+        <p className="md:hidden absolute bottom-1 left-1 right-1 text-center text-[9px] font-semibold text-purple-700 truncate px-1">
+          {holidayName}
+        </p>
       )}
     </motion.div>
   );

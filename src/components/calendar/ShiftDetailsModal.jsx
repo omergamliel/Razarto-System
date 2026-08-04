@@ -11,6 +11,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
 import { buildShiftDeepLink, buildSwapTemplate, calculateMissingSegments, resolveSwapType, buildDateTime, computeCoverageSummary, getCoverageColor, subtractSegments } from './whatsappTemplates';
+import { useHolidays } from './useHolidays';
 import LoadingSkeleton from '../LoadingSkeleton';
 
 export default function ShiftDetailsModal({
@@ -214,6 +215,21 @@ export default function ShiftDetailsModal({
       endDateObj = startDateObj;
     }
   }
+
+  // Holiday label for this shift's date (shown in purple, matching the
+  // calendar cell), so a holiday shift is still identifiable inside the
+  // details modal.
+  const holidayYears = useMemo(() => {
+    const years = new Set();
+    if (shiftStartDate) years.add(new Date(shiftStartDate).getFullYear());
+    if (shiftEndDate) years.add(new Date(shiftEndDate).getFullYear());
+    return Array.from(years);
+  }, [shiftStartDate, shiftEndDate]);
+  const { data: holidaysData } = useHolidays(holidayYears);
+  const shiftHolidayName = useMemo(() => {
+    const labels = holidaysData?.labels || {};
+    return labels[shiftStartDate] || labels[shiftEndDate] || null;
+  }, [holidaysData, shiftStartDate, shiftEndDate]);
 
   // Same staleness guard as resolvedSwapType/isPartialLike: only trust the
   // shift's own coverageType/swap_type fields while there's an actual
@@ -542,6 +558,14 @@ export default function ShiftDetailsModal({
                   </span>
                 )}
             </div>
+
+            {shiftHolidayName && (
+              <div className="flex justify-center">
+                <span className="inline-flex items-center rounded-full bg-purple-100 text-purple-700 px-3 py-1 text-xs font-semibold border border-purple-200">
+                  {shiftHolidayName}
+                </span>
+              </div>
+            )}
 
             <div className="flex items-center justify-between bg-gray-50 rounded-2xl p-1 border border-gray-100 shadow-sm">
                 {/* Start */}
