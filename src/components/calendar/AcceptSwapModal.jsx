@@ -173,14 +173,27 @@ export default function AcceptSwapModal({
     if (!fullShiftStart || !fullShiftEnd) return [];
     const covered = approvedCoverageSegments.map((seg) => ({ ...seg, variant: 'covered' }));
     const mine = myCoverageSegment ? [{ ...myCoverageSegment, variant: 'mine' }] : [];
-    const exclusions = myCoverageSegment ? [...approvedCoverageSegments, myCoverageSegment] : approvedCoverageSegments;
+    // The requested-but-still-uncovered gaps (missingSegments) get their own
+    // grey band, distinct from the blue "still with the original owner"
+    // band — this is the range someone actually asked for help with and
+    // nobody has claimed yet, as opposed to the rest of the shift that was
+    // never part of the request in the first place.
+    const needsHelp = missingSegments.map((seg) => ({
+      start: seg.start,
+      end: seg.end,
+      label: 'טרם נתפס',
+      variant: 'needsHelp'
+    }));
+    const exclusions = myCoverageSegment
+      ? [...approvedCoverageSegments, myCoverageSegment, ...missingSegments]
+      : [...approvedCoverageSegments, ...missingSegments];
     const remaining = subtractSegments(fullShiftStart, fullShiftEnd, exclusions).map((seg) => ({
       ...seg,
       label: originalUserName,
       variant: 'original'
     }));
-    return [...covered, ...mine, ...remaining].sort((a, b) => a.start - b.start);
-  }, [approvedCoverageSegments, myCoverageSegment, originalUserName, fullShiftStart, fullShiftEnd]);
+    return [...covered, ...mine, ...needsHelp, ...remaining].sort((a, b) => a.start - b.start);
+  }, [approvedCoverageSegments, myCoverageSegment, missingSegments, originalUserName, fullShiftStart, fullShiftEnd]);
 
   const totalMinutes = fullShiftStart && fullShiftEnd ? differenceInMinutes(fullShiftEnd, fullShiftStart) : 0;
   const toPercent = (date) => {
@@ -268,7 +281,7 @@ export default function AcceptSwapModal({
       const startText = format(start, "EEEE, d בMMMM HH:mm", { locale: he });
       const endText = format(end, sameDay ? 'HH:mm' : "EEEE, d בMMMM HH:mm", { locale: he });
       return `${startText} - ${endText}`;
-    } catch (err) {
+    } catch {
       return '';
     }
   }, [requestEndTime, requestStartTime, shift?.end_time, shift?.start_time, shiftEndDate, shiftStartDate]);
@@ -415,7 +428,7 @@ export default function AcceptSwapModal({
       if (wantsFull) {
         toast.success('ההחלפה בוצעה בהצלחה!');
       }
-    } catch (err) {
+    } catch {
       toast.error('אירעה שגיאה בעת שליחת הכיסוי');
     }
   };
@@ -475,12 +488,6 @@ export default function AcceptSwapModal({
 
             {/* Decision UI shown for all cases */}
             <div className="space-y-4">
-              <div className="bg-blue-50 border border-blue-100 p-3 rounded-xl text-right shadow-inner">
-                <p className="text-sm sm:text-base text-blue-900 leading-relaxed">
-                  עלתה בקשה מהמשתמש/ת <span className="font-bold">{originalUserName}</span> לכיסוי {requestType === 'partial' ? 'חלקי' : 'מלא'} של המשמרת.
-                </p>
-              </div>
-
               <div className={`grid grid-cols-1 ${isPartialRequest || hasExistingApprovedCoverage ? '' : 'sm:grid-cols-2'} gap-3`}>
                 {!isPartialRequest && !hasExistingApprovedCoverage && (
                   <button
@@ -511,8 +518,7 @@ export default function AcceptSwapModal({
                 <p className="text-sm font-semibold text-red-700">חלונות שלא כוסו עדיין</p>
                 <div className="space-y-2 text-[13px] text-red-800">
                   {missingSegments.map((seg, idx) => (
-                    <div key={`${seg.start}-${idx}`} className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
-                      <span className="font-bold">חלון #{idx + 1}</span>
+                    <div key={`${seg.start}-${idx}`} className="flex items-center justify-center">
                       <span dir="ltr" className="font-mono text-xs bg-white/70 px-2 py-1 rounded-lg border border-red-100">{formatSegmentText(seg)}</span>
                     </div>
                   ))}
@@ -528,10 +534,6 @@ export default function AcceptSwapModal({
                   exit={{ opacity: 0, height: 0 }}
                   className="space-y-4 overflow-hidden"
                 >
-                  <div className="flex items-center justify-between">
-                    <Label className="text-gray-700 font-medium">פרטי הכיסוי שלך</Label>
-                    <p className="text-xs text-gray-500">ניתן לבחור רק מתוך החלונות הפנויים</p>
-                  </div>
                   <div className="bg-gray-50 rounded-xl p-4 space-y-3">
                     <div className="rounded-xl border border-gray-200 bg-white p-3 text-xs text-gray-700">
                       <p className="font-semibold text-gray-800 mb-1">גבולות המשמרת המלאים</p>
@@ -546,7 +548,6 @@ export default function AcceptSwapModal({
                           onClick={() => setSelectedSegmentIdx(idx)}
                           className={`flex-1 min-w-[140px] px-3 py-2 rounded-xl border text-xs sm:text-sm transition-all ${selectedSegmentIdx === idx ? 'border-blue-500 bg-white shadow-sm' : 'border-gray-200 bg-white/70 hover:border-blue-200'}`}
                         >
-                          <p className="font-semibold text-gray-800">חלון {idx + 1}</p>
                           <p className="text-[11px] text-gray-600" dir="ltr">{formatSegmentText(seg)}</p>
                         </button>
                       ))}
@@ -580,6 +581,8 @@ export default function AcceptSwapModal({
                                 ? { bg: 'bg-blue-200', text: 'text-blue-700' }
                                 : band.variant === 'mine'
                                 ? { bg: 'bg-green-200', text: 'text-green-700' }
+                                : band.variant === 'needsHelp'
+                                ? { bg: 'bg-gray-300', text: 'text-gray-600' }
                                 : getCoverageColor(coveringColorMap.get(band.label) ?? 0);
                             return (
                               <div
@@ -687,6 +690,9 @@ export default function AcceptSwapModal({
                       {/* Legend */}
                       <div className="flex items-center justify-center flex-wrap gap-3 text-[11px] text-gray-500">
                           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-blue-200 inline-block" /> נשאר אצל {originalUserName}</span>
+                          {missingSegments.length > 0 && (
+                            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-gray-300 inline-block" /> טרם נתפס</span>
+                          )}
                           {Array.from(coveringColorMap.entries()).map(([name, colorIdx]) => (
                             <span key={name} className="flex items-center gap-1">
                               <span className={`w-3 h-3 rounded-full inline-block ${getCoverageColor(colorIdx).dot}`} /> {name}
@@ -698,7 +704,6 @@ export default function AcceptSwapModal({
                           <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-[#EF5350] inline-block" /> הבחירה הנוכחית שלך</span>
                       </div>
                     </div>
-                    
 
                     {/* Manual Inputs */}
                     <div className="bg-white rounded-2xl p-5 grid grid-cols-2 gap-4 border border-gray-100 shadow-sm">
@@ -722,16 +727,6 @@ export default function AcceptSwapModal({
                           {endDate ? format(new Date(endDate), 'EEEE, dd/MM', { locale: he }) : ''}
                         </p>
                       </div>
-                    </div>
-
-                    <div className="bg-white border border-blue-100 rounded-xl p-3 text-sm text-blue-900 space-y-1">
-                      <p className="font-semibold">סיכום בחירה</p>
-                      <p className="text-xs" dir="ltr">
-                        {startDate && startTime ? format(new Date(`${startDate}T${startTime}`), 'EEEE dd/MM HH:mm', { locale: he }) : ''}
-                        {` → `}
-                        {endDate && endTime ? format(new Date(`${endDate}T${endTime}`), 'EEEE dd/MM HH:mm', { locale: he }) : ''}
-                      </p>
-                      <p className="text-[11px] text-blue-800">נא לוודא שהזמנים מתוך החלון שבחרת</p>
                     </div>
 
                   </div>
