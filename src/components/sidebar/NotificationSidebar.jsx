@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Bell,
+  MessageSquare,
   X,
   ChevronRight,
   ArrowLeftRight,
@@ -87,17 +88,13 @@ export default function NotificationSidebar() {
       <button
         onClick={() => setIsOpen((o) => !o)}
         aria-label={isOpen ? "סגירת הודעות" : "פתיחת הודעות"}
-        className="fixed top-1/2 -translate-y-1/2 right-0 z-40 flex items-center justify-center h-20 w-9 rounded-l-xl bg-white shadow-lg border border-r-0 border-gray-200 hover:bg-gray-50 transition-colors"
+        className="fixed bottom-5 right-5 z-40 flex items-center justify-center h-12 w-12 rounded-full bg-black hover:bg-gray-800 shadow-lg transition-colors"
         dir="rtl"
       >
-        <div className="relative">
-          <Bell className="w-5 h-5 text-gray-600" />
-          {count > 0 && (
-            <span className="absolute -top-2 -right-2 min-w-[16px] h-4 px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
-              {count > 9 ? "9+" : count}
-            </span>
-          )}
-        </div>
+        <MessageSquare className="w-6 h-6 text-white" />
+        {count > 0 && (
+          <span className="absolute top-1 right-1 w-3 h-3 rounded-full bg-blue-500 border-2 border-black" />
+        )}
       </button>
 
       <AnimatePresence>
