@@ -4,6 +4,7 @@ import { base44 } from '@/api/base44Client';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { Button } from "@/components/ui/button";
+import { useScrollLock } from '@/hooks/useScrollLock';
 import {
   normalizeShiftContext,
   computeCoverageSummary
@@ -89,6 +90,16 @@ export default function ShiftCalendar() {
       if (switchFlowWarningTimeoutRef.current) clearTimeout(switchFlowWarningTimeoutRef.current);
     };
   }, []);
+
+  // Lock background scrolling while any modal/menu is open, so only the
+  // open overlay scrolls — not the calendar behind it.
+  const anyModalOpen =
+    showSwapRequestModal || showAddShiftModal || showAcceptSwapModal ||
+    showActionModal || showEditRoleModal || showDetailsModal ||
+    showAdminSettings || showHallOfFame || showHelpSupport ||
+    showLogoutConfirm || showSuccessModal || showHeadToHeadSelector ||
+    showHeadToHeadApproval || showKPIListModal;
+  useScrollLock(anyModalOpen);
 
   // --- DEBUG LOGS (Internal Only, Hidden from UI) ---
   const appendSwapLog = (message, data) => {
@@ -1129,7 +1140,7 @@ export default function ShiftCalendar() {
         />
 
         {/* KPI Header */}
-        <div className="mt-6 mb-2">
+        <div className="mt-3 mb-1 md:mt-6 md:mb-2">
            <KPIHeader 
              shifts={enrichedShifts} 
              currentUser={authorizedPerson}

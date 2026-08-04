@@ -18,6 +18,7 @@ import {
   clearAll,
   dispatchAction,
 } from "./messageStore";
+import { useScrollLock } from "@/hooks/useScrollLock";
 
 // Visual codes mirror the shift-status styles in ShiftCell.jsx so a
 // notification matches the look of the shift it refers to.
@@ -79,6 +80,9 @@ export default function NotificationSidebar() {
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => subscribe(setMessages), []);
+
+  // Lock background scrolling while the sidebar panel is open.
+  useScrollLock(isOpen);
 
   const count = messages.length;
 
