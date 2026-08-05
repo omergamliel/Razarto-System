@@ -849,8 +849,9 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                 <div className="hidden md:grid grid-cols-12 gap-4 p-4 border-b border-gray-100 bg-gray-50/50 text-xs font-semibold text-gray-500 uppercase tracking-wider">
                   <div className="col-span-3">שם מלא</div>
                   <div className="col-span-2">מחלקה</div>
-                  <div className="col-span-3">אימייל</div>
+                  <div className="col-span-2">אימייל</div>
                   <div className="col-span-2">הרשאות</div>
+                  <div className="col-span-1">תפקיד</div>
                   <div className="col-span-1 text-center">קישוריות</div>
                   <div className="col-span-1 text-center">פעולות</div>
                 </div>
@@ -887,6 +888,15 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                               <span>{`מחלקה ${person.department}`}</span> •{" "}
                               <span style={{ color: permStyle.text }}>
                                 {person.permissions}
+                              </span> •{" "}
+                              <span
+                                className={
+                                  (person.role || "RR") === "RR"
+                                    ? "text-emerald-600"
+                                    : "text-gray-400"
+                                }
+                              >
+                                {person.role || "RR"}
                               </span>
                             </div>
                           </div>
@@ -899,7 +909,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                           </div>
 
                           {/* Email */}
-                          <div className="hidden md:block col-span-3 text-sm text-gray-500 truncate font-mono">
+                          <div className="hidden md:block col-span-2 text-sm text-gray-500 truncate font-mono">
                             {person.email}
                           </div>
 
@@ -914,6 +924,19 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                               }}
                             >
                               {person.permissions || "View"}
+                            </span>
+                          </div>
+
+                          {/* Role (Styled: emerald for RR, gray for None) */}
+                          <div className="hidden md:block col-span-1">
+                            <span
+                              className={`inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-bold border shadow-sm ${
+                                (person.role || "RR") === "RR"
+                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                  : "bg-gray-100 text-gray-500 border-gray-200"
+                              }`}
+                            >
+                              {person.role || "RR"}
                             </span>
                           </div>
 
