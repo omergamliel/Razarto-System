@@ -33,6 +33,15 @@
       ],
       "description": "\u05e8\u05de\u05ea \u05d4\u05e8\u05e9\u05d0\u05d5\u05ea"
     },
+    "role": {
+      "type": "string",
+      "enum": [
+        "RR",
+        "None"
+      ],
+      "default": "None",
+      "description": "\u05ea\u05e4\u05e7\u05d9\u05d3 \u05e4\u05e2\u05d9\u05dc"
+    },
     "linked_user_id": {
       "type": "string",
       "description": "\u05d4-id \u05e9\u05dc \u05d4\u05de\u05e9\u05ea\u05de\u05e9 \u05d4\u05de\u05e7\u05d5\u05e9\u05e8 \u05de\u05d8\u05d1\u05dc\u05ea \u05d4-Users \u05e9\u05dc \u05d4\u05e4\u05dc\u05d8\u05e4\u05d5\u05e8\u05de\u05d4 (\u05de\u05e6\u05d9\u05d9\u05df \u05e9\u05d4\u05e9\u05dc\u05d9\u05dd onboarding)"
