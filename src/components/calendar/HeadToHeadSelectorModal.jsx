@@ -8,7 +8,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { buildHeadToHeadDeepLink, buildHeadToHeadTemplate } from './whatsappTemplates';
 
-export default function HeadToHeadSelectorModal({ isOpen, onClose, targetShift, currentUser }) {
+export default function HeadToHeadSelectorModal({ isOpen, onClose, targetShift, currentUser, onRoleBlocked }) {
   const [selectedShift, setSelectedShift] = useState(null);
   // Neither the sonner toast (never mounted anywhere in the app) nor the
   // project's ui/toast (its close button doesn't actually hide the toast —
@@ -113,6 +113,14 @@ export default function HeadToHeadSelectorModal({ isOpen, onClose, targetShift, 
   const handleSendProposal = () => {
     if (!selectedShift) {
       setErrorMessage('נא לבחור משמרת להחלפה');
+      return;
+    }
+    // Sending this proposal is ultimately an attempt to take targetShift in
+    // exchange — blocked for role 'None' (separate from permissions), shown
+    // via the shared bottom-of-page banner rather than the inline error here.
+    if ((currentUser?.role || 'RR') === 'None') {
+      onClose();
+      onRoleBlocked?.();
       return;
     }
     setErrorMessage('');
