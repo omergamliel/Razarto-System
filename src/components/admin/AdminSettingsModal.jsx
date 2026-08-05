@@ -30,6 +30,7 @@ import {
   Globe,
   Scale,
   Loader2,
+  UserCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -159,6 +160,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
 
   const [isEditUserOpen, setIsEditUserOpen] = useState(false);
   const [isPermissionsOpen, setIsPermissionsOpen] = useState(false);
+  const [isRoleOpen, setIsRoleOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 
   // --- DATA STATES ---
@@ -171,6 +173,8 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   const [editingUser, setEditingUser] = useState(null);
   const [permissionUser, setPermissionUser] = useState(null);
   const [selectedPermission, setSelectedPermission] = useState("");
+  const [roleUser, setRoleUser] = useState(null);
+  const [selectedRole, setSelectedRole] = useState("");
   const [userToDelete, setUserToDelete] = useState(null);
 
   // Archive Logic States
@@ -191,7 +195,8 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     endDate: "",
   });
   const [deleteShiftsError, setDeleteShiftsError] = useState("");
-  const [isDeleteShiftsConfirmOpen, setIsDeleteShiftsConfirmOpen] = useState(false);
+  const [isDeleteShiftsConfirmOpen, setIsDeleteShiftsConfirmOpen] =
+    useState(false);
 
   const queryClient = useQueryClient();
 
@@ -316,6 +321,10 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         0,
       );
       const created = await base44.entities.AuthorizedPerson.create({
+        // Every user entering the system defaults to role 'RR' (allowed to
+        // take shifts) — managers can flip individuals to 'None' afterwards
+        // via "ניהול תפקיד".
+        role: "RR",
         ...userData,
         serial_id: maxId + 1,
       });
@@ -362,6 +371,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       toast.success("הפרטים עודכנו בהצלחה!");
       setIsEditUserOpen(false);
       setIsPermissionsOpen(false);
+      setIsRoleOpen(false);
     },
     onError: () => toast.error("שגיאה בעדכון הפרטים."),
   });
@@ -385,11 +395,15 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   // auto-assigned shifts by this algorithm).
   const runDistributionMutation = useMutation({
     mutationFn: async ({ startDate, endDate }) => {
-      const eligiblePeople = authorizedPeople.filter((p) =>
-        ["RR", "Manager"].includes(p.permissions),
+      const eligiblePeople = authorizedPeople.filter(
+        (p) =>
+          ["RR", "Manager"].includes(p.permissions) &&
+          (p.role || "RR") !== "None",
       );
       if (eligiblePeople.length === 0) {
-        throw new Error("אין עובדים זכאים (RR או Manager) לחלוקת משמרות");
+        throw new Error(
+          "אין עובדים זכאים (RR או Manager, עם תפקיד RR) לחלוקת משמרות",
+        );
       }
 
       const holidayDates = new Set(Object.keys(holidaysByDate));
@@ -584,6 +598,19 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     }
   };
 
+  const handleSaveRole = async () => {
+    if (!roleUser || !selectedRole) return;
+    setIsSubmitting(true);
+    try {
+      await updateUserMutation.mutateAsync({
+        id: roleUser.id,
+        data: { role: selectedRole },
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleDeleteConfirm = async () => {
     if (isArchiveMode) {
       toast.success("הבקשה להעברה לארכיון התקבלה (סימולציה)");
@@ -731,10 +758,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
               </div>
             </div>
 
-            <div
-              className="mt-3 flex flex-wrap gap-2 py-2"
-              dir="rtl"
-            >
+            <div className="mt-3 flex flex-wrap gap-2 py-2" dir="rtl">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
@@ -941,6 +965,17 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                                 >
                                   <span>ניהול הרשאות</span>
                                   <Shield className="w-4 h-4" />
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setRoleUser(person);
+                                    setSelectedRole(person.role || "RR");
+                                    setIsRoleOpen(true);
+                                  }}
+                                  className="flex items-center justify-end gap-2 cursor-pointer text-gray-700"
+                                >
+                                  <span>ניהול תפקיד</span>
+                                  <UserCheck className="w-4 h-4" />
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() => handleSendInvite(person)}
@@ -1666,14 +1701,13 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                     <p className="text-xs text-gray-500 max-w-xl">
                       מפזר משמרות רק על ימים פנויים בטווח שנבחר, בלי לגעת
                       במשמרות קיימות: עד שתי משמרות לעובד/ת בשבוע (א'-ש'),
-                      שישי-שבת תמיד יחד לאותו אדם, וכך גם ערב חג וימי החג
-                      (למשל ערב חג שחל בחמישי — המשמרת נשארת אצל אותו אדם עד
-                      שבת). ימי חול המועד (בסוכות ובפסח) לא נכללים בצירוף הזה
-                      ומתחלקים כרגיל בין העובדים, כדי שמשמרת החג לא תימשך
-                      יותר מדי אצל אדם אחד. הפיזור בין המשמרות של כל עובד/ת
-                      נשמר נוח ולא יום אחרי יום בטעות. הבחירה מתבססת על טבלת
-                      "צדק" — מי שצבר/ה הכי מעט משמרות בטווח שנבחר מקבל/ת
-                      עדיפות.
+                      שישי-שבת תמיד יחד לאותו אדם, וכך גם ערב חג וימי החג (למשל
+                      ערב חג שחל בחמישי — המשמרת נשארת אצל אותו אדם עד שבת). ימי
+                      חול המועד (בסוכות ובפסח) לא נכללים בצירוף הזה ומתחלקים
+                      כרגיל בין העובדים, כדי שמשמרת החג לא תימשך יותר מדי אצל
+                      אדם אחד. הפיזור בין המשמרות של כל עובד/ת נשמר נוח ולא יום
+                      אחרי יום בטעות. הבחירה מתבססת על טבלת "צדק" — מי שצבר/ה
+                      הכי מעט משמרות בטווח שנבחר מקבל/ת עדיפות.
                     </p>
                   </div>
                   <Scale className="w-5 h-5 text-blue-500 shrink-0" />
@@ -2190,6 +2224,82 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         </DialogContent>
       </Dialog>
 
+      {/* --- 3B. ROLE MODAL (can this person take shifts?) --- */}
+      <Dialog open={isRoleOpen} onOpenChange={setIsRoleOpen}>
+        <DialogContent className="sm:max-w-[500px] text-right" dir="rtl">
+          <DialogHeader className="text-right">
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <div className="bg-orange-100 p-2 rounded-full">
+                <UserCheck className="w-5 h-5 text-orange-600" />
+              </div>
+              ניהול תפקיד
+            </DialogTitle>
+            <DialogDescription className="text-right">
+              בחר האם <b>{roleUser?.full_name}</b> רשאי/ת לקחת משמרות. רק
+              משתמש/ת עם תפקיד RR יכול/ה לקחת משמרות (החלפות, כיסויים וחלוקה
+              הוגנת) — שדה זה נפרד מהרשאות המשתמש ואינו משנה אותן.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
+            {/* RR Option */}
+            <div
+              onClick={() => setSelectedRole("RR")}
+              className={`cursor-pointer rounded-xl border-2 p-4 transition-all relative overflow-hidden group
+                ${selectedRole === "RR" ? "border-emerald-400 bg-emerald-50" : "border-gray-200 hover:border-emerald-200 hover:bg-gray-50"}
+              `}
+            >
+              <div className="flex flex-col items-center text-center gap-3">
+                <UserCheck className="w-10 h-10 text-emerald-500" />
+                <h3 className="font-bold text-gray-800">RR</h3>
+                <p className="text-xs text-gray-500 leading-tight">
+                  רשאי/ת לקחת משמרות — החלפות, כיסויים וחלוקה הוגנת
+                </p>
+              </div>
+              {selectedRole === "RR" && (
+                <div className="absolute top-2 right-2 text-emerald-600">
+                  <Check className="w-5 h-5" />
+                </div>
+              )}
+            </div>
+
+            {/* None Option */}
+            <div
+              onClick={() => setSelectedRole("None")}
+              className={`cursor-pointer rounded-xl border-2 p-4 transition-all relative overflow-hidden group
+                ${selectedRole === "None" ? "border-red-400 bg-red-50" : "border-gray-200 hover:border-red-200 hover:bg-gray-50"}
+              `}
+            >
+              <div className="flex flex-col items-center text-center gap-3">
+                <UserX className="w-10 h-10 text-red-500" />
+                <h3 className="font-bold text-gray-800">None</h3>
+                <p className="text-xs text-gray-500 leading-tight">
+                  אינו/ה רשאי/ת לקחת משמרות בשום צורה
+                </p>
+              </div>
+              {selectedRole === "None" && (
+                <div className="absolute top-2 right-2 text-red-600">
+                  <Check className="w-5 h-5" />
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setIsRoleOpen(false)}>
+              ביטול
+            </Button>
+            <Button
+              onClick={handleSaveRole}
+              disabled={isSubmitting}
+              className="bg-orange-600 hover:bg-orange-700 text-white"
+            >
+              {isSubmitting ? "מעדכן..." : "שמור תפקיד"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* --- 4. DELETE / ARCHIVE MODAL --- */}
       <Dialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
         <DialogContent className="sm:max-w-[400px] text-right" dir="rtl">
@@ -2296,7 +2406,10 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
               <b>{shiftsInDeleteRange.length} משמרות</b> בטווח{" "}
               <span dir="ltr">
                 {deleteShiftsRange.startDate &&
-                  format(new Date(deleteShiftsRange.startDate), "dd/MM/yyyy")}{" "}
+                  format(
+                    new Date(deleteShiftsRange.startDate),
+                    "dd/MM/yyyy",
+                  )}{" "}
                 -{" "}
                 {deleteShiftsRange.endDate &&
                   format(new Date(deleteShiftsRange.endDate), "dd/MM/yyyy")}
