@@ -176,9 +176,10 @@ export default function ShiftCalendar() {
 
       debugLog("🔗 [DEBUG] Linking user...", { authId: authorizedPerson.id, serialId: currentUser.serial_id });
 
-      // 1. Update AuthorizedPerson with linked_user_id
+      // 1. Mark this AuthorizedPerson as onboarded by linking them to their
+      // platform User id (base44.auth.me() returns id, not serial_id).
       await base44.entities.AuthorizedPerson.update(authorizedPerson.id, {
-        linked_user_id: currentUser.serial_id 
+        linked_user_id: currentUser.id
       });
       
       return true;
