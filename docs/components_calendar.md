@@ -127,6 +127,8 @@
 
 **הערה:** למנהל יש בנוסף מודאל פנימי לשיוך המשמרת מחדש למשתמש אחר (`reassignMutation`).
 
+**הערה:** כפתור "ביטול בקשת החלפה" (`canCancelOwnSwap`) לא קורא ל-`onCancelRequest` ישירות — הוא פותח קודם דיאלוג אישור מקומי (`showCancelRequestConfirm` state, `Dialog` מ-`@/components/ui/dialog`, אותו דפוס כמו דיאלוג מחיקת המשמרת של המנהל) עם "האם את/ה בטוח/ה?" וכפתורי אישור/ביטול; רק אישור בפועל קורא ל-`onCancelRequest(shift)`.
+
 **כפתורי בקשת החלפה (`canRequestSwap`):** כמו ב־`ShiftActionModal.jsx`, שני כפתורים נפרדים – "בקשת החלפה מלאה" ו"בקשת החלפה חלקית" – קוראים ל־`onRequestSwap('full' | 'partial', shift)`. `ShiftCalendar.jsx` מתעלם מהארגומנט `shift` (המשמרת כבר `selectedShift`) ומשתמש רק בסוג כדי לקבוע את `initialSwapType` של `SwapRequestModal`.
 
 ---
@@ -148,7 +150,7 @@
 - `handleSendProposal()` – מפעיל את היצירה; בהצלחה סוגר את המודאל ופותח דיאלוג הצלחה במרכז המסך (לא Toast — ראו הערה למטה) עם אפשרות לשתף בוואטסאפ.
 - `buildWhatsappUrl()` – בונה קישור WhatsApp אופציונלי (`buildHeadToHeadTemplate` + `buildHeadToHeadDeepLink`) שמוצג רק כפעולת המשך בדיאלוג ההצלחה, ולא כדרך היחידה ליצור את הבקשה.
 
-**הערה:** לא נעשה שימוש ב-Toast (לא `sonner` ולא `@/components/ui/toast`) — שניהם שבורים באפליקציה הזו (ראו `docs/lib_modules.md`/`docs/ui_components.md`). מצב ההצלחה/שגיאה מנוהל ב-state מקומי (`successPrompt`, `errorMessage`) ומוצג כדיאלוג ממורכז עם כפתור סגירה שעובד בפועל.
+**הערה:** לא נעשה כאן שימוש ב-Toast. `sonner` שבור באפליקציה הזו (ה-`<Toaster/>` שלו אף פעם לא מותקן ב-`App.jsx`, ראו `docs/manager.md`); `@/components/ui/toast` לעומת זאת כן מותקן ותקין (`Toaster` שלו רץ ב-`App.jsx`, וה-hook `useToast`/`toast()` עובד) — הוא פשוט לא נקרא משום מקום באפליקציה, כולל כאן. מצב ההצלחה/שגיאה מנוהל ב-state מקומי (`successPrompt`, `errorMessage`) ומוצג כדיאלוג ממורכז עם כפתור סגירה שעובד בפועל.
 
 ---
 
