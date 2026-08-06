@@ -290,7 +290,7 @@ export function distributeShifts({
 
         if (!chosen) {
           emptyDays.forEach((d) =>
-            skipped.push({ date: d.key, reason: "אין עובד/ת זמין/ה בכלל" }),
+            skipped.push({ date: d.key, reason: "לא אותר אדם זמין בכלל" }),
           );
           return;
         }
@@ -322,7 +322,7 @@ export function distributeShifts({
 
       if (!chosen) {
         emptyDays.forEach((d) =>
-          skipped.push({ date: d.key, reason: "אין עובד/ת זמין/ה עם מכסה שבועית פנויה" }),
+          skipped.push({ date: d.key, reason: "לא אותר אדם זמין עם מכסה שבועית פנויה" }),
         );
         return;
       }
@@ -346,7 +346,7 @@ export function distributeShifts({
           : null;
       }
       remaining.forEach((d) =>
-        skipped.push({ date: d.key, reason: "אין עובד/ת זמין/ה עם מכסה שבועית פנויה" }),
+        skipped.push({ date: d.key, reason: "לא אותר אדם זמין עם מכסה שבועית פנויה" }),
       );
     });
   });
