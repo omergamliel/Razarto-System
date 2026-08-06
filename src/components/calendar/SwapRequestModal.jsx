@@ -40,7 +40,9 @@ export default function SwapRequestModal({
 
   // Initialize
   useEffect(() => {
-    if (isOpen && date && shift) {
+    if (!isOpen || !date || !shift) return;
+
+    try {
       setSwapType(initialSwapType);
 
       // 1. קביעת תאריך התחלה וסיום לפי ה-DB
@@ -73,6 +75,8 @@ export default function SwapRequestModal({
       setEndTime(shiftEndStr);
 
       setRange([0, duration]);
+    } catch (error) {
+      console.error('❌ [SwapRequestModal] Failed to initialize modal state:', error, { date, shift, initialSwapType });
     }
   }, [isOpen, date, shift, initialSwapType]);
 
@@ -119,7 +123,6 @@ export default function SwapRequestModal({
       setEndTime(format(eTime, 'HH:mm'));
   };
 
-  
   const clampMinutes = (minutes) => Math.max(0, Math.min(totalDurationRef.current, minutes));
 
   // Resolves a manually-typed HH:mm into "minutes since shift start", trying
@@ -192,8 +195,6 @@ export default function SwapRequestModal({
       endTime: finalEndTime
     };
 
-    console.log('Modal submitting payload:', payload);
-    console.log('📤 [SwapRequestModal] Submitting Request Payload:', payload);
     onSubmit(payload);
   };
   
@@ -254,13 +255,13 @@ export default function SwapRequestModal({
                 <div className="flex items-center justify-between bg-gray-50 rounded-2xl p-1 border border-gray-100 shadow-sm">
                     {/* Start Time Block */}
                     <div className="flex-1 text-center py-3">
-                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
+                        <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-1">
                             {shiftStartObjRef.current && format(shiftStartObjRef.current, 'EEEE', { locale: he })}
                         </p>
-                        <p className="text-xl font-bold text-gray-800 leading-none mb-1 font-mono">
+                        <p className="text-2xl font-bold text-gray-800 leading-none mb-1 font-mono">
                             {shiftStartStr}
                         </p>
-                        <p className="text-[11px] text-gray-400">
+                        <p className="text-sm text-gray-500">
                             {shiftStartObjRef.current && format(shiftStartObjRef.current, 'dd/MM/yyyy')}
                         </p>
                     </div>
@@ -273,13 +274,13 @@ export default function SwapRequestModal({
 
                     {/* End Time Block */}
                     <div className="flex-1 text-center py-3">
-                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
+                        <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-1">
                             {shiftEndObjRef.current && format(shiftEndObjRef.current, 'EEEE', { locale: he })}
                         </p>
-                        <p className="text-xl font-bold text-gray-800 leading-none mb-1 font-mono">
+                        <p className="text-2xl font-bold text-gray-800 leading-none mb-1 font-mono">
                             {shiftEndStr}
                         </p>
-                        <p className="text-[11px] text-gray-400">
+                        <p className="text-sm text-gray-500">
                             {shiftEndObjRef.current && format(shiftEndObjRef.current, 'dd/MM/yyyy')}
                         </p>
                     </div>
@@ -311,7 +312,7 @@ export default function SwapRequestModal({
             <AnimatePresence>
               {swapType === 'partial' && (
                 <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden space-y-6">
-                  
+
                   <div className="text-center mt-6 mb-2">
                     <p className="text-sm font-bold text-[#EF5350] mb-1">בחירת שעות ההחלפה</p>
                     <p className="text-xs text-gray-500">ניתן לבחור באמצעות הזזת הסליידר או הזנה ידנית במלבן שמתחת</p>
@@ -324,15 +325,15 @@ export default function SwapRequestModal({
                       <div className="flex justify-between text-xs font-bold text-gray-600 mb-3 px-1">
                           <div className="text-center">
                               <span>התחלה</span>
-                              <div className="text-[10px] font-normal text-gray-400 mt-0.5">{startDate && formatDisplayDate(startDate)}</div>
+                              <div className="text-xs font-normal text-gray-500 mt-0.5">{startDate && formatDisplayDate(startDate)}</div>
                           </div>
                           <div className="text-center">
                               <span>סיום</span>
-                              <div className="text-[10px] font-normal text-gray-400 mt-0.5">{endDate && formatDisplayDate(endDate)}</div>
+                              <div className="text-xs font-normal text-gray-500 mt-0.5">{endDate && formatDisplayDate(endDate)}</div>
                           </div>
                       </div>
 
-                      <div 
+                      <div
                         ref={sliderRef}
                         className="relative h-3 bg-gray-200 rounded-full cursor-pointer mx-8"
                       >
@@ -350,7 +351,7 @@ export default function SwapRequestModal({
                               className="absolute w-7 h-7 bg-white border-[3px] border-[#EF5350] rounded-full -top-2 shadow-md cursor-grab active:cursor-grabbing flex items-center justify-center z-10 hover:scale-110 transition-transform outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#EF5350]"
                               style={{ right: `${startPercent}%`, transform: 'translateX(50%)' }}
                               tabIndex={0}
-                              onMouseDown={(e) => {
+                              onMouseDown={() => {
                                   const moveHandler = (moveEvent) => handleSliderDrag(moveEvent, 0);
                                   const upHandler = () => {
                                       window.removeEventListener('mousemove', moveHandler);
@@ -359,7 +360,7 @@ export default function SwapRequestModal({
                                   window.addEventListener('mousemove', moveHandler);
                                   window.addEventListener('mouseup', upHandler);
                               }}
-                              onTouchStart={(e) => {
+                              onTouchStart={() => {
                                   const moveHandler = (moveEvent) => handleSliderDrag(moveEvent, 0);
                                   const upHandler = () => {
                                       window.removeEventListener('touchmove', moveHandler);
@@ -379,7 +380,7 @@ export default function SwapRequestModal({
                               className="absolute w-7 h-7 bg-white border-[3px] border-[#EF5350] rounded-full -top-2 shadow-md cursor-grab active:cursor-grabbing flex items-center justify-center z-10 hover:scale-110 transition-transform outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#EF5350]"
                               style={{ right: `${endPercent}%`, transform: 'translateX(50%)' }}
                               tabIndex={0}
-                              onMouseDown={(e) => {
+                              onMouseDown={() => {
                                   const moveHandler = (moveEvent) => handleSliderDrag(moveEvent, 1);
                                   const upHandler = () => {
                                       window.removeEventListener('mousemove', moveHandler);
@@ -388,7 +389,7 @@ export default function SwapRequestModal({
                                   window.addEventListener('mousemove', moveHandler);
                                   window.addEventListener('mouseup', upHandler);
                               }}
-                              onTouchStart={(e) => {
+                              onTouchStart={() => {
                                   const moveHandler = (moveEvent) => handleSliderDrag(moveEvent, 1);
                                   const upHandler = () => {
                                       window.removeEventListener('touchmove', moveHandler);
