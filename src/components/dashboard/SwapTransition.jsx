@@ -36,9 +36,14 @@ export default function SwapTransition({ item, authorizedUsers = [] }) {
           {item.coverageSegments.map((seg, idx) => {
             const coveringUser = resolveUser(seg.covering_user_id);
             return (
-              <div key={`t-${idx}`} className="flex items-center gap-2 flex-wrap">
+              <div
+                key={`t-${idx}`}
+                className="flex items-center gap-2 flex-wrap"
+              >
                 <ArrowLeft className="w-4 h-4 text-green-600 flex-shrink-0" />
-                <span className="text-[11px] font-medium text-gray-500">אחרי</span>
+                <span className="text-[11px] font-medium text-gray-500">
+                  אחרי
+                </span>
                 <span className="text-sm font-semibold text-green-800 bg-green-50 px-2.5 py-1 rounded-lg border border-green-200">
                   {coveringUser?.full_name || "מחליף"}
                 </span>
@@ -73,7 +78,9 @@ export default function SwapTransition({ item, authorizedUsers = [] }) {
       </div>
       <Arrow className="w-5 h-5 text-gray-400 mb-1" />
       <div className="flex flex-col gap-1">
-        <span className="text-[11px] font-medium text-gray-500">{afterLabel}</span>
+        <span className="text-[11px] font-medium text-gray-500">
+          {afterLabel}
+        </span>
         <span className="text-sm font-semibold text-green-800 bg-green-50 px-2.5 py-1 rounded-lg border border-green-200">
           {afterNames.length > 0 ? afterNames.join(", ") : "—"}
         </span>
