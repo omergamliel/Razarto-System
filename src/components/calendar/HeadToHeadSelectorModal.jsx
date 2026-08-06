@@ -215,7 +215,7 @@ export default function HeadToHeadSelectorModal({ isOpen, onClose, targetShift, 
             <div className="flex gap-3">
               <Button onClick={onClose} variant="outline" className="flex-1 h-12 rounded-xl text-gray-600">ביטול</Button>
               <Button onClick={handleSendProposal} disabled={!selectedShift || createH2HRequestMutation.isPending} className={`flex-1 h-12 text-white rounded-xl shadow-md transition-all ${!selectedShift ? 'bg-gray-300 cursor-not-allowed' : 'bg-gradient-to-r from-purple-500 to-purple-600'}`}>
-                <span className="flex items-center gap-2">{createH2HRequestMutation.isPending ? 'שולח...' : 'שלח בקשת החלפה'} <Send className="w-4 h-4" /></span>
+                <span className="flex items-center gap-2">{createH2HRequestMutation.isPending ? 'שולח...' : 'שלח בקשת החלפה'}</span>
               </Button>
             </div>
           </div>
