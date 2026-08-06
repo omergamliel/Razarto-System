@@ -1,7 +1,7 @@
 # קומפוננטות Admin (`src/components/admin`)
 
 ## `AdminSettingsModal.jsx`
-**מטרה:** מסך ניהול ראשי, נגיש לכל מי שההרשאה שלו `Admin` **או** `Manager` (ר' `ShiftCalendar.jsx` — `isAdmin = permissions === 'Admin' || permissions === 'Manager'`; שני התפקידים מקבלים גישה זהה לכל הטאבים, אין הבחנה פנימית נוספת בתוך המודאל עצמו). כולל כמה טאבים: הגדרות, משתמשים והרשאות, תמיכה, ערכת נושא, לוגים, וחלוקת משמרות.
+**מטרה:** מסך ניהול ראשי, נגיש לכל מי שההרשאה שלו `Admin` **או** `Manager` (ר' `ShiftCalendar.jsx` — `isAdmin = permissions === 'Admin' || permissions === 'Manager'`; שני התפקידים מקבלים גישה זהה לכל הטאבים, אין הבחנה פנימית נוספת בתוך המודאל עצמו). כולל כמה טאבים: הגדרות, משתמשים והרשאות, תמיכה, ערכת נושא, לוגים, חלוקת משמרות, ובדיקות מערכת.
 
 **פונקציות עיקריות (טאב משתמשים):**
 - `getPermissionStyle(perm)` – בחירת צבעים לתגית הרשאה.
@@ -18,9 +18,14 @@
 **פונקציות בטאבים האחרים (System / Support / FAQ / Theme / Monitor / Logs):**
 - `handleSystemChange(field, value)`, `handleSupportChange(field, value)`, `handleFaqToggle(id)`, `handleFaqChange(id, field, value)`, `handleAddFaq()`, `moveFaq(id, direction)` – עדכון ה-state המקומי של הטאבים הללו.
 
+**פונקציות בטאב "בדיקות מערכת" (`activeTab === 'tests'`):**
+- `handleRunTestSuite()` – מריץ את חבילת הבדיקות ב-`src/lib/testing/` (`runPureTests()` ואז `runLiveTests()`, ר' `docs/manager.md` לפירוט מלא), שומר את התוצאות המאוחדות ב-`testResults`, ואז מריץ `queryClient.invalidateQueries` על `['shifts']`/`['swap-requests']`/`['coverages']`/`['authorized-people']`. נגיש רק דרך `showTestExportGate` — דיאלוג אישור עם "ייצוא נתונים" (`exportAllData()`), "המשך בכל זאת" (מפעיל את `handleRunTestSuite`) ו"ביטול".
+- הבדיקות ה"חיות" (קטגוריית `live`) יוצרות ומוחקות בעצמן משתמשים/משמרות/בקשות סינתטיים (`src/lib/testing/fixtures.js`, מסומנים בקידומת `[TEST]` ובטווח `serial_id` שמור מ-9,000,000) — הן לא נוגעות בנתונים אמיתיים.
+
 **אינטראקציות מול Base44:**
 - `AuthorizedPerson.list/create/update/delete` – בטאב המשתמשים.
 - `Shift.list/create/delete` (דרך ה-Query המשותף `['shifts']`) – בטאב חלוקת המשמרות.
+- `AuthorizedPerson`/`Shift`/`SwapRequest`/`ShiftCoverage` (`create`/`update`/`delete`/`list`/`get`) – בטאב בדיקות מערכת, על ידי `src/lib/testing/liveTests.js` ו-`exportData.js` ישירות (לא דרך ה-Mutations של `ShiftCalendar.jsx`).
 
 > **הערה חשובה:** טאבי System Settings, Support/FAQ, Theme Palette ו-Monitor/Logs מוצגים עם נתונים מקומיים (`useState`) בלבד ואינם קוראים ל-Base44 – שינויים בהם לא נשמרים בין רענונים. רק טאבי "משתמשים" ו"חלוקת משמרות" באמת שומרים נתונים.
 
