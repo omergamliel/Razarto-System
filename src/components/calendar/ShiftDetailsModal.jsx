@@ -732,13 +732,13 @@ export default function ShiftDetailsModal({
                 <div className="flex items-center justify-between bg-gray-50 rounded-2xl p-1 border border-gray-100 shadow-sm">
                   {/* Start */}
                   <div className="flex-1 text-center py-3">
-                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
+                    <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-1">
                       {format(startDateObj, "EEEE", { locale: he })}
                     </p>
-                    <p className="text-xl font-bold text-gray-800 leading-none mb-1 font-mono">
+                    <p className="text-2xl font-bold text-gray-800 leading-none mb-1 font-mono">
                       {startTime}
                     </p>
-                    <p className="text-[11px] text-gray-400">
+                    <p className="text-sm text-gray-500">
                       {format(startDateObj, "dd/MM/yyyy")}
                     </p>
                   </div>
@@ -750,13 +750,13 @@ export default function ShiftDetailsModal({
 
                   {/* End */}
                   <div className="flex-1 text-center py-3">
-                    <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
+                    <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-1">
                       {format(endDateObj, "EEEE", { locale: he })}
                     </p>
-                    <p className="text-xl font-bold text-gray-800 leading-none mb-1 font-mono">
+                    <p className="text-2xl font-bold text-gray-800 leading-none mb-1 font-mono">
                       {endTime}
                     </p>
-                    <p className="text-[11px] text-gray-400">
+                    <p className="text-sm text-gray-500">
                       {format(endDateObj, "dd/MM/yyyy")}
                     </p>
                   </div>
@@ -869,7 +869,7 @@ export default function ShiftDetailsModal({
                                         {row.name}
                                       </p>
                                       <span
-                                        className={`text-xs font-mono ${rowColors.text}`}
+                                        className={`text-sm font-mono ${rowColors.text}`}
                                         dir="ltr"
                                       >
                                         {format(row.start, "HH:mm")} -{" "}
@@ -911,7 +911,7 @@ export default function ShiftDetailsModal({
                             <p className="text-sm font-semibold text-red-700">
                               שעות חסרות
                             </p>
-                            <p className="text-xs text-red-700" dir="ltr">
+                            <p className="text-sm text-red-700" dir="ltr">
                               {formatSegment(seg.start, seg.end)}
                             </p>
                             <p className="text-[11px] text-red-600">
@@ -956,7 +956,7 @@ export default function ShiftDetailsModal({
                             ? "כיסוי המשמרת הושלם על ידי "
                             : "חלק מהמשמרת כוסה על ידי "}
                           <span className="font-bold">{row.name}</span> בטווח{" "}
-                          <span dir="ltr" className="font-mono text-xs">
+                          <span dir="ltr" className="font-mono text-sm font-semibold">
                             {format(row.start, "HH:mm")}–
                             {format(row.end, "HH:mm")}
                           </span>
