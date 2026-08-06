@@ -943,18 +943,20 @@ export default function ShiftDetailsModal({
                     </div>
                     <div className="space-y-2 text-sm text-gray-700">
                       <div className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm">
+                        עבור המשמרת של{" "}
                         <span className="font-bold">{ownerDisplayName}</span>{" "}
-                        ביקש/ה {isPartial ? "החלפה חלקית" : "החלפה מלאה"} למשמרת
+                        התבקשה {isPartial ? "החלפה חלקית" : "החלפה מלאה"}
                       </div>
                       {coverageHistory.map((row) => (
                         <div
                           key={row.id}
                           className="bg-white border border-gray-100 rounded-xl p-3 shadow-sm"
                         >
-                          המשתמש/ת <span className="font-bold">{row.name}</span>{" "}
                           {row.completesShift
-                            ? "השלים/ה את כיסוי המשמרת בטווח"
-                            : "כיסה/תה חלק מהמשמרת בטווח"}{" "}
+                            ? "כיסוי המשמרת הושלם על ידי "
+                            : "חלק מהמשמרת כוסה על ידי "}
+                          <span className="font-bold">{row.name}</span>{" "}
+                          בטווח{" "}
                           <span dir="ltr" className="font-mono text-xs">
                             {format(row.start, "HH:mm")}–
                             {format(row.end, "HH:mm")}
@@ -1069,8 +1071,8 @@ export default function ShiftDetailsModal({
             <DialogHeader>
               <DialogTitle>ביטול בקשת החלפה</DialogTitle>
               <DialogDescription>
-                האם את/ה בטוח/ה שברצונך לבטל את בקשת ההחלפה? המשמרת תחזור
-                לסטטוס רגיל. הפעולה לא ניתנת לביטול.
+                לבטל את בקשת ההחלפה? המשמרת תחזור לסטטוס רגיל. הפעולה לא
+                ניתנת לביטול.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
@@ -1093,7 +1095,7 @@ export default function ShiftDetailsModal({
             <DialogHeader>
               <DialogTitle>מחיקת משמרת</DialogTitle>
               <DialogDescription>
-                האם את/ה בטוח/ה? הפעולה לא ניתנת לביטול.
+                האם למחוק את המשמרת? הפעולה לא ניתנת לביטול.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
