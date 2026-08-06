@@ -31,6 +31,7 @@ import SwapSuccessModal from "./SwapSuccessModal";
 import HeadToHeadSelectorModal from "./HeadToHeadSelectorModal";
 import HeadToHeadApprovalModal from "./HeadToHeadApprovalModal";
 import HallOfFameModal from "../dashboard/HallOfFameModal";
+import FairnessMatrixModal from "../dashboard/FairnessMatrixModal";
 import HelpSupportModal from "../dashboard/HelpSupportModal";
 import LoadingSkeleton from "../LoadingSkeleton";
 import SwitchFlowBand from "./SwitchFlowBand";
@@ -59,6 +60,7 @@ export default function ShiftCalendar() {
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [showAdminSettings, setShowAdminSettings] = useState(false);
   const [showHallOfFame, setShowHallOfFame] = useState(false);
+  const [showFairnessMatrix, setShowFairnessMatrix] = useState(false);
   const [showHelpSupport, setShowHelpSupport] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [deepLinkShiftId, setDeepLinkShiftId] = useState(null);
@@ -119,6 +121,7 @@ export default function ShiftCalendar() {
     showDetailsModal ||
     showAdminSettings ||
     showHallOfFame ||
+    showFairnessMatrix ||
     showHelpSupport ||
     showLogoutConfirm ||
     showSuccessModal ||
@@ -1091,6 +1094,7 @@ export default function ShiftCalendar() {
     setShowDetailsModal(false);
     setShowAdminSettings(false);
     setShowHallOfFame(false);
+    setShowFairnessMatrix(false);
     setShowHelpSupport(false);
     setShowLogoutConfirm(false);
     setShowSuccessModal(false);
@@ -1347,6 +1351,7 @@ export default function ShiftCalendar() {
           isAdmin={isAdmin}
           onOpenAdminSettings={() => setShowAdminSettings(true)}
           onOpenHallOfFame={() => setShowHallOfFame(true)}
+          onOpenFairnessMatrix={() => setShowFairnessMatrix(true)}
           onOpenHelp={() => setShowHelpSupport(true)}
           onLogout={() => setShowLogoutConfirm(true)}
           currentUser={authorizedPerson}
@@ -1587,6 +1592,11 @@ export default function ShiftCalendar() {
       />
 
       <HallOfFameModal isOpen={showHallOfFame} onClose={closeAllModals} />
+
+      <FairnessMatrixModal
+        isOpen={showFairnessMatrix}
+        onClose={closeAllModals}
+      />
 
       <HelpSupportModal isOpen={showHelpSupport} onClose={closeAllModals} />
 

@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { Button } from "@/components/ui/button";
-import { ChevronRight, ChevronLeft, Calendar, List, Settings, Upload, Info, Trophy, HelpCircle } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Calendar, List, Settings, Upload, Info, Trophy, HelpCircle, Scale } from 'lucide-react';
 import { format, addMonths, subMonths, addWeeks, subWeeks } from 'date-fns';
 import { he } from 'date-fns/locale';
 import { motion } from 'framer-motion';
@@ -16,6 +16,7 @@ export default function CalendarHeader({
   isAdmin,
   onOpenAdminSettings,
   onOpenHallOfFame,
+  onOpenFairnessMatrix,
   onOpenHelp,
   onLogout,
   currentUser,
@@ -168,6 +169,15 @@ export default function CalendarHeader({
                         />
                     </button>
 
+                    {/* 1b. טבלת צדק */}
+                    <button
+                        onClick={onOpenFairnessMatrix}
+                        className="group relative p-2 rounded-xl hover:bg-gray-100 transition-all duration-200"
+                        title="טבלת צדק"
+                    >
+                        <Scale className="w-6 h-6 md:w-7 md:h-7 text-gray-700 group-hover:text-gray-900 group-hover:scale-110 transition-transform" />
+                    </button>
+
                     {/* 2. תמיכה ועזרה */}
                     <button
                         onClick={onOpenHelp}
@@ -295,4 +305,3 @@ export default function CalendarHeader({
     </motion.div>
   );
 }
-
