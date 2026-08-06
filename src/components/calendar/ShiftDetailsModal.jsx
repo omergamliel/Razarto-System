@@ -1015,11 +1015,6 @@ export default function ShiftDetailsModal({
                       }}
                       className="min-w-[140px] flex-1 sm:flex-none h-12 bg-[#3b82f6] hover:bg-[#2563eb] focus-visible:ring focus-visible:ring-offset-2 focus-visible:ring-[#1d4ed8] text-white rounded-xl shadow-md flex flex-row-reverse items-center justify-center gap-2"
                     >
-                      <img
-                        src="https://cdn-icons-png.flaticon.com/128/1969/1969142.png"
-                        alt="ראש בראש"
-                        className="w-5 h-5"
-                      />
                       ראש בראש
                     </Button>
                   )}
