@@ -109,11 +109,11 @@ export default function ShiftActionModal({
                 <div className="flex items-center justify-between bg-gray-50 rounded-2xl p-1 border border-gray-100 shadow-sm">
                     {/* Start */}
                     <div className="flex-1 text-center py-3">
-                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
+                        <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-1">
                             {format(startDateObj, 'EEEE', { locale: he })}
                         </p>
-                        <p className="text-xl font-bold text-gray-800 leading-none mb-1 font-mono">{startTime}</p>
-                        <p className="text-[11px] text-gray-400">{format(startDateObj, 'dd/MM/yyyy')}</p>
+                        <p className="text-2xl font-bold text-gray-800 leading-none mb-1 font-mono">{startTime}</p>
+                        <p className="text-sm text-gray-500">{format(startDateObj, 'dd/MM/yyyy')}</p>
                     </div>
 
                     {/* Divider */}
@@ -123,22 +123,22 @@ export default function ShiftActionModal({
 
                     {/* End */}
                     <div className="flex-1 text-center py-3">
-                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">
+                        <p className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-1">
                             {format(endDateObj, 'EEEE', { locale: he })}
                         </p>
-                        <p className="text-xl font-bold text-gray-800 leading-none mb-1 font-mono">{endTime}</p>
-                        <p className="text-[11px] text-gray-400">{format(endDateObj, 'dd/MM/yyyy')}</p>
+                        <p className="text-2xl font-bold text-gray-800 leading-none mb-1 font-mono">{endTime}</p>
+                        <p className="text-sm text-gray-500">{format(endDateObj, 'dd/MM/yyyy')}</p>
                     </div>
                 </div>
 
                 {/* Buttons */}
                 <div className="flex flex-col gap-3 pt-2">
-                  <Button
+                   <Button
                       onClick={() => onRequestSwap('full')}
                       className="w-full h-12 bg-[#EF5350] hover:bg-[#E53935] text-white rounded-xl shadow-lg shadow-red-500/20 text-base font-bold"
                     >
                       בקשת החלפה מלאה/חלקית
-                  </Button>
+                   </Button>
 
                    <Button
                       onClick={onClose}
