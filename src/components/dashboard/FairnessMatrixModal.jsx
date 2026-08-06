@@ -13,7 +13,7 @@ const DEPARTMENT_LABELS = {
   ת: "מחלקה ת",
 };
 
-export default function FairnessMatrixModal({ isOpen, onClose }) {
+export default function FairnessMatrixModal({ isOpen, onClose, currentUser }) {
   const today = new Date();
   const [startDate, setStartDate] = useState(
     format(startOfMonth(today), "yyyy-MM-dd"),
@@ -42,10 +42,16 @@ export default function FairnessMatrixModal({ isOpen, onClose }) {
       return { users: [], departments: [], maxCount: 0 };
     }
 
+    // Only users with the active 'RR' role are counted (AuthorizedPerson.role,
+    // separate from permissions) — people blocked from taking shifts (role
+    // 'None') are excluded from the fairness picture entirely.
+    const rrPeople = people.filter((p) => (p.role || "RR") === "RR");
+
     const personBySerial = new Map();
-    people.forEach((p) => {
+    rrPeople.forEach((p) => {
       if (p.serial_id != null) personBySerial.set(p.serial_id, p);
     });
+    const rrSerialIds = new Set(rrPeople.map((p) => p.serial_id));
 
     const inRange = shifts.filter((s) => {
       const d = s.start_date;
@@ -58,6 +64,8 @@ export default function FairnessMatrixModal({ isOpen, onClose }) {
     inRange.forEach((s) => {
       const owner = s.original_user_id;
       if (owner == null) return;
+      // Skip shifts owned by people who aren't RR.
+      if (!rrSerialIds.has(owner)) return;
       userCounts.set(owner, (userCounts.get(owner) || 0) + 1);
 
       const person = personBySerial.get(owner);
@@ -67,20 +75,23 @@ export default function FairnessMatrixModal({ isOpen, onClose }) {
       }
     });
 
-    const users = people
+    const users = rrPeople
       .map((p) => ({
         id: p.id,
         name: p.full_name || "לא ידוע",
         department: p.department,
         count: userCounts.get(p.serial_id) || 0,
+        isMe: currentUser && p.serial_id === currentUser.serial_id,
       }))
       .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "he"));
 
+    const myDepartment = currentUser?.department;
     const departments = Array.from(deptCounts.entries())
       .map(([dept, count]) => ({
         dept,
         label: DEPARTMENT_LABELS[dept] || `מחלקה ${dept}`,
         count,
+        isMine: myDepartment && dept === myDepartment,
       }))
       .sort((a, b) => b.count - a.count);
 
@@ -217,7 +228,11 @@ export default function FairnessMatrixModal({ isOpen, onClose }) {
                   {stats.users.map((u, idx) => (
                     <div
                       key={u.id}
-                      className="flex items-center gap-3 bg-gray-50 rounded-xl p-3 border border-gray-100"
+                      className={`flex items-center gap-3 rounded-xl p-3 border transition-colors ${
+                        u.isMe
+                          ? "bg-blue-50 border-blue-300 ring-1 ring-blue-200"
+                          : "bg-gray-50 border-gray-100"
+                      }`}
                     >
                       <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 text-blue-600 flex items-center justify-center text-xs font-bold shrink-0">
                         {idx + 1}
@@ -256,7 +271,11 @@ export default function FairnessMatrixModal({ isOpen, onClose }) {
                 {stats.departments.map((d, idx) => (
                   <div
                     key={d.dept}
-                    className="flex items-center gap-3 bg-gray-50 rounded-xl p-3 border border-gray-100"
+                    className={`flex items-center gap-3 rounded-xl p-3 border transition-colors ${
+                      d.isMine
+                        ? "bg-indigo-50 border-indigo-300 ring-1 ring-indigo-200"
+                        : "bg-gray-50 border-gray-100"
+                    }`}
                   >
                     <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 text-indigo-600 flex items-center justify-center text-xs font-bold shrink-0">
                       {idx + 1}

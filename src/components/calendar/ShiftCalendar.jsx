@@ -1596,6 +1596,7 @@ export default function ShiftCalendar() {
       <FairnessMatrixModal
         isOpen={showFairnessMatrix}
         onClose={closeAllModals}
+        currentUser={authorizedPerson}
       />
 
       <HelpSupportModal isOpen={showHelpSupport} onClose={closeAllModals} />
