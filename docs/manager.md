@@ -34,7 +34,7 @@
 | פתיחת פרטי/פעולות על משמרת שלי (רגילה) | `ShiftActionModal.jsx` |
 | פתיחת פרטי משמרת של אחר, או משמרת שלי שאינה רגילה (בבקשה/כיסוי) | `ShiftDetailsModal.jsx` |
 | בקשת החלפה מלאה או חלקית על משמרת בודדת שלי | `SwapRequestModal.jsx` → `requestSwapMutation` (`ShiftCalendar.jsx`) → `SwapSuccessModal.jsx` |
-| ביטול בקשת החלפה שפתחתי | `cancelSwapMutation` / `cancelSwapRequestMutation` (`ShiftCalendar.jsx`), מופעל מ-`ShiftDetailsModal.jsx` או `KPIListModal.jsx` |
+| ביטול/דחיית בקשת החלפה שפתחתי (או בקשת "ראש בראש" נכנסת) | `cancelSwapMutation` / `cancelSwapRequestMutation` (`ShiftCalendar.jsx`), מופעל מ-`ShiftDetailsModal.jsx` או `KPIListModal.jsx` — בכל נקודות הכניסה מוצג קודם דיאלוג אישור ("האם את/ה בטוח/ה?" עם כפתורי ביטול/מחיקה) לפני שהמחיקה בפועל מתבצעת |
 | הצעת כיסוי (מלא או מקטע חלקי) לבקשה פתוחה של אחר | `AcceptSwapModal.jsx` → `offerCoverMutation` (`ShiftCalendar.jsx`) |
 | ביטול ההשתתפות שלי בכיסוי שכבר נתתי | `cancelMyCoverageMutation` (`ShiftCalendar.jsx`) |
 | הצעת "ראש בראש" ליעד ספציפי (משמרת אחת שלי מול משמרת אחת של מישהו אחר) | `HeadToHeadSelectorModal.jsx` — יוצר `SwapRequest` (`Head2Head`) בפועל ומציג דיאלוג הצלחה עם קישור וואטסאפ אופציונלי |
@@ -60,13 +60,14 @@
 | שינוי/עדכון שיוך משתמש למשמרת קיימת | `EditRoleModal.jsx` → `editRoleMutation` (`ShiftCalendar.jsx`) |
 | שיוך מחדש (reassign) מלא של משמרת לאדם אחר, מתוך פרטי המשמרת | תוך `ShiftDetailsModal.jsx` (`reassignMutation`) |
 | מחיקת משמרת | `deleteShiftMutation` (`ShiftCalendar.jsx`), מופעל מ-`ShiftActionModal.jsx`/`ShiftDetailsModal.jsx` |
-| אישור החלפה ידני (`approveSwapMutation`, נתיב ישן/משני) | `ShiftDetailsModal.jsx` (`onApprove`) |
+| אישור החלפה ידני (`approveSwapMutation`) — **קוד מת בפועל**: מוגדר ב-`ShiftCalendar.jsx` ומועבר כ-`onApprove` ל-`ShiftDetailsModal.jsx`, אך אין שום כפתור בממשק שקורא לו — לא ניתן להפעיל תהליך זה כרגע | `ShiftCalendar.jsx` (`approveSwapMutation`) |
 | הוספה/עריכה/מחיקה של משתמשים והרשאות, כולל הזמנה בפועל להתחברות לפלטפורמה | טאב "משתמשים" ב-`AdminSettingsModal.jsx` (`addUserMutation`, `updateUserMutation`, `deleteUserMutation`, `base44.users.inviteUser`) |
 | שליחת הודעת הזמנה בוואטסאפ למשתמש קיים | `handleSendInvite` בטאב "משתמשים" (`AdminSettingsModal.jsx`) |
 | **חלוקת משמרות הוגנת** על טווח תאריכים (עד 2 משמרות/שבוע לאדם, שישי-שבת יחד) | טאב "חלוקת משמרות" ב-`AdminSettingsModal.jsx` → `distributeShifts()` (`shiftDistributionAlgorithm.js`) → יצירת `Shift` בפועל לכל שיבוץ |
 | מחיקת כל המשמרות בטווח תאריכים (למשל לפני הרצה חוזרת של חלוקה) | אותו טאב, `deleteShiftsRangeMutation` |
 | העלאת/שינוי לוגו האפליקציה | לחיצה על הלוגו ב-`CalendarHeader.jsx` (`handleFileUpload` → `base44.integrations.Core.UploadFile`) |
 | עיון בטאבי "הגדרות מערכת", "תמיכה/FAQ", "ערכת נושא", "לוגים" | אותם טאבים ב-`AdminSettingsModal.jsx` — **הערה: אלה state מקומי בלבד, לא נשמרים ל-Backend, ומתאפסים ברענון** |
+| **הרצת בדיקות מערכת** על תהליכים קריטיים (יצירה/ביטול בקשת החלפה, ראש בראש כולל בקשות כפולות לאותו יעד, כיסוי חלקי, בקשה כללית, שיוך מחדש, חלוקת משמרות הוגנת) | טאב "בדיקות מערכת" ב-`AdminSettingsModal.jsx` (`handleRunTestSuite`) → `runPureTests()`/`runLiveTests()` (`src/lib/testing/testRunner.js`) |
 
 ---
 
@@ -76,3 +77,5 @@
 - **חלוקת משמרות הוגנת לא מזהה חגים אמיתיים בפועל**, חרף הטקסט בממשק שמתאר החרגת חול המועד וצירוף חג לשישי-שבת — `useHolidays.js` מחזיר מבנה נתונים אחר ממה שהצרכנים (`AdminSettingsModal.jsx`, `CalendarGrid.jsx`) מצפים לקרוא, ו-`distributeShifts()` לא מקבל בפועל פרמטר לחול המועד. בפועל מתבצע צירוף רק לימי שישי-שבת. ראו `components_calendar.md` (`useHolidays.js` / `shiftDistributionAlgorithm.js`).
 - **טאבי "הגדרות מערכת", "תמיכה/FAQ", "ערכת נושא" ו"לוגים" הם דמו בלבד** — כל שינוי בהם אובד ברענון הדף.
 - **`Admin` ו-`Manager` הם בפועל הרשאה אחת** מנקודת המבט של לוח הניהול — אין כרגע דרך להגביל `Manager` מפעולות רגישות (כמו מחיקת משתמשים) בלי גם להגביל `Admin`.
+- **אין הגנה מפני בקשות "ראש בראש" כפולות לאותה משמרת-יעד.** `createH2HRequestMutation` (`HeadToHeadSelectorModal.jsx`) מעדכן רק את סטטוס המשמרת המוצעת של השולח (ל-`Swap_Requested`) — הוא **לא** נוגע בסטטוס משמרת ה-`targetShift`. לכן `canHeadToHead` (`ShiftDetailsModal.jsx`) נשאר `true` גם אחרי ששלחו הצעה, ואותו משתמש יכול ללחוץ שוב על "ראש בראש" לאותה משמרת-יעד בדיוק ולפתוח `SwapRequest` שני (עם משמרת-הצעה שונה משלו). שתי הבקשות נשארות פתוחות עד שאחת מהן מאושרת — ואז לוגיקת ה-`staleSiblings` ב-`acceptHeadToHeadRequestMutation` (`ShiftCalendar.jsx`) מבטלת את השנייה, כי היא עדיין מפנה לאותה `targetShift.id` בתוך ה-`offered_shift_ids` שלה. תרחיש זה מכוסה כעת ע"י בדיקה ייעודית (`live-h2h-duplicate-target` ב-`src/lib/testing/liveTests.js`).
+- **בדיקות המערכת (`src/lib/testing/`) הן לוגיקה מקבילה, לא קריאה ישירה ל-Mutations של `ShiftCalendar.jsx`.** לפי בחירה מפורשת (כדי לא לגעת בקובץ הכי קריטי באפליקציה), הבדיקות ה"חיות" ב-`liveTests.js` משכפלות את אותן קריאות `base44.entities.*`/מעברי סטטוס שה-Mutations המקוריות מבצעות, במקום לייבא ולהריץ את ה-Mutations עצמן. המשמעות: אם מישהו ישנה מאוחר יותר את ההתנהגות בפועל ב-`ShiftCalendar.jsx` (או ב-`HeadToHeadSelectorModal.jsx`) בלי לעדכן את `liveTests.js` בהתאם, הבדיקות עלולות להמשיך "לעבור" גם אם ההתנהגות האמיתית השתנתה/נשברה — הן לא ערבות אוטומטית לסנכרון. אין תלות חדשה (`vitest`/`jest`) — הבדיקות רצות בתוך האפליקציה עצמה (טאב "בדיקות מערכת" ב-`AdminSettingsModal.jsx`) כי ה-SDK של `base44` מוזרק ע"י הפלטפורמה בזמן ריצה ולא קיים מקומית לצורך הרצת בדיקות מבוססות-Node.
