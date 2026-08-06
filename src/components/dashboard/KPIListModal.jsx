@@ -29,6 +29,7 @@ import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import LoadingSkeleton from "../LoadingSkeleton";
 import { buildSwapTemplate } from "../calendar/whatsappTemplates";
+import SwapTransition from "./SwapTransition";
 
 // --- Static Helper Functions (Outside Component) ---
 const formatDateTimeForDisplay = (dateStr, timeStr) => {
@@ -992,39 +993,14 @@ export default function KPIListModal({
                             )}
 
                           {type === "approved" && item.original_shift && (
-                            <div className="mt-2 text-xs text-gray-600 space-y-1">
-                              <p className="font-semibold text-gray-700">
-                                יוזם: {item.user_name}
-                              </p>
-                              <p>סוג החלפה: {isPartial ? "חלקית" : "מלאה"}</p>
-                              {item.coverageSegments?.length ? (
-                                <div className="bg-gray-100 rounded-lg p-2">
-                                  <p className="font-semibold text-gray-700">
-                                    משתתפים
-                                  </p>
-                                  {item.coverageSegments.map((seg, segIdx) => {
-                                    const coveringUser = authorizedUsers.find(
-                                      (u) =>
-                                        u.serial_id === seg.covering_user_id,
-                                    );
-                                    return (
-                                      <p
-                                        key={`seg-${segIdx}`}
-                                        className="flex justify-between"
-                                        dir="ltr"
-                                      >
-                                        <span>
-                                          {coveringUser?.full_name || "מחליף"}
-                                        </span>
-                                        <span>
-                                          {format(seg.start, "HH:mm")} -{" "}
-                                          {format(seg.end, "HH:mm")}
-                                        </span>
-                                      </p>
-                                    );
-                                  })}
-                                </div>
-                              ) : null}
+                            <div className="mt-2 space-y-1.5">
+                              <span className="inline-block text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-200">
+                                {isPartial ? "החלפה חלקית" : "החלפה מלאה"}
+                              </span>
+                              <SwapTransition
+                                item={item}
+                                authorizedUsers={authorizedUsers}
+                              />
                             </div>
                           )}
                         </div>
