@@ -63,6 +63,8 @@ export default function ShiftDetailsModal({
   isAdmin,
 }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showCancelRequestConfirm, setShowCancelRequestConfirm] =
+    useState(false);
   const [showReassignModal, setShowReassignModal] = useState(false);
   const [selectedDepartment, setSelectedDepartment] = useState("");
   const [selectedUserId, setSelectedUserId] = useState("");
@@ -219,6 +221,11 @@ export default function ShiftDetailsModal({
     if (!shift?.id) return;
     onDelete(shift.id);
     setShowDeleteConfirm(false);
+  };
+
+  const handleCancelRequestConfirm = () => {
+    onCancelRequest?.(shift);
+    setShowCancelRequestConfirm(false);
   };
 
   const shiftStartDate = shiftWindow?.startDate || shift?.start_date || date;
@@ -962,7 +969,7 @@ export default function ShiftDetailsModal({
                 <div className="flex flex-wrap gap-3 justify-center">
                   {canCancelOwnSwap && (
                     <Button
-                      onClick={() => onCancelRequest?.(shift)}
+                      onClick={() => setShowCancelRequestConfirm(true)}
                       className="min-w-[160px] flex-1 sm:flex-none h-12 bg-red-600 hover:bg-red-700 text-white rounded-xl shadow-lg"
                     >
                       <Trash2 className="w-5 h-5 ml-2" />
@@ -1052,6 +1059,33 @@ export default function ShiftDetailsModal({
             )}
           </div>
         </motion.div>
+
+        {/* Cancel Swap Request Confirmation */}
+        <Dialog
+          open={showCancelRequestConfirm}
+          onOpenChange={setShowCancelRequestConfirm}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>ביטול בקשת החלפה</DialogTitle>
+              <DialogDescription>
+                האם את/ה בטוח/ה שברצונך לבטל את בקשת ההחלפה? המשמרת תחזור
+                לסטטוס רגיל. הפעולה לא ניתנת לביטול.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setShowCancelRequestConfirm(false)}
+              >
+                ביטול
+              </Button>
+              <Button variant="destructive" onClick={handleCancelRequestConfirm}>
+                כן, בטל בקשה
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Delete Modal */}
         <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
