@@ -474,14 +474,14 @@ export default function AcceptSwapModal({
 
               <div className="bg-gray-50 rounded-2xl border border-gray-100 px-4 py-3 shadow-inner grid grid-cols-2 gap-4 text-center">
                 <div className="space-y-1">
-                  <p className="text-[10px] text-gray-400">התחלה</p>
-                  <p className="text-lg font-bold text-gray-800">{normalizedShift?.start_time}</p>
-                  <p className="text-[11px] text-gray-500">{shiftStartDate ? format(new Date(shiftStartDate), 'EEEE, dd/MM', { locale: he }) : ''}</p>
+                  <p className="text-xs text-gray-500">התחלה</p>
+                  <p className="text-xl font-bold text-gray-800">{normalizedShift?.start_time}</p>
+                  <p className="text-sm text-gray-500">{shiftStartDate ? format(new Date(shiftStartDate), 'EEEE, dd/MM', { locale: he }) : ''}</p>
                 </div>
                 <div className="space-y-1">
-                  <p className="text-[10px] text-gray-400">סיום</p>
-                  <p className="text-lg font-bold text-gray-800">{normalizedShift?.end_time}</p>
-                  <p className="text-[11px] text-gray-500">{shiftEndDate ? format(new Date(shiftEndDate), 'EEEE, dd/MM', { locale: he }) : ''}</p>
+                  <p className="text-xs text-gray-500">סיום</p>
+                  <p className="text-xl font-bold text-gray-800">{normalizedShift?.end_time}</p>
+                  <p className="text-sm text-gray-500">{shiftEndDate ? format(new Date(shiftEndDate), 'EEEE, dd/MM', { locale: he }) : ''}</p>
                 </div>
               </div>
             </div>
@@ -519,7 +519,7 @@ export default function AcceptSwapModal({
                 <div className="space-y-2 text-[13px] text-red-800">
                   {missingSegments.map((seg, idx) => (
                     <div key={`${seg.start}-${idx}`} className="flex items-center justify-center">
-                      <span dir="ltr" className="font-mono text-xs bg-white/70 px-2 py-1 rounded-lg border border-red-100">{formatSegmentText(seg)}</span>
+                      <span dir="ltr" className="font-mono text-sm bg-white/70 px-2 py-1 rounded-lg border border-red-100">{formatSegmentText(seg)}</span>
                     </div>
                   ))}
                 </div>
@@ -537,7 +537,7 @@ export default function AcceptSwapModal({
                   <div className="bg-gray-50 rounded-xl p-4 space-y-3">
                     <div className="rounded-xl border border-gray-200 bg-white p-3 text-xs text-gray-700">
                       <p className="font-semibold text-gray-800 mb-1">גבולות המשמרת המלאים</p>
-                      <p className="text-[11px]" dir="ltr">{fullRangeLabel}</p>
+                      <p className="text-sm" dir="ltr">{fullRangeLabel}</p>
                     </div>
 
                     <div className="flex flex-wrap gap-2" role="list" aria-label="חלונות זמינים">
@@ -548,7 +548,7 @@ export default function AcceptSwapModal({
                           onClick={() => setSelectedSegmentIdx(idx)}
                           className={`flex-1 min-w-[140px] px-3 py-2 rounded-xl border text-xs sm:text-sm transition-all ${selectedSegmentIdx === idx ? 'border-blue-500 bg-white shadow-sm' : 'border-gray-200 bg-white/70 hover:border-blue-200'}`}
                         >
-                          <p className="text-[11px] text-gray-600" dir="ltr">{formatSegmentText(seg)}</p>
+                          <p className="text-sm text-gray-600" dir="ltr">{formatSegmentText(seg)}</p>
                         </button>
                       ))}
                     </div>
@@ -560,11 +560,11 @@ export default function AcceptSwapModal({
                       <div className="flex justify-between text-xs font-bold text-gray-600 px-1">
                           <div className="text-center">
                               <span>התחלה</span>
-                              <div className="text-[10px] font-normal text-gray-400 mt-0.5">{startDate ? format(new Date(startDate), 'dd/MM/yyyy') : ''}</div>
+                              <div className="text-xs font-normal text-gray-500 mt-0.5">{startDate ? format(new Date(startDate), 'dd/MM/yyyy') : ''}</div>
                           </div>
                           <div className="text-center">
                               <span>סיום</span>
-                              <div className="text-[10px] font-normal text-gray-400 mt-0.5">{endDate ? format(new Date(endDate), 'dd/MM/yyyy') : ''}</div>
+                              <div className="text-xs font-normal text-gray-500 mt-0.5">{endDate ? format(new Date(endDate), 'dd/MM/yyyy') : ''}</div>
                           </div>
                       </div>
 
