@@ -31,6 +31,9 @@ import {
   Scale,
   Loader2,
   UserCheck,
+  FlaskConical,
+  XCircle,
+  Download,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -60,6 +63,8 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { runPureTests, runLiveTests } from "@/lib/testing/testRunner";
+import { exportAllData } from "@/lib/testing/exportData";
 
 // A native <input type="date"> keeps the OS/browser date picker (calendar
 // icon, click-to-pick, keyboard entry) — only its DISPLAYED format is
@@ -197,6 +202,11 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   const [deleteShiftsError, setDeleteShiftsError] = useState("");
   const [isDeleteShiftsConfirmOpen, setIsDeleteShiftsConfirmOpen] =
     useState(false);
+
+  // --- System test suite (src/lib/testing) ---
+  const [testResults, setTestResults] = useState(null);
+  const [isRunningTests, setIsRunningTests] = useState(false);
+  const [showTestExportGate, setShowTestExportGate] = useState(false);
 
   const queryClient = useQueryClient();
 
@@ -502,6 +512,29 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     deleteShiftsRangeMutation.mutate(shiftsInDeleteRange.map((s) => s.id));
   };
 
+  // Runs the full test suite (src/lib/testing): pure-logic tests first (no
+  // data risk), then the live tests, which create+delete their own [TEST]
+  // fixtures. Only reachable after the export/confirm gate below.
+  const handleRunTestSuite = async () => {
+    setShowTestExportGate(false);
+    setIsRunningTests(true);
+    setTestResults(null);
+    try {
+      const pureResults = await runPureTests();
+      const liveResults = await runLiveTests();
+      setTestResults([...pureResults, ...liveResults]);
+      // Cheap insurance: nothing else should still be viewing the transient
+      // [TEST] fixtures by the time this runs, but invalidate the shared
+      // caches anyway in case any of them got pulled in mid-run.
+      queryClient.invalidateQueries(["shifts"]);
+      queryClient.invalidateQueries(["swap-requests"]);
+      queryClient.invalidateQueries(["coverages"]);
+      queryClient.invalidateQueries(["authorized-people"]);
+    } finally {
+      setIsRunningTests(false);
+    }
+  };
+
   // --- HANDLERS ---
 
   const handleSystemChange = (field, value) => {
@@ -691,6 +724,11 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         id: "distribution",
         label: "חלוקת משמרות",
         Icon: Scale,
+      },
+      {
+        id: "tests",
+        label: "בדיקות מערכת",
+        Icon: FlaskConical,
       },
     ],
     [],
@@ -888,7 +926,8 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                               <span>{`מחלקה ${person.department}`}</span> •{" "}
                               <span style={{ color: permStyle.text }}>
                                 {person.permissions}
-                              </span> •{" "}
+                              </span>{" "}
+                              •{" "}
                               <span
                                 className={
                                   (person.role || "RR") === "RR"
@@ -1902,8 +1941,147 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
               )}
             </div>
           )}
+
+          {activeTab === "tests" && (
+            <div className="space-y-4 md:space-y-6 overflow-y-auto">
+              <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">
+                      בדיקות מערכת
+                    </p>
+                    <p className="text-xs text-gray-500 max-w-xl">
+                      מריץ בדיקות אוטומטיות על תהליכים קריטיים (יצירה/ביטול של
+                      בקשות החלפה, ראש בראש, כיסוי חלקי, בקשה כללית, שיוך
+                      מחדש, וחלוקת משמרות הוגנת) ומציג אם הם עוברים. חלק
+                      מהבדיקות יוצרות משתמשים/משמרות/בקשות זמניים בפועל
+                      במסד הנתונים (מסומנים בקידומת "[TEST]") ומוחקות אותם
+                      אוטומטית בסיום כל בדיקה — נתונים אמיתיים לא נגעים בהם.
+                    </p>
+                  </div>
+                  <FlaskConical className="w-5 h-5 text-blue-500 shrink-0" />
+                </div>
+
+                <Button
+                  onClick={() => setShowTestExportGate(true)}
+                  disabled={isRunningTests}
+                  className="w-full md:w-auto h-11 rounded-xl bg-blue-600 hover:bg-blue-700 text-white gap-2"
+                >
+                  {isRunningTests ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" /> מריץ
+                      בדיקות...
+                    </>
+                  ) : (
+                    <>
+                      <FlaskConical className="w-4 h-4" /> הרץ בדיקות מערכת
+                    </>
+                  )}
+                </Button>
+              </div>
+
+              {testResults && (
+                <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-3">
+                  <div className="flex items-center gap-2">
+                    {testResults.every((r) => r.status === "passed") ? (
+                      <CheckCircle2 className="w-5 h-5 text-emerald-600" />
+                    ) : (
+                      <AlertTriangle className="w-5 h-5 text-red-600" />
+                    )}
+                    <p className="text-sm font-semibold text-gray-800">
+                      {testResults.filter((r) => r.status === "passed").length}
+                      /{testResults.length} עברו בהצלחה
+                    </p>
+                  </div>
+                  <div className="space-y-1.5 max-h-96 overflow-y-auto pr-1">
+                    {testResults.map((r) => (
+                      <div
+                        key={r.id}
+                        className={`flex items-start gap-2 p-2.5 rounded-xl border text-sm ${
+                          r.status === "passed"
+                            ? "bg-emerald-50 border-emerald-200"
+                            : "bg-red-50 border-red-200"
+                        }`}
+                      >
+                        {r.status === "passed" ? (
+                          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                        ) : (
+                          <XCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-medium text-gray-800">
+                              {r.name}
+                            </span>
+                            <span
+                              className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
+                                r.category === "pure"
+                                  ? "bg-blue-50 text-blue-700 border-blue-200"
+                                  : "bg-purple-50 text-purple-700 border-purple-200"
+                              }`}
+                            >
+                              {r.category === "pure" ? "לוגיקה" : "נתונים"}
+                            </span>
+                          </div>
+                          {r.error && (
+                            <p className="text-xs text-red-700 mt-1 break-words">
+                              {r.error}
+                            </p>
+                          )}
+                        </div>
+                        <span className="text-[10px] text-gray-400 shrink-0">
+                          {Math.round(r.durationMs)}ms
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </motion.div>
+
+      {/* --- Test suite export/confirm gate --- */}
+      <Dialog open={showTestExportGate} onOpenChange={setShowTestExportGate}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-amber-700">
+              <AlertTriangle className="w-5 h-5" />
+              לפני שממשיכים
+            </DialogTitle>
+            <DialogDescription>
+              חלק מהבדיקות (יצירה/ביטול של בקשות החלפה וכד') יוצרות משתמשים,
+              משמרות ובקשות זמניים בפועל במסד הנתונים החי, ומוחקות אותם
+              אוטומטית מיד בסיום כל בדיקה — נתונים אמיתיים לא נגעים בהם.
+              ליתר ביטחון (למשל אם הדפדפן ייסגר באמצע ההרצה), מומלץ לייצא
+              גיבוי של הנתונים לפני שממשיכים.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowTestExportGate(false)}
+            >
+              ביטול
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => exportAllData()}
+              className="gap-2"
+            >
+              <Download className="w-4 h-4" />
+              ייצוא נתונים
+            </Button>
+            <Button
+              onClick={handleRunTestSuite}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              המשך בכל זאת
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* --- 1. ADD USER MODAL (Multi-Step) --- */}
       <Dialog open={isAddUserOpen} onOpenChange={handleCloseAddUser}>
