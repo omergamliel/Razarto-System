@@ -1762,14 +1762,15 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                     </p>
                     <p className="text-xs text-gray-500 max-w-xl">
                       מפזר משמרות רק על ימים פנויים בטווח שנבחר, בלי לגעת
-                      במשמרות קיימות: עד שתי משמרות לעובד/ת בשבוע (א'-ש'),
-                      שישי-שבת תמיד יחד לאותו אדם, וכך גם ערב חג וימי החג (למשל
-                      ערב חג שחל בחמישי — המשמרת נשארת אצל אותו אדם עד שבת). ימי
-                      חול המועד (בסוכות ובפסח) לא נכללים בצירוף הזה ומתחלקים
-                      כרגיל בין העובדים, כדי שמשמרת החג לא תימשך יותר מדי אצל
-                      אדם אחד. הפיזור בין המשמרות של כל עובד/ת נשמר נוח ולא יום
-                      אחרי יום בטעות. הבחירה מתבססת על טבלת "צדק" — מי שצבר/ה
-                      הכי מעט משמרות בטווח שנבחר מקבל/ת עדיפות.
+                      במשמרות קיימות: עד שתי משמרות מוקצות לכל אדם בשבוע
+                      (א'-ש'), שישי-שבת תמיד מוקצים יחד לאותו אדם, וכך גם ערב
+                      חג וימי החג (למשל ערב חג שחל בחמישי — המשמרת נשארת אצל
+                      אותו אדם עד שבת). ימי חול המועד (בסוכות ובפסח) לא נכללים
+                      בצירוף הזה ומתחלקים כרגיל בין העובדים, כדי שמשמרת החג לא
+                      תימשך יותר מדי אצל אדם אחד. הפיזור בין המשמרות של כל אדם
+                      נשמר נוח ולא יום אחרי יום בטעות. הבחירה מתבססת על טבלת
+                      "צדק" — עדיפות ניתנת לפי מספר המשמרות הנמוך ביותר שנצבר
+                      בטווח שנבחר.
                     </p>
                   </div>
                   <Scale className="w-5 h-5 text-blue-500 shrink-0" />
@@ -1926,7 +1927,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                   {distributionResult.skipped.length > 0 && (
                     <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-3">
                       <p className="text-xs font-semibold text-yellow-800 mb-1">
-                        ימים שלא שובצו (אין עובד/ת זמין/ה עם מכסה שבועית פנויה)
+                        ימים שלא שובצו (לא אותר אדם זמין עם מכסה שבועית פנויה)
                       </p>
                       <div className="text-xs text-yellow-800 space-y-0.5">
                         {distributionResult.skipped.map((s, idx) => (
@@ -2436,9 +2437,10 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
               ניהול תפקיד
             </DialogTitle>
             <DialogDescription className="text-right">
-              בחר האם <b>{roleUser?.full_name}</b> רשאי/ת לקחת משמרות. רק
-              משתמש/ת עם תפקיד RR יכול/ה לקחת משמרות (החלפות, כיסויים וחלוקה
-              הוגנת) — שדה זה נפרד מהרשאות המשתמש ואינו משנה אותן.
+              בחר האם קיים אצל <b>{roleUser?.full_name}</b> תפקיד המאפשר לקחת
+              משמרות. משמרות (החלפות, כיסויים וחלוקה הוגנת) ניתנות לקיחה רק
+              כאשר תפקיד RR מוגדר למשתמש — שדה זה נפרד מהרשאות המשתמש ואינו
+              משנה אותן.
             </DialogDescription>
           </DialogHeader>
 
@@ -2454,7 +2456,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                 <UserCheck className="w-10 h-10 text-emerald-500" />
                 <h3 className="font-bold text-gray-800">RR</h3>
                 <p className="text-xs text-gray-500 leading-tight">
-                  רשאי/ת לקחת משמרות — החלפות, כיסויים וחלוקה הוגנת
+                  משמרות ניתנות לקיחה — החלפות, כיסויים וחלוקה הוגנת
                 </p>
               </div>
               {selectedRole === "RR" && (
@@ -2475,7 +2477,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                 <UserX className="w-10 h-10 text-red-500" />
                 <h3 className="font-bold text-gray-800">None</h3>
                 <p className="text-xs text-gray-500 leading-tight">
-                  אינו/ה רשאי/ת לקחת משמרות בשום צורה
+                  משמרות אינן ניתנות לקיחה בשום צורה
                 </p>
               </div>
               {selectedRole === "None" && (
