@@ -88,7 +88,7 @@ export default function AcceptSwapModal({
   }, [normalizedShift]);
 
   const coveringUserName = useMemo(() => {
-    return normalizedShift?.current_user_name || normalizedShift?.covering_user_name || normalizedShift?.covering_name || 'את/ה';
+    return normalizedShift?.current_user_name || normalizedShift?.covering_user_name || normalizedShift?.covering_name || 'המשתמש הנוכחי';
   }, [normalizedShift]);
 
   const shiftDepartment = normalizedShift?.department || normalizedShift?.assigned_department || '';
@@ -508,7 +508,7 @@ export default function AcceptSwapModal({
               </div>
               {hasExistingApprovedCoverage && !isPartialRequest && (
                 <p className="text-xs text-gray-500 text-center -mt-2">
-                  חלק מהמשמרת כבר מכוסה על ידי משתמש/ת אחר/ת, לכן ניתן לכסות רק את מה שנותר.
+                  חלק מהמשמרת כבר מכוסה על ידי משתמש אחר, לכן ניתן לכסות רק את מה שנותר.
                 </p>
               )}
             </div>
@@ -738,7 +738,7 @@ export default function AcceptSwapModal({
               <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 shadow-sm space-y-2 text-right">
                 <p className="text-sm font-bold text-blue-900">סיכום השינויים</p>
                 <p className="text-sm text-blue-800 leading-relaxed">
-                  תתבצע החלפה במשמרת זו בין המשתמשים <span className="font-bold">{originalUserName}</span> (מקורי) לבין <span className="font-bold">{coveringUserName}</span> (המחליפ/ה).
+                  תתבצע החלפה במשמרת זו בין המשתמשים <span className="font-bold">{originalUserName}</span> (מקורי) לבין <span className="font-bold">{coveringUserName}</span> (מחליף).
                 </p>
                 {missingSegments.length > 0 && (
                   <p className="text-xs text-blue-900/80 leading-relaxed">
