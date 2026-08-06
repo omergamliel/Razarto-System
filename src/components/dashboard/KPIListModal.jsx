@@ -850,7 +850,7 @@ export default function KPIListModal({
                                 : "תאריך לא ידוע"}
                             </span>
                             {dayName && (
-                              <span className="text-xs text-gray-500">
+                              <span className="text-sm text-gray-500">
                                 ({dayName})
                               </span>
                             )}
@@ -877,7 +877,7 @@ export default function KPIListModal({
 
                           {item.shift_count > 1 &&
                             item.original_shifts?.length > 0 && (
-                              <div className="mt-1 text-[11px] text-gray-500 space-y-0.5">
+                              <div className="mt-1 text-xs text-gray-500 space-y-0.5">
                                 {item.original_shifts.map((s) => (
                                   <p key={s.id} dir="ltr">
                                     {s.start_date}
@@ -910,7 +910,7 @@ export default function KPIListModal({
                                 {item.offered_shifts.map((s) => (
                                   <p
                                     key={s.id}
-                                    className="flex justify-between"
+                                    className="flex justify-between text-xs"
                                     dir="ltr"
                                   >
                                     <span>{s.owner_name}</span>
@@ -929,17 +929,17 @@ export default function KPIListModal({
                             </span>
                           )}
 
-                          <div className="mt-1 grid grid-cols-2 gap-1 text-xs text-gray-600">
+                          <div className="mt-1 grid grid-cols-2 gap-1 text-sm text-gray-600">
                             <div className="flex items-center gap-1">
-                              <Clock className="w-3 h-3" /> {startTime}
+                              <Clock className="w-3.5 h-3.5" /> {startTime}
                             </div>
                             <div className="flex items-center gap-1">
-                              <Clock className="w-3 h-3" /> {endTime}
+                              <Clock className="w-3.5 h-3.5" /> {endTime}
                             </div>
-                            <div className="text-[11px] text-gray-500">
+                            <div className="text-sm text-gray-500">
                               התחלה: {startDate}
                             </div>
-                            <div className="text-[11px] text-gray-500">
+                            <div className="text-sm text-gray-500">
                               סיום: {endDate}
                             </div>
                           </div>
