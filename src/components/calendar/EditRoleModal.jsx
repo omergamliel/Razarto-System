@@ -61,11 +61,15 @@ export default function EditRoleModal({
 
   if (!isOpen || !shift) return null;
 
+  // Only users with an active role ('RR') can be assigned shifts — users
+  // with role 'None' are excluded from the dropdown.
+  const rrPeople = authorizedPeople.filter(u => u.role === 'RR');
+
   // Get unique departments from AuthorizedPerson list
-  const departments = ['א', 'מ', 'ת']; // Hardcoded or derived from list
-  
+  const departments = ['א', 'מ', 'ת'];
+
   // Filter users by selected department
-  const departmentUsers = authorizedPeople.filter(u => u.department === department);
+  const departmentUsers = rrPeople.filter(u => u.department === department);
 
   return (
     <AnimatePresence>

@@ -50,12 +50,16 @@ export default function AddShiftModal({
 
   if (!isOpen) return null;
 
+  // Only users with an active role ('RR') can be assigned shifts — users
+  // with role 'None' are excluded from the dropdown.
+  const rrUsers = authorizedUsers.filter(u => u.role === 'RR');
+
   // Get unique departments
-  const departments = [...new Set(authorizedUsers.map(u => u.department))].sort();
+  const departments = [...new Set(rrUsers.map(u => u.department))].sort();
   
   // Get users for selected department
   const usersInDepartment = department 
-    ? authorizedUsers.filter(u => u.department === department)
+    ? rrUsers.filter(u => u.department === department)
     : [];
 
   return (
