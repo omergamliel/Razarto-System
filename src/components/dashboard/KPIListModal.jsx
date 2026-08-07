@@ -28,7 +28,10 @@ import { he } from "date-fns/locale";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import LoadingSkeleton from "../LoadingSkeleton";
-import { buildSwapTemplate } from "../calendar/whatsappTemplates";
+import {
+  buildSwapTemplate,
+  mergeOverlappingSegments,
+} from "../calendar/whatsappTemplates";
 import SwapTransition from "./SwapTransition";
 
 // --- Static Helper Functions (Outside Component) ---
@@ -224,28 +227,32 @@ export default function KPIListModal({
         const offeredUsers = offeredShifts.map((s) =>
           authorizedUsers.find((u) => u?.serial_id === s.original_user_id),
         );
-        const coverageSegments = coveragesAll
-          .filter(
-            (c) =>
-              c.shift_id === shift?.id && (c.status === "Approved" || !c.status),
-          )
-          .map((c, idx) => {
-            const covShift =
-              reqShifts.find((s) => s.id === c.shift_id) || shift;
-            const covStart = new Date(
-              `${c.cover_start_date || covShift?.start_date}T${c.cover_start_time || covShift?.start_time || "09:00"}`,
-            );
-            let covEnd = new Date(
-              `${c.cover_end_date || covShift?.end_date || covShift?.start_date}T${c.cover_end_time || covShift?.end_time || "09:00"}`,
-            );
-            if (covEnd <= covStart) covEnd = addDays(covEnd, 1);
-            return {
-              key: c.id || idx,
-              start: covStart,
-              end: covEnd,
-              covering_user_id: c.covering_user_id,
-            };
-          });
+        const coverageSegments = mergeOverlappingSegments(
+          coveragesAll
+            .filter(
+              (c) =>
+                c.shift_id === shift?.id &&
+                (c.status === "Approved" || !c.status),
+            )
+            .map((c, idx) => {
+              const covShift =
+                reqShifts.find((s) => s.id === c.shift_id) || shift;
+              const covStart = new Date(
+                `${c.cover_start_date || covShift?.start_date}T${c.cover_start_time || covShift?.start_time || "09:00"}`,
+              );
+              let covEnd = new Date(
+                `${c.cover_end_date || covShift?.end_date || covShift?.start_date}T${c.cover_end_time || covShift?.end_time || "09:00"}`,
+              );
+              if (covEnd <= covStart) covEnd = addDays(covEnd, 1);
+              return {
+                key: c.id || idx,
+                start: covStart,
+                end: covEnd,
+                covering_user_id: c.covering_user_id,
+              };
+            }),
+          (seg) => seg.covering_user_id,
+        );
 
         // Once a Head2Head request is closed, acceptHeadToHeadRequestMutation has
         // already reassigned these shifts to whoever accepted, so offeredUsers
@@ -373,23 +380,26 @@ export default function KPIListModal({
         let windowEnd = new Date(`${endDate}T${endTime}`);
         if (windowEnd <= windowStart) windowEnd = addDays(windowEnd, 1);
 
-        const coverageSegments = coveragesAll
-          .filter((c) => c.shift_id === shift.id)
-          .map((c, idx) => {
-            const covStart = new Date(
-              `${c.cover_start_date || startDate}T${c.cover_start_time || startTime}`,
-            );
-            let covEnd = new Date(
-              `${c.cover_end_date || endDate}T${c.cover_end_time || endTime}`,
-            );
-            if (covEnd <= covStart) covEnd = addDays(covEnd, 1);
-            return {
-              key: c.id || idx,
-              start: covStart,
-              end: covEnd,
-              covering_user_id: c.covering_user_id,
-            };
-          });
+        const coverageSegments = mergeOverlappingSegments(
+          coveragesAll
+            .filter((c) => c.shift_id === shift.id)
+            .map((c, idx) => {
+              const covStart = new Date(
+                `${c.cover_start_date || startDate}T${c.cover_start_time || startTime}`,
+              );
+              let covEnd = new Date(
+                `${c.cover_end_date || endDate}T${c.cover_end_time || endTime}`,
+              );
+              if (covEnd <= covStart) covEnd = addDays(covEnd, 1);
+              return {
+                key: c.id || idx,
+                start: covStart,
+                end: covEnd,
+                covering_user_id: c.covering_user_id,
+              };
+            }),
+          (seg) => seg.covering_user_id,
+        );
 
         const missing = computeMissingSegments(
           windowStart,
@@ -795,9 +805,14 @@ export default function KPIListModal({
                   // same underlying items as on the partial-gaps tab).
                   const isPartialGapLike =
                     type === "partial_gaps" || item.is_partial_in_progress;
+                  // Gated on requesting_user_id (whoever actually created the
+                  // SwapRequest), not original_user_id (the shift's owner) —
+                  // those can differ (e.g. an admin filing the request on the
+                  // owner's behalf), and cancelling only makes sense for
+                  // whoever actually filed it.
                   const isPartialGapOwner =
                     isPartialGapLike &&
-                    Number(item.original_user_id) === currentUserIdNum;
+                    Number(item.requesting_user_id) === currentUserIdNum;
                   const isPartialGapCovering =
                     isPartialGapLike &&
                     item.covering_user_ids?.some(
