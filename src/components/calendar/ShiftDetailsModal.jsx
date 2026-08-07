@@ -43,6 +43,7 @@ import {
   computeCoverageSummary,
   getCoverageColor,
   subtractSegments,
+  mergeOverlappingSegments,
 } from "./whatsappTemplates";
 import { useHolidays } from "./useHolidays";
 import { useOverlappingLabels } from "./useOverlappingLabels";
@@ -325,7 +326,7 @@ export default function ShiftDetailsModal({
     requestWindow.endDate || shiftEndDate || requestStartDate;
 
   const coverageRows = useMemo(() => {
-    return approvedCoverages
+    const rows = approvedCoverages
       .map((cov, idx) => {
         const user = coveringUsers.find(
           (u) => u.serial_id === cov.covering_user_id,
@@ -347,9 +348,17 @@ export default function ShiftDetailsModal({
           end,
           department: user?.department || cov.covering_department,
           createdAt: cov.created_at || cov.created_date || null,
+          covering_user_id: cov.covering_user_id,
         };
       })
       .filter(Boolean);
+    // Same person can end up with more than one overlapping coverage record
+    // (e.g. re-picking a slightly different range) — collapse those into one
+    // row so they don't show up twice on the track/legend/history.
+    return mergeOverlappingSegments(
+      rows,
+      (row) => row.covering_user_id ?? row.name,
+    );
   }, [
     approvedCoverages,
     coveringUsers,
