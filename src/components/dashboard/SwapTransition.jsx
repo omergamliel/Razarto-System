@@ -1,7 +1,9 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { ArrowLeftRight, Calendar } from "lucide-react";
-import { format, parseISO } from "date-fns";
+import { format, parseISO, addDays } from "date-fns";
 import { he } from "date-fns/locale";
+import { buildDateTime, subtractSegments } from "../calendar/whatsappTemplates";
+import PartialShiftTrack from "../calendar/PartialShiftTrack";
 
 /**
  * Visualises a completed swap as a "לפני → אחרי" transition, listing each
@@ -60,6 +62,52 @@ export default function SwapTransition({ item, authorizedUsers = [] }) {
       ? [item.original_shift]
       : [];
   const offeredShifts = item.offered_shifts || [];
+
+  // Full-shift window the track spans — the original shift's own start/end,
+  // not just the (possibly narrower) requested/covered sub-range, so any
+  // part still left with the owner is visible too.
+  const trackWindow = useMemo(() => {
+    if (!isPartial || !item.original_shift) return { start: null, end: null };
+    const start = buildDateTime(
+      item.original_shift.start_date,
+      item.original_shift.start_time || "09:00",
+    );
+    let end = buildDateTime(
+      item.original_shift.end_date || item.original_shift.start_date,
+      item.original_shift.end_time || item.original_shift.start_time || "09:00",
+    );
+    if (start && end && end <= start) end = addDays(end, 1);
+    return { start, end };
+  }, [isPartial, item.original_shift]);
+
+  const trackBands = useMemo(() => {
+    if (!isPartial || !trackWindow.start || !trackWindow.end) return [];
+    const covered = (item.coverageSegments || []).map((seg) => ({
+      start: seg.start,
+      end: seg.end,
+      label: resolveUser(seg.covering_user_id)?.full_name || "מחליף",
+      variant: "covered",
+    }));
+    const needsHelp = (item.missingSegments || []).map((seg) => ({
+      start: seg.start,
+      end: seg.end,
+      label: "טרם נתפס",
+      variant: "needsHelp",
+    }));
+    const remaining = subtractSegments(trackWindow.start, trackWindow.end, [
+      ...covered,
+      ...needsHelp,
+    ]).map((seg) => ({
+      start: seg.start,
+      end: seg.end,
+      label: requesterName,
+      variant: "original",
+    }));
+    return [...covered, ...needsHelp, ...remaining].sort(
+      (a, b) => a.start - b.start,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPartial, trackWindow, item.coverageSegments, item.missingSegments]);
 
   let beforeEntries = [];
   let afterEntries = [];
@@ -139,6 +187,13 @@ export default function SwapTransition({ item, authorizedUsers = [] }) {
       </div>
       <div className="space-y-2">
         <span className="text-sm font-semibold text-gray-500">אחרי</span>
+        {isPartial && trackBands.length > 0 && (
+          <PartialShiftTrack
+            bands={trackBands}
+            windowStart={trackWindow.start}
+            windowEnd={trackWindow.end}
+          />
+        )}
         {afterEntries.map((e, i) => renderEntry(e, i, true))}
       </div>
     </div>
