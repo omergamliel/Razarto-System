@@ -44,9 +44,18 @@
   ],
   "rls": {
     "read": {
-      "user_condition": {
-        "data.is_authorized": true
-      }
+      "$or": [
+        {
+          "user_condition": {
+            "data.is_authorized": true
+          }
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
     },
     "create": {
       "user_condition": {
