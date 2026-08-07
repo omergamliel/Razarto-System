@@ -1153,12 +1153,23 @@ export default function KPIListModal({
                             !isMyRequest &&
                             type !== "approved" &&
                             item.request_type !== "Head2Head" &&
-                            item.request_type !== "General" && (
+                            item.request_type !== "General" &&
+                            // Already covering part of this shift? Then this
+                            // isn't the "offer to cover" flow for them anymore
+                            // (that's handled from the shift details modal /
+                            // cancel-my-coverage path instead).
+                            !(item.covering_user_ids || [])
+                              .map(Number)
+                              .includes(currentUserIdNum) && (
                               <Button
                                 onClick={() => {
                                   if (actionsDisabled) return;
                                   onClose();
-                                  onOfferCover(item);
+                                  // Route through the actual Shift record (not
+                                  // the enriched SwapRequest item) so this opens
+                                  // the same AcceptSwapModal flow as clicking the
+                                  // shift cell directly on the calendar.
+                                  onOfferCover(item.original_shift || item);
                                 }}
                                 size="sm"
                                 disabled={actionsDisabled}
