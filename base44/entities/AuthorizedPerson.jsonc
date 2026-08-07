@@ -52,7 +52,18 @@
     "email"
   ],
   "rls": {
-    "read": {},
+    "read": {
+      "$or": [
+        {
+          "data.email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "data.is_authorized": true
+          }
+        }
+      ]
+    },
     "create": {
       "user_condition": {
         "role": "admin"
