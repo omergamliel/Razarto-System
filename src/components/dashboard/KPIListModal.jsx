@@ -222,7 +222,7 @@ export default function KPIListModal({
         const coverageSegments = coveragesAll
           .filter(
             (c) =>
-              c.shift_id === shift.id && (c.status === "Approved" || !c.status),
+              c.shift_id === shift?.id && (c.status === "Approved" || !c.status),
           )
           .map((c, idx) => {
             const covShift =
