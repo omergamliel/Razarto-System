@@ -97,8 +97,13 @@ const getStartDateTime = (item) => {
 };
 
 const getLatestActivityDate = (item) => {
+  // base44 entities carry their system timestamps as *_date (created_date/
+  // updated_date), not *_at — the *_at variants are kept as a fallback in
+  // case a caller ever passes plain JS objects that use that convention.
   const candidates = [
+    item.updated_date,
     item.updated_at,
+    item.created_date,
     item.created_at,
     item.shift_date,
     item.req_start_date,
