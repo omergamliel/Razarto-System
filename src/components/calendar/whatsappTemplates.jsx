@@ -18,6 +18,42 @@ export const COVERAGE_COLOR_PALETTE = [
 export const getCoverageColor = (index) =>
   COVERAGE_COLOR_PALETTE[index % COVERAGE_COLOR_PALETTE.length];
 
+// Some flows end up with more than one ShiftCoverage record for the same
+// person on overlapping/nested time windows (e.g. re-picking a slightly
+// different range on the same shift). Displaying each raw record as its own
+// band/row makes that same person show up several times over what's really
+// one continuous window, so every place that lists or draws "who covers
+// what" first collapses same-person overlapping (or touching) ranges into a
+// single merged one. Only merges within the same key — different people's
+// windows are left untouched even if they overlap.
+export const mergeOverlappingSegments = (items, keyFn) => {
+  const groups = new Map();
+  items.forEach((item) => {
+    const key = keyFn(item);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  });
+
+  const merged = [];
+  groups.forEach((group) => {
+    const sorted = [...group].sort((a, b) => a.start - b.start);
+    let current = null;
+    sorted.forEach((item) => {
+      if (!current) {
+        current = { ...item };
+      } else if (item.start <= current.end) {
+        if (item.end > current.end) current.end = item.end;
+      } else {
+        merged.push(current);
+        current = { ...item };
+      }
+    });
+    if (current) merged.push(current);
+  });
+
+  return merged.sort((a, b) => a.start - b.start);
+};
+
 // Subtracts a set of {start,end} Date-object segments from a [rangeStart,
 // rangeEnd] range, returning the gaps left over. Unlike calculateMissingSegments
 // (which reads raw cover_start_date/cover_start_time string fields), this works
