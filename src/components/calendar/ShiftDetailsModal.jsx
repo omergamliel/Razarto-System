@@ -852,12 +852,12 @@ export default function ShiftDetailsModal({
                         <div className="flex items-center justify-center flex-wrap gap-3 text-[11px] text-gray-500">
                           <span className="flex items-center gap-1">
                             <span className="w-3 h-3 rounded-full bg-blue-200 inline-block" />{" "}
-                            נשאר אצל {ownerDisplayName}
+                            {ownerDisplayName}
                           </span>
                           {missingSegments.length > 0 && (
                             <span className="flex items-center gap-1">
                               <span className="w-3 h-3 rounded-full bg-gray-300 inline-block" />{" "}
-                              טרם נתפס
+                              טרם נתפס (נשאר אצל {ownerDisplayName})
                             </span>
                           )}
                           {Array.from(coveringColorMap.entries()).map(
