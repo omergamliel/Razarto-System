@@ -43,31 +43,22 @@ const formatSegmentRange = (start, end) => {
 };
 
 export default function SwapTransition({ item, authorizedUsers = [] }) {
-  if (!item) return null;
-
-  const requestType = (item.request_type || "").toLowerCase();
+  const requestType = (item?.request_type || "").toLowerCase();
   const isPartial = requestType === "partial";
-  const isHeadToHead = item.request_type === "Head2Head";
-  const requesterName = item.user_name || "—";
-  const accepterNames = item.accepted_by_names || [];
+  const isHeadToHead = item?.request_type === "Head2Head";
+  const requesterName = item?.user_name || "—";
+  const accepterNames = item?.accepted_by_names || [];
   const accepterLabel =
     accepterNames.length > 0 ? accepterNames.join(", ") : "—";
 
   const resolveUser = (id) =>
     authorizedUsers.find((u) => Number(u.serial_id) === Number(id));
 
-  const originalShifts = item.original_shifts?.length
-    ? item.original_shifts
-    : item.original_shift
-      ? [item.original_shift]
-      : [];
-  const offeredShifts = item.offered_shifts || [];
-
   // Full-shift window the track spans — the original shift's own start/end,
   // not just the (possibly narrower) requested/covered sub-range, so any
   // part still left with the owner is visible too.
   const trackWindow = useMemo(() => {
-    if (!isPartial || !item.original_shift) return { start: null, end: null };
+    if (!isPartial || !item?.original_shift) return { start: null, end: null };
     const start = buildDateTime(
       item.original_shift.start_date,
       item.original_shift.start_time || "09:00",
@@ -78,7 +69,7 @@ export default function SwapTransition({ item, authorizedUsers = [] }) {
     );
     if (start && end && end <= start) end = addDays(end, 1);
     return { start, end };
-  }, [isPartial, item.original_shift]);
+  }, [isPartial, item?.original_shift]);
 
   const trackBands = useMemo(() => {
     if (!isPartial || !trackWindow.start || !trackWindow.end) return [];
@@ -107,7 +98,16 @@ export default function SwapTransition({ item, authorizedUsers = [] }) {
       (a, b) => a.start - b.start,
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPartial, trackWindow, item.coverageSegments, item.missingSegments]);
+  }, [isPartial, trackWindow, item?.coverageSegments, item?.missingSegments]);
+
+  if (!item) return null;
+
+  const originalShifts = item.original_shifts?.length
+    ? item.original_shifts
+    : item.original_shift
+      ? [item.original_shift]
+      : [];
+  const offeredShifts = item.offered_shifts || [];
 
   let beforeEntries = [];
   let afterEntries = [];
