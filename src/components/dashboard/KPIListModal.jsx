@@ -869,6 +869,16 @@ export default function KPIListModal({
                                 כללית
                               </span>
                             )}
+                            {item.request_type === "Full" && (
+                              <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-200">
+                                מלאה
+                              </span>
+                            )}
+                            {item.request_type === "Partial" && (
+                              <span className="text-[11px] px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 border border-yellow-200">
+                                חלקית
+                              </span>
+                            )}
                           </div>
 
                           <p className="text-sm text-gray-800 font-medium">
@@ -994,9 +1004,6 @@ export default function KPIListModal({
 
                           {type === "approved" && item.original_shift && (
                             <div className="mt-2 space-y-1.5">
-                              <span className="inline-block text-[11px] px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-200">
-                                {isPartial ? "החלפה חלקית" : "החלפה מלאה"}
-                              </span>
                               <SwapTransition
                                 item={item}
                                 authorizedUsers={authorizedUsers}
