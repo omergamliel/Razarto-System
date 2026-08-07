@@ -1007,6 +1007,36 @@ export default function KPIListModal({
                                 חלקית
                               </span>
                             )}
+
+                            {item.is_request_object &&
+                              !isMyRequest &&
+                              type !== "approved" &&
+                              item.request_type !== "Head2Head" &&
+                              item.request_type !== "General" &&
+                              // Already covering part of this shift? Then this
+                              // isn't the "offer to cover" flow for them anymore
+                              // (that's handled from the shift details modal /
+                              // cancel-my-coverage path instead).
+                              !(item.covering_user_ids || [])
+                                .map(Number)
+                                .includes(currentUserIdNum) && (
+                                <Button
+                                  onClick={() => {
+                                    if (actionsDisabled) return;
+                                    onClose();
+                                    // Route through the actual Shift record (not
+                                    // the enriched SwapRequest item) so this opens
+                                    // the same AcceptSwapModal flow as clicking the
+                                    // shift cell directly on the calendar.
+                                    onOfferCover(item.original_shift || item);
+                                  }}
+                                  size="sm"
+                                  disabled={actionsDisabled}
+                                  className={`ms-auto rounded-full bg-blue-500 text-white hover:bg-blue-600 px-3 h-8 ${actionsDisabled ? "opacity-60 cursor-not-allowed" : ""}`}
+                                >
+                                  אחליף <ArrowRight className="w-4 h-4 mr-1" />
+                                </Button>
+                              )}
                           </div>
 
                           <p className="text-sm text-gray-800 font-medium">
@@ -1235,36 +1265,6 @@ export default function KPIListModal({
                               <XCircle className="w-4 h-4" />
                             </Button>
                           )}
-
-                          {item.is_request_object &&
-                            !isMyRequest &&
-                            type !== "approved" &&
-                            item.request_type !== "Head2Head" &&
-                            item.request_type !== "General" &&
-                            // Already covering part of this shift? Then this
-                            // isn't the "offer to cover" flow for them anymore
-                            // (that's handled from the shift details modal /
-                            // cancel-my-coverage path instead).
-                            !(item.covering_user_ids || [])
-                              .map(Number)
-                              .includes(currentUserIdNum) && (
-                              <Button
-                                onClick={() => {
-                                  if (actionsDisabled) return;
-                                  onClose();
-                                  // Route through the actual Shift record (not
-                                  // the enriched SwapRequest item) so this opens
-                                  // the same AcceptSwapModal flow as clicking the
-                                  // shift cell directly on the calendar.
-                                  onOfferCover(item.original_shift || item);
-                                }}
-                                size="sm"
-                                disabled={actionsDisabled}
-                                className={`bg-blue-500 text-white hover:bg-blue-600 px-3 h-9 ${actionsDisabled ? "opacity-60 cursor-not-allowed" : ""}`}
-                              >
-                                אחליף <ArrowRight className="w-4 h-4 mr-1" />
-                              </Button>
-                            )}
 
                           {isIncomingHeadToHead && (
                             <div className="flex gap-2">
