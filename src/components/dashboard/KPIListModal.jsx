@@ -193,7 +193,7 @@ export default function KPIListModal({
     isSwapRequestsLoading ||
     isShiftsLoading ||
     isUsersLoading ||
-    (isPartialGapsView && isCoveragesLoading);
+    ((isPartialGapsView || type === "approved") && isCoveragesLoading);
 
   // --- Helpers ---
   const enrichRequestsWithShiftInfo = useCallback(
@@ -335,8 +335,11 @@ export default function KPIListModal({
     [currentUser, swapRequestsAll],
   );
 
+  // Also needed (not just for the partial-gaps tab) by the "approved" KPI,
+  // which surfaces in-progress partial swaps that already have some coverage
+  // taken even though they aren't fully closed yet.
   const partialGapItems = useMemo(() => {
-    if (!isOpen || !isPartialGapsView) return [];
+    if (!isOpen || !(isPartialGapsView || type === "approved")) return [];
     return shiftsAll
       .map((shift) => {
         if (shift.status === "Active") return null;
@@ -421,6 +424,7 @@ export default function KPIListModal({
     isPartialGapsView,
     shiftsAll,
     swapRequestsAll,
+    type,
   ]);
 
   const futureShifts = useMemo(() => {
@@ -483,8 +487,20 @@ export default function KPIListModal({
         return partialGapItems.length
           ? partialGapItems
           : enrichRequestsWithShiftInfo(partialRequests);
-      case "approved":
-        return enrichRequestsWithShiftInfo(approvedReqs);
+      case "approved": {
+        // Partial swaps that already have at least one accepted coverage
+        // window, even if the rest of the shift is still open — these are
+        // real "swaps that happened" too, just not finished yet, and this
+        // list stays live via the shared ['coverages']/['swap-requests']
+        // query cache, so it updates as soon as someone else accepts more.
+        const inProgressPartials = partialGapItems
+          .filter((item) => item.coverageSegments?.length > 0)
+          .map((item) => ({ ...item, is_partial_in_progress: true }));
+        return [
+          ...enrichRequestsWithShiftInfo(approvedReqs),
+          ...inProgressPartials,
+        ];
+      }
       case "my_shifts":
         return enrichShiftsWithUserInfo(futureShifts);
       default:
@@ -768,11 +784,16 @@ export default function KPIListModal({
                   // (occasionally stored as a string) while
                   // currentUser.serial_id is numeric.
                   const currentUserIdNum = Number(currentUser?.serial_id);
+                  // These same actions also apply to in-progress partial
+                  // swaps surfaced under the "approved" KPI (they're the
+                  // same underlying items as on the partial-gaps tab).
+                  const isPartialGapLike =
+                    type === "partial_gaps" || item.is_partial_in_progress;
                   const isPartialGapOwner =
-                    type === "partial_gaps" &&
+                    isPartialGapLike &&
                     Number(item.original_user_id) === currentUserIdNum;
                   const isPartialGapCovering =
-                    type === "partial_gaps" &&
+                    isPartialGapLike &&
                     item.covering_user_ids?.some(
                       (id) => Number(id) === currentUserIdNum,
                     );
@@ -943,7 +964,8 @@ export default function KPIListModal({
                             </span>
                           )}
 
-                          {type !== "approved" && (
+                          {(type !== "approved" ||
+                            item.is_partial_in_progress) && (
                             <div className="mt-1 grid grid-cols-2 gap-1 text-sm text-gray-600">
                               <div className="flex items-center gap-1">
                                 <Clock className="w-3.5 h-3.5" /> {startTime}
@@ -960,7 +982,7 @@ export default function KPIListModal({
                             </div>
                           )}
 
-                          {type === "partial_gaps" &&
+                          {isPartialGapLike &&
                             item.coverageSegments?.length > 0 && (
                               <div className="mt-2 bg-green-50 border border-green-200 rounded-lg p-2">
                                 <p className="font-semibold text-green-800 text-xs mb-1">
@@ -993,7 +1015,7 @@ export default function KPIListModal({
                               </div>
                             )}
 
-                          {type === "partial_gaps" &&
+                          {isPartialGapLike &&
                             item.missingSegments?.length > 0 && (
                               <div className="mt-2 text-xs text-yellow-800 bg-yellow-100 border border-yellow-200 rounded-lg p-2">
                                 <p className="font-semibold mb-1">
@@ -1118,7 +1140,8 @@ export default function KPIListModal({
 
                           {item.is_request_object &&
                             !isMyRequest &&
-                            type !== "approved" &&
+                            (type !== "approved" ||
+                              item.is_partial_in_progress) &&
                             item.request_type !== "Head2Head" &&
                             item.request_type !== "General" && (
                               <Button
