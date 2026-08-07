@@ -43,7 +43,11 @@
     "end_time"
   ],
   "rls": {
-    "read": {},
+    "read": {
+      "user_condition": {
+        "data.is_authorized": true
+      }
+    },
     "create": {
       "user_condition": {
         "role": "admin"
