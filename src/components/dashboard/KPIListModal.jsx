@@ -135,7 +135,6 @@ export default function KPIListModal({
   onRequestSwap,
   actionsDisabled = false,
   onCancelRequest,
-  onCancelCoverage,
   onAcceptHeadToHead,
   onAcceptGeneralRequest,
   onStartCounterOffer,
@@ -800,24 +799,30 @@ export default function KPIListModal({
                   // (occasionally stored as a string) while
                   // currentUser.serial_id is numeric.
                   const currentUserIdNum = Number(currentUser?.serial_id);
-                  // These same actions also apply to in-progress partial
-                  // swaps surfaced under the "approved" KPI (they're the
-                  // same underlying items as on the partial-gaps tab).
+                  // The info blocks (who's covering so far / what's still
+                  // uncovered) are useful anywhere a partial-gap item shows
+                  // up, including in-progress partials surfaced under the
+                  // "approved" KPI.
                   const isPartialGapLike =
                     type === "partial_gaps" || item.is_partial_in_progress;
+                  // Actions (cancel my request / cancel my coverage / offer
+                  // to cover) are read-only history once an item is in the
+                  // "approved" list — even an in-progress partial there is
+                  // being shown for its record, not to be acted on, so this
+                  // is intentionally NOT the same as isPartialGapLike above.
+                  const isPartialGapActionable = type === "partial_gaps";
                   // Gated on requesting_user_id (whoever actually created the
                   // SwapRequest), not original_user_id (the shift's owner) —
                   // those can differ (e.g. an admin filing the request on the
                   // owner's behalf), and cancelling only makes sense for
                   // whoever actually filed it.
+                  // Covering users can't self-cancel a partial pick — only
+                  // the owner can undo the whole request (matches
+                  // ShiftDetailsModal's canCancelCoverage/!isPartialLike
+                  // rule).
                   const isPartialGapOwner =
-                    isPartialGapLike &&
+                    isPartialGapActionable &&
                     Number(item.requesting_user_id) === currentUserIdNum;
-                  const isPartialGapCovering =
-                    isPartialGapLike &&
-                    item.covering_user_ids?.some(
-                      (id) => Number(id) === currentUserIdNum,
-                    );
                   // Real backing SwapRequest entities carry a status field;
                   // the synthetic partial-gap fallback item (built when there's
                   // no live request, just leftover coverage rows) doesn't.
@@ -1100,21 +1105,6 @@ export default function KPIListModal({
                             </Button>
                           )}
 
-                          {isPartialGapCovering && (
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="rounded-full text-orange-600 border-orange-200"
-                              onClick={() =>
-                                onCancelCoverage && onCancelCoverage(item)
-                              }
-                              disabled={actionsDisabled}
-                              title="בטל השתתפות במשמרת"
-                            >
-                              <XCircle className="w-4 h-4" />
-                            </Button>
-                          )}
-
                           {isGeneralRequestForOthers && (
                             <div className="flex gap-2">
                               <Button
@@ -1161,8 +1151,7 @@ export default function KPIListModal({
 
                           {item.is_request_object &&
                             !isMyRequest &&
-                            (type !== "approved" ||
-                              item.is_partial_in_progress) &&
+                            type !== "approved" &&
                             item.request_type !== "Head2Head" &&
                             item.request_type !== "General" && (
                               <Button
