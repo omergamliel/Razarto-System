@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from 'sonner';
-import { buildDateTime, resolveSwapType, normalizeShiftContext, computeCoverageSummary, resolveShiftWindow, getCoverageColor, subtractSegments } from './whatsappTemplates';
+import { buildDateTime, resolveSwapType, normalizeShiftContext, computeCoverageSummary, resolveShiftWindow, getCoverageColor, subtractSegments, mergeOverlappingSegments } from './whatsappTemplates';
 import { useOverlappingLabels } from './useOverlappingLabels';
 
 const formatSegmentText = (segment) => {
@@ -128,19 +128,25 @@ export default function AcceptSwapModal({
     [baseEnd, baseStart, missingSegments]
   );
 
-  const approvedCoverageSegments = useMemo(
-    () =>
-      coverageRows
-        .map((cov) => {
-          const start = buildDateTime(cov.cover_start_date, cov.cover_start_time);
-          let end = buildDateTime(cov.cover_end_date, cov.cover_end_time);
-          if (!start || !end) return null;
-          if (end <= start) end = addDays(end, 1);
-          return { start, end, label: cov.covering_name || cov.covering_user_name || 'מחליף' };
-        })
-        .filter(Boolean),
-    [coverageRows]
-  );
+  const approvedCoverageSegments = useMemo(() => {
+    const segments = coverageRows
+      .map((cov) => {
+        const start = buildDateTime(cov.cover_start_date, cov.cover_start_time);
+        let end = buildDateTime(cov.cover_end_date, cov.cover_end_time);
+        if (!start || !end) return null;
+        if (end <= start) end = addDays(end, 1);
+        return {
+          start,
+          end,
+          label: cov.covering_name || cov.covering_user_name || 'מחליף',
+          covering_user_id: cov.covering_user_id
+        };
+      })
+      .filter(Boolean);
+    // Same person can end up with more than one overlapping coverage record
+    // — merge those so they don't show up as separate stacked bands.
+    return mergeOverlappingSegments(segments, (seg) => seg.covering_user_id ?? seg.label);
+  }, [coverageRows]);
 
   // Assigns each distinct helper a stable, distinguishable color (by order
   // of first appearance) so multiple people covering different windows of
