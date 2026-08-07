@@ -1,62 +1,67 @@
-import { useLayoutEffect, useRef, useState, useCallback } from "react";
+import { useLayoutEffect, useRef, useState } from 'react';
 
-/**
- * Measures labels positioned above a horizontal track and determines which
- * ones overlap their neighbour and should be raised to a higher level to
- * avoid collision.
- *
- * @param {React.RefObject<HTMLElement>} containerRef - the track container
- * @param {Array} deps - dependency array (typically the bands array); re-measures when it changes
- * @returns {{ registerLabel: (idx: number) => (el: HTMLElement) => void, raisedIndices: Set<number> }}
- */
+// Tracks which of a set of absolutely-positioned, horizontally-centered band
+// labels actually collide with a neighbor, and returns the subset that
+// should be nudged onto a second row. Positions are measured from the real
+// rendered DOM (getBoundingClientRect), so a label is only raised when it
+// would otherwise visually overlap another one — as opposed to a fixed
+// even/odd alternation that raises a label regardless of whether it needs it.
 export function useOverlappingLabels(containerRef, deps) {
-  const labelRefs = useRef(new Map());
-  const [raisedIndices, setRaisedIndices] = useState(new Set());
+  const labelElsRef = useRef(new Map());
+  const [raisedIndices, setRaisedIndices] = useState(() => new Set());
 
-  const registerLabel = useCallback((idx) => (el) => {
-    if (el) {
-      labelRefs.current.set(idx, el);
-    } else {
-      labelRefs.current.delete(idx);
-    }
-  }, []);
+  const registerLabel = (idx) => (el) => {
+    if (el) labelElsRef.current.set(idx, el);
+    else labelElsRef.current.delete(idx);
+  };
 
   useLayoutEffect(() => {
-    const measure = () => {
-      const entries = Array.from(labelRefs.current.entries());
-      if (entries.length === 0) {
-        setRaisedIndices(new Set());
-        return;
-      }
-
-      const rects = entries
-        .map(([idx, el]) => {
-          const rect = el.getBoundingClientRect();
-          return { idx, left: rect.left, right: rect.right };
-        })
-        .sort((a, b) => a.left - b.left);
+    const recompute = () => {
+      const entries = Array.from(labelElsRef.current.entries())
+        .map(([idx, el]) => ({ idx, rect: el.getBoundingClientRect() }))
+        .filter((e) => e.rect.width > 0)
+        .sort((a, b) => a.rect.left - b.rect.left);
 
       const raised = new Set();
-      let lastRight = -Infinity;
-      for (const r of rects) {
-        if (r.left < lastRight) {
-          raised.add(r.idx);
+      let lastBase = null;
+      let lastRaised = null;
+
+      for (const { idx, rect } of entries) {
+        const overlapsBase = lastBase && rect.left < lastBase.right;
+        if (!overlapsBase) {
+          lastBase = rect;
+          continue;
+        }
+        const overlapsRaised = lastRaised && rect.left < lastRaised.right;
+        if (!overlapsRaised) {
+          raised.add(idx);
+          lastRaised = rect;
         } else {
-          lastRight = r.right;
+          // Both rows are already occupied by overlapping neighbors — leave
+          // it on the base row rather than introducing an unstyled 3rd row.
+          lastBase = rect;
         }
       }
 
-      setRaisedIndices(raised);
+      setRaisedIndices((prev) => {
+        if (prev.size === raised.size && [...raised].every((i) => prev.has(i))) {
+          return prev;
+        }
+        return raised;
+      });
     };
 
-    measure();
+    recompute();
 
-    const ro = new ResizeObserver(measure);
-    if (containerRef.current) ro.observe(containerRef.current);
-    window.addEventListener("resize", measure);
+    window.addEventListener('resize', recompute);
+    let observer;
+    if (containerRef?.current && typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(recompute);
+      observer.observe(containerRef.current);
+    }
     return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", measure);
+      window.removeEventListener('resize', recompute);
+      if (observer) observer.disconnect();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
