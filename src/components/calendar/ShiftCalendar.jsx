@@ -1645,9 +1645,6 @@ export default function ShiftCalendar() {
         onOfferCover={handleOfferCover}
         onRequestSwap={handleOpenSwapRequest}
         onCancelRequest={(item) => cancelSwapRequestMutation.mutate(item)}
-        onCancelCoverage={(item) =>
-          cancelMyCoverageMutation.mutate({ id: item.shift_id })
-        }
         onAcceptHeadToHead={(item) => {
           if (!canTakeShifts) {
             showRoleError();
