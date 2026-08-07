@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { format, addDays, differenceInMinutes } from "date-fns";
 import { he } from "date-fns/locale";
 import { motion, AnimatePresence } from "framer-motion";
@@ -45,6 +45,7 @@ import {
   subtractSegments,
 } from "./whatsappTemplates";
 import { useHolidays } from "./useHolidays";
+import { useOverlappingLabels } from "./useOverlappingLabels";
 import LoadingSkeleton from "../LoadingSkeleton";
 
 export default function ShiftDetailsModal({
@@ -551,8 +552,24 @@ export default function ShiftDetailsModal({
       label: ownerDisplayName,
       variant: "original",
     }));
-    return [...covered, ...remaining].sort((a, b) => a.start - b.start);
-  }, [coverageRows, ownerSegments, ownerDisplayName]);
+    // The requested-but-still-uncovered gaps get their own grey band, distinct
+    // from the blue "still with the original owner" band — this is the range
+    // that was actually asked for help and nobody has claimed yet.
+    const needsHelp = missingSegments.map((seg) => ({
+      start: seg.start,
+      end: seg.end,
+      label: "טרם נתפס",
+      variant: "needsHelp",
+    }));
+    return [...covered, ...remaining, ...needsHelp].sort(
+      (a, b) => a.start - b.start,
+    );
+  }, [coverageRows, ownerSegments, ownerDisplayName, missingSegments]);
+
+  const trackRef = useRef(null);
+  const { registerLabel, raisedIndices } = useOverlappingLabels(trackRef, [
+    trackBands,
+  ]);
 
   // Assigns each distinct helper a stable, distinguishable color (by order
   // of first appearance) so multiple people covering different windows of
@@ -791,19 +808,24 @@ export default function ShiftDetailsModal({
                         {/* Track wrapper: generous top clearance so the stacked
                             band labels never collide with the header text above */}
                         <div className="relative mx-6 mt-14 mb-8">
-                          <div className="relative h-3 bg-gray-200 rounded-full">
+                          <div
+                            ref={trackRef}
+                            className="relative h-3 bg-gray-200 rounded-full"
+                          >
                             {trackBands.map((band, idx) => {
                               const right = toTrackPercent(band.start);
                               const width = Math.max(
                                 0,
                                 toTrackPercent(band.end) - right,
                               );
-                              const isOriginal = band.variant === "original";
-                              const bandColors = isOriginal
-                                ? { bg: "bg-blue-200", text: "text-blue-700" }
-                                : getCoverageColor(
-                                    coveringColorMap.get(band.label) ?? 0,
-                                  );
+                              const bandColors =
+                                band.variant === "original"
+                                  ? { bg: "bg-blue-200", text: "text-blue-700" }
+                                  : band.variant === "needsHelp"
+                                  ? { bg: "bg-gray-300", text: "text-gray-600" }
+                                  : getCoverageColor(
+                                      coveringColorMap.get(band.label) ?? 0,
+                                    );
                               return (
                                 <div
                                   key={idx}
@@ -816,7 +838,8 @@ export default function ShiftDetailsModal({
                                 >
                                   {width > 8 && (
                                     <span
-                                      className={`absolute right-1/2 translate-x-1/2 text-[10px] font-semibold whitespace-nowrap ${idx % 2 === 0 ? "-top-6" : "-top-11"} ${bandColors.text}`}
+                                      ref={registerLabel(idx)}
+                                      className={`absolute right-1/2 translate-x-1/2 text-[10px] font-semibold whitespace-nowrap ${raisedIndices.has(idx) ? "-top-11" : "-top-6"} ${bandColors.text}`}
                                     >
                                       {band.label}
                                     </span>
@@ -831,6 +854,12 @@ export default function ShiftDetailsModal({
                             <span className="w-3 h-3 rounded-full bg-blue-200 inline-block" />{" "}
                             נשאר אצל {ownerDisplayName}
                           </span>
+                          {missingSegments.length > 0 && (
+                            <span className="flex items-center gap-1">
+                              <span className="w-3 h-3 rounded-full bg-gray-300 inline-block" />{" "}
+                              טרם נתפס
+                            </span>
+                          )}
                           {Array.from(coveringColorMap.entries()).map(
                             ([name, colorIdx]) => (
                               <span
