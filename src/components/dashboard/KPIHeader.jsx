@@ -1,131 +1,223 @@
-import React, { useMemo } from 'react';
-import { motion } from 'framer-motion';
-import { AlertCircle, Clock, CheckCircle, Calendar, ArrowLeftRight } from 'lucide-react';
-import { useQuery } from '@tanstack/react-query';
-import { base44 } from '@/api/base44Client';
+import React, { useMemo } from "react";
+import { motion } from "framer-motion";
+import { addDays } from "date-fns";
+import {
+  AlertCircle,
+  Clock,
+  CheckCircle,
+  Calendar,
+  ArrowLeftRight,
+} from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { base44 } from "@/api/base44Client";
 
-export default function KPIHeader({ currentUser, onKPIClick, onStartSwitchFlow }) {
-
+export default function KPIHeader({
+  currentUser,
+  onKPIClick,
+  onStartSwitchFlow,
+}) {
   // Shared cache key with ShiftCalendar's swap-requests query, so KPI counts
   // refresh the moment a request is created/updated anywhere in the app
   // instead of only after a full remount.
   const { data: swapRequests = [] } = useQuery({
-    queryKey: ['swap-requests'],
-    queryFn: () => base44.entities.SwapRequest.list()
+    queryKey: ["swap-requests"],
+    queryFn: () => base44.entities.SwapRequest.list(),
   });
 
   // --- 1. Swap Requests Count (Red) ---
   // Count ALL open SwapRequests that are of type 'Full' or 'Head2Head'
   // (Head2Head is still a full-shift swap, just targeted at one person's shift)
   const fullRequestsCount = useMemo(
-    () => swapRequests.filter(r => r.status === 'Open' && ['Full', 'Head2Head', 'General'].includes(r.request_type)).length,
-    [swapRequests]
+    () =>
+      swapRequests.filter(
+        (r) =>
+          r.status === "Open" &&
+          ["Full", "Head2Head", "General"].includes(r.request_type),
+      ).length,
+    [swapRequests],
   );
 
   // --- 2. Partial Gaps Count (Yellow) ---
   // Count ALL open SwapRequests that are of type 'Partial', plus any request
   // that's been partially covered
   const partialRequestsCount = useMemo(
-    () => swapRequests.filter(r =>
-      (r.status === 'Open' && r.request_type === 'Partial') || r.status === 'Partially_Covered'
-    ).length,
-    [swapRequests]
+    () =>
+      swapRequests.filter(
+        (r) =>
+          (r.status === "Open" && r.request_type === "Partial") ||
+          r.status === "Partially_Covered",
+      ).length,
+    [swapRequests],
   );
 
   // --- 3. History / Approved (Green) ---
-  // Count closed/completed requests
+  // Count closed/completed requests, plus partial shifts that already have
+  // at least one accepted coverage window even though they're not fully
+  // closed yet — same "in progress" swaps KPIListModal surfaces under this
+  // tile, so the badge and the list it opens agree on the count.
+  const { data: shiftsAll = [] } = useQuery({
+    queryKey: ["shifts"],
+    queryFn: () => base44.entities.Shift.list(),
+  });
+  const { data: coveragesAll = [] } = useQuery({
+    queryKey: ["coverages"],
+    queryFn: () => base44.entities.ShiftCoverage.list(),
+  });
+
+  const inProgressPartialCount = useMemo(() => {
+    return shiftsAll.filter((shift) => {
+      if (shift.status === "Active") return false;
+
+      const shiftCoverages = coveragesAll.filter(
+        (c) => c.shift_id === shift.id,
+      );
+      if (shiftCoverages.length === 0) return false;
+
+      const activeRequest = swapRequests.find(
+        (r) =>
+          r.shift_ids?.includes(shift.id) &&
+          ["Open", "Partially_Covered"].includes(r.status),
+      );
+
+      const startTime =
+        activeRequest?.req_start_time ||
+        shift.swap_start_time ||
+        shift.start_time ||
+        "09:00";
+      const endTime =
+        activeRequest?.req_end_time ||
+        shift.swap_end_time ||
+        shift.end_time ||
+        startTime;
+      const startDate = activeRequest?.req_start_date || shift.start_date;
+      const endDate =
+        activeRequest?.req_end_date || shift.end_date || startDate;
+      const windowStart = new Date(`${startDate}T${startTime}`);
+      let windowEnd = new Date(`${endDate}T${endTime}`);
+      if (windowEnd <= windowStart) windowEnd = addDays(windowEnd, 1);
+
+      let gaps = [{ start: windowStart, end: windowEnd }];
+      shiftCoverages.forEach((c) => {
+        const covStart = new Date(
+          `${c.cover_start_date || startDate}T${c.cover_start_time || startTime}`,
+        );
+        let covEnd = new Date(
+          `${c.cover_end_date || endDate}T${c.cover_end_time || endTime}`,
+        );
+        if (covEnd <= covStart) covEnd = addDays(covEnd, 1);
+        gaps = gaps.flatMap((seg) => {
+          if (covEnd <= seg.start || covStart >= seg.end) return [seg];
+          const pieces = [];
+          if (covStart > seg.start) pieces.push({ start: seg.start, end: covStart });
+          if (covEnd < seg.end) pieces.push({ start: covEnd, end: seg.end });
+          return pieces;
+        });
+      });
+      const hasGap = gaps.some((seg) => seg.end - seg.start > 60000);
+
+      return hasGap;
+    }).length;
+  }, [shiftsAll, coveragesAll, swapRequests]);
+
   const approvedCount = useMemo(
-    () => swapRequests.filter(r => r.status === 'Closed' || r.status === 'Completed').length,
-    [swapRequests]
+    () =>
+      swapRequests.filter(
+        (r) => r.status === "Closed" || r.status === "Completed",
+      ).length + inProgressPartialCount,
+    [swapRequests, inProgressPartialCount],
   );
 
   // --- 4. My Future Shifts (Blue) ---
   // Complex logic: Original assignment OR Approved coverage
   const { data: myShiftsCount = 0 } = useQuery({
-    queryKey: ['count-my-future-shifts', currentUser?.serial_id],
+    queryKey: ["count-my-future-shifts", currentUser?.serial_id],
     queryFn: async () => {
-        if (!currentUser?.serial_id) return 0;
-        
-        const todayStr = new Date().toISOString().split('T')[0];
+      if (!currentUser?.serial_id) return 0;
 
-        // A. Shifts where I am the original user (and no active swap request replacing me completely)
-        // Note: This logic can be refined. For now, simple count of future assignments.
-        // We filter locally because simple filter might not support date operator > directly in all adaptors
-        const myOriginalShifts = await base44.entities.Shift.filter({ 
-            original_user_id: currentUser.serial_id
-        });
-        
-        const futureOriginals = myOriginalShifts.filter(s => s.start_date >= todayStr);
+      const todayStr = new Date().toISOString().split("T")[0];
 
-        // B. Coverages where I am covering (Approved)
-        const myCoverages = await base44.entities.ShiftCoverage.filter({
-            covering_user_id: currentUser.serial_id,
-            status: 'Approved'
-        });
-        
-        const futureCoverages = myCoverages.filter(c => c.cover_start_date >= todayStr);
+      // A. Shifts where I am the original user (and no active swap request replacing me completely)
+      // Note: This logic can be refined. For now, simple count of future assignments.
+      // We filter locally because simple filter might not support date operator > directly in all adaptors
+      const myOriginalShifts = await base44.entities.Shift.filter({
+        original_user_id: currentUser.serial_id,
+      });
 
-        return futureOriginals.length + futureCoverages.length;
+      const futureOriginals = myOriginalShifts.filter(
+        (s) => s.start_date >= todayStr,
+      );
+
+      // B. Coverages where I am covering (Approved)
+      const myCoverages = await base44.entities.ShiftCoverage.filter({
+        covering_user_id: currentUser.serial_id,
+        status: "Approved",
+      });
+
+      const futureCoverages = myCoverages.filter(
+        (c) => c.cover_start_date >= todayStr,
+      );
+
+      return futureOriginals.length + futureCoverages.length;
     },
-    enabled: !!currentUser?.serial_id
+    enabled: !!currentUser?.serial_id,
   });
 
   const kpis = [
     {
-      id: 'swap_requests',
-      mobileTitle: 'בקשות למלאה',
-      desktopTitle: 'בקשות להחלפה מלאה',
+      id: "swap_requests",
+      mobileTitle: "בקשות למלאה",
+      desktopTitle: "בקשות להחלפה מלאה",
       count: fullRequestsCount,
       icon: AlertCircle,
-      gradient: 'from-red-500 to-red-600',
-      bgColor: 'bg-red-50',
-      textColor: 'text-red-600',
-      borderColor: 'border-red-200'
+      gradient: "from-red-500 to-red-600",
+      bgColor: "bg-red-50",
+      textColor: "text-red-600",
+      borderColor: "border-red-200",
     },
     {
-      id: 'partial_gaps',
-      mobileTitle: 'בקשות לחלקית',
-      desktopTitle: 'בקשות להחלפה חלקית',
+      id: "partial_gaps",
+      mobileTitle: "בקשות לחלקית",
+      desktopTitle: "בקשות להחלפה חלקית",
       count: partialRequestsCount,
       icon: Clock,
-      gradient: 'from-yellow-500 to-yellow-600',
-      bgColor: 'bg-yellow-50',
-      textColor: 'text-yellow-600',
-      borderColor: 'border-yellow-200'
+      gradient: "from-yellow-500 to-yellow-600",
+      bgColor: "bg-yellow-50",
+      textColor: "text-yellow-600",
+      borderColor: "border-yellow-200",
     },
     {
-      id: 'approved',
-      mobileTitle: 'היסטוריה',
-      desktopTitle: 'היסטוריית החלפות',
+      id: "approved",
+      mobileTitle: "היסטוריה",
+      desktopTitle: "היסטוריית החלפות",
       count: approvedCount,
       icon: CheckCircle,
-      gradient: 'from-green-500 to-green-600',
-      bgColor: 'bg-green-50',
-      textColor: 'text-green-600',
-      borderColor: 'border-green-200'
+      gradient: "from-green-500 to-green-600",
+      bgColor: "bg-green-50",
+      textColor: "text-green-600",
+      borderColor: "border-green-200",
     },
     {
-      id: 'my_shifts',
-      mobileTitle: 'המשמרות שלי',
-      desktopTitle: 'המשמרות העתידיות שלי',
+      id: "my_shifts",
+      mobileTitle: "המשמרות שלי",
+      desktopTitle: "המשמרות העתידיות שלי",
       count: myShiftsCount,
       icon: Calendar,
-      gradient: 'from-blue-500 to-blue-600',
-      bgColor: 'bg-blue-50',
-      textColor: 'text-blue-600',
-      borderColor: 'border-blue-200'
+      gradient: "from-blue-500 to-blue-600",
+      bgColor: "bg-blue-50",
+      textColor: "text-blue-600",
+      borderColor: "border-blue-200",
     },
     {
-      id: 'switch_request',
+      id: "switch_request",
       isAction: true,
-      mobileTitle: 'בקשת החלפה',
-      desktopTitle: 'התחל בקשת החלפה',
+      mobileTitle: "בקשת החלפה",
+      desktopTitle: "התחל בקשת החלפה",
       icon: ArrowLeftRight,
-      gradient: 'from-purple-500 to-purple-600',
-      bgColor: 'bg-purple-50',
-      textColor: 'text-purple-600',
-      borderColor: 'border-purple-200'
-    }
+      gradient: "from-purple-500 to-purple-600",
+      bgColor: "bg-purple-50",
+      textColor: "text-purple-600",
+      borderColor: "border-purple-200",
+    },
   ];
 
   return (
@@ -136,7 +228,11 @@ export default function KPIHeader({ currentUser, onKPIClick, onStartSwitchFlow }
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: index * 0.05 }}
-          onClick={() => kpi.isAction ? onStartSwitchFlow && onStartSwitchFlow() : (onKPIClick && onKPIClick(kpi.id))}
+          onClick={() =>
+            kpi.isAction
+              ? onStartSwitchFlow && onStartSwitchFlow()
+              : onKPIClick && onKPIClick(kpi.id)
+          }
           className={`
             ${kpi.bgColor} border ${kpi.borderColor} 
             rounded-xl cursor-pointer hover:shadow-md transition-all
@@ -145,7 +241,9 @@ export default function KPIHeader({ currentUser, onKPIClick, onStartSwitchFlow }
             h-full
           `}
         >
-          <div className={`p-1.5 md:p-3 rounded-lg md:rounded-xl bg-gradient-to-br ${kpi.gradient} text-white shadow-sm mb-1 md:mb-0`}>
+          <div
+            className={`p-1.5 md:p-3 rounded-lg md:rounded-xl bg-gradient-to-br ${kpi.gradient} text-white shadow-sm mb-1 md:mb-0`}
+          >
             <kpi.icon className="w-4 h-4 md:w-6 md:h-6" />
           </div>
 
@@ -156,10 +254,12 @@ export default function KPIHeader({ currentUser, onKPIClick, onStartSwitchFlow }
             </p>
           ) : (
             <div className="flex flex-col items-center md:items-start">
-              <span className={`text-xl md:text-3xl font-extrabold ${kpi.textColor} leading-none mb-1 md:mb-0`}>
+              <span
+                className={`text-xl md:text-3xl font-extrabold ${kpi.textColor} leading-none mb-1 md:mb-0`}
+              >
                 {kpi.count}
               </span>
-              
+
               <p className="text-[10px] md:text-xs font-bold text-gray-700 leading-tight">
                 <span className="md:hidden block px-1">{kpi.mobileTitle}</span>
                 <span className="hidden md:block">{kpi.desktopTitle}</span>
