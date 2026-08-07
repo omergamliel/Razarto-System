@@ -210,26 +210,16 @@ export default function ShiftCalendar() {
   const linkUserMutation = useMutation({
     mutationFn: async () => {
       if (!authorizedPerson || !currentUser) return;
-
-      debugLog("🔗 [DEBUG] Linking user...", {
-        authId: authorizedPerson.id,
-        serialId: currentUser.serial_id,
-      });
-
-      // 1. Mark this AuthorizedPerson as onboarded by linking them to their
-      // platform User id (base44.auth.me() returns id, not serial_id).
-      // Also defensively backfills role: 'RR' for any record created before
-      // that field existed, so legacy users aren't silently blocked from
-      // taking shifts.
-      await base44.entities.AuthorizedPerson.update(authorizedPerson.id, {
-        linked_user_id: currentUser.id,
-        role: authorizedPerson.role || "RR",
-      });
-
-      return true;
+      // Server-side onboarding: the backend function verifies the user's
+      // email is in the AuthorizedPerson whitelist (bypassing RLS with the
+      // service role), sets is_authorized: true on the platform User, and
+      // links the AuthorizedPerson record. This cannot be bypassed by
+      // client-side code changes — the verification happens on the server.
+      const res = await base44.functions.invoke("completeOnboarding", {});
+      return res.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(["check-authorization"]);
+      queryClient.invalidateQueries();
       toast.success("החיבור בוצע בהצלחה! ברוכים הבאים.");
     },
     onError: (err) => {
