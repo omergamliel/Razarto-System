@@ -693,9 +693,9 @@ export default function AcceptSwapModal({
 
                       {/* Legend */}
                       <div className="flex items-center justify-center flex-wrap gap-3 text-[11px] text-gray-500">
-                          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-blue-200 inline-block" /> נשאר אצל {originalUserName}</span>
+                          <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-blue-200 inline-block" /> {originalUserName}</span>
                           {missingSegments.length > 0 && (
-                            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-gray-300 inline-block" /> טרם נתפס</span>
+                            <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-full bg-gray-300 inline-block" /> טרם נתפס (נשאר אצל {originalUserName})</span>
                           )}
                           {Array.from(coveringColorMap.entries()).map(([name, colorIdx]) => (
                             <span key={name} className="flex items-center gap-1">
