@@ -41,5 +41,19 @@
     "start_date",
     "end_date",
     "original_user_id"
-  ]
+  ],
+  "rls": {
+    "read": {},
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {},
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
 }

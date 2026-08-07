@@ -39,7 +39,7 @@
         "Approved"
       ],
       "default": "Pending",
-      "description": "\u05e1\u05d8\u05d8\u05d5\u05e1 \u05d4\u05db\u05d9\u05e1\u05d5\u05d9"
+      "description": "\u05e1\u05d8\u05d8\u05d8\u05d5\u05e1 \u05d4\u05db\u05d9\u05e1\u05d5\u05d9"
     }
   },
   "required": [
@@ -50,5 +50,17 @@
     "cover_end_date",
     "cover_start_time",
     "cover_end_time"
-  ]
+  ],
+  "rls": {
+    "read": {},
+    "create": {
+      "created_by_id": "{{user.id}}"
+    },
+    "update": {},
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
 }

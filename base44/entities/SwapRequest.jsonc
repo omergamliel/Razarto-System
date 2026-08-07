@@ -68,5 +68,17 @@
     "req_end_date",
     "req_start_time",
     "req_end_time"
-  ]
+  ],
+  "rls": {
+    "read": {},
+    "create": {
+      "created_by_id": "{{user.id}}"
+    },
+    "update": {},
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
 }

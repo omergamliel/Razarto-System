@@ -31,7 +31,7 @@
         "Manager",
         "Admin"
       ],
-      "description": "\u05e8\u05de\u05ea \u05d4\u05e8\u05e9\u05d0\u05d5\u05ea"
+      "description": "\u05e8\u05de\u05ea \u05d4\u05d4\u05e8\u05e9\u05d0\u05d5\u05ea"
     },
     "role": {
       "type": "string",
@@ -50,5 +50,30 @@
   "required": [
     "full_name",
     "email"
-  ]
+  ],
+  "rls": {
+    "read": {},
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "$or": [
+        {
+          "data.email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
 }
