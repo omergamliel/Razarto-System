@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from 'sonner';
 import { buildDateTime, resolveSwapType, normalizeShiftContext, computeCoverageSummary, resolveShiftWindow, getCoverageColor, subtractSegments } from './whatsappTemplates';
+import { useOverlappingLabels } from './useOverlappingLabels';
 
 const formatSegmentText = (segment) => {
   const sameDay = format(segment.start, 'dd/MM') === format(segment.end, 'dd/MM');
@@ -194,6 +195,8 @@ export default function AcceptSwapModal({
     }));
     return [...covered, ...mine, ...needsHelp, ...remaining].sort((a, b) => a.start - b.start);
   }, [approvedCoverageSegments, myCoverageSegment, missingSegments, originalUserName, fullShiftStart, fullShiftEnd]);
+
+  const { registerLabel, raisedIndices } = useOverlappingLabels(sliderRef, [takenBands]);
 
   const totalMinutes = fullShiftStart && fullShiftEnd ? differenceInMinutes(fullShiftEnd, fullShiftStart) : 0;
   const toPercent = (date) => {
@@ -593,7 +596,8 @@ export default function AcceptSwapModal({
                               >
                                 {width > 8 && (
                                   <span
-                                    className={`absolute right-1/2 translate-x-1/2 text-[10px] font-semibold whitespace-nowrap ${idx % 2 === 0 ? '-top-6' : '-top-11'} ${bandColors.text}`}
+                                    ref={registerLabel(idx)}
+                                    className={`absolute right-1/2 translate-x-1/2 text-[10px] font-semibold whitespace-nowrap ${raisedIndices.has(idx) ? '-top-11' : '-top-6'} ${bandColors.text}`}
                                   >
                                     {band.label}
                                   </span>
