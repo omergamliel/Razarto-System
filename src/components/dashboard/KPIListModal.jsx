@@ -315,6 +315,9 @@ export default function KPIListModal({
           displayStatus = "partial";
         }
 
+        const typeRequest =
+          activeRequest ||
+          swapRequestsAll.find((r) => r.shift_ids?.includes(s.id));
         return {
           ...s,
           user_name:
@@ -325,6 +328,7 @@ export default function KPIListModal({
           is_shift_object: true,
           status: displayStatus,
           coverageType,
+          request_type: typeRequest?.request_type,
         };
       });
     },
