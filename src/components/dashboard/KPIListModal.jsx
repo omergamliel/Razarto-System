@@ -665,12 +665,16 @@ export default function KPIListModal({
     }
 
     if (type === "partial_gaps" && partialGapsTab === "mine") {
-      // "Mine" covers both being the shift's owner AND having joined it as a
-      // covering user — either way it's a partial gap the user is involved in.
+      // Shifts the user owns — covering someone else's gap belongs under the
+      // separate "covering" tab instead.
       return sortedData.filter(
-        (item) =>
-          item.original_user_id === currentUser?.serial_id ||
-          item.covering_user_ids?.includes(currentUser?.serial_id),
+        (item) => item.original_user_id === currentUser?.serial_id,
+      );
+    }
+
+    if (type === "partial_gaps" && partialGapsTab === "covering") {
+      return sortedData.filter((item) =>
+        item.covering_user_ids?.includes(currentUser?.serial_id),
       );
     }
 
@@ -757,6 +761,16 @@ export default function KPIListModal({
                   className="flex-1"
                 >
                   הפערים שלי
+                </Button>
+                <Button
+                  variant={
+                    partialGapsTab === "covering" ? "default" : "outline"
+                  }
+                  size="sm"
+                  onClick={() => setPartialGapsTab("covering")}
+                  className="flex-1"
+                >
+                  משמרות שאני מכסה
                 </Button>
               </div>
             )}
