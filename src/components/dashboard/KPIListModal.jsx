@@ -418,6 +418,7 @@ export default function KPIListModal({
             .filter(Boolean),
           missingSegments: missing,
           coverageSegments,
+          original_shift: shift,
           is_request_object: true,
         };
       })
