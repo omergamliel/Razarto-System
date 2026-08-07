@@ -31,8 +31,11 @@ import LoadingSkeleton from "../LoadingSkeleton";
 import {
   buildSwapTemplate,
   mergeOverlappingSegments,
+  buildDateTime,
+  subtractSegments,
 } from "../calendar/whatsappTemplates";
 import SwapTransition from "./SwapTransition";
+import PartialShiftTrack from "../calendar/PartialShiftTrack";
 
 // --- Static Helper Functions (Outside Component) ---
 const formatDateTimeForDisplay = (dateStr, timeStr) => {
@@ -125,6 +128,66 @@ const getDisplayDay = (dateStr) => {
 };
 
 const isOpenStatus = (status) => ["Open", "Partially_Covered"].includes(status);
+
+// Same coverage-slider used in the history view (SwapTransition), reused here
+// so an in-progress partial gap shows the same visual breakdown before it's
+// closed out, not just the text lists below it.
+function PartialGapCoverageTrack({ item, authorizedUsers, requesterName }) {
+  const trackWindow = useMemo(() => {
+    if (!item?.original_shift) return { start: null, end: null };
+    const start = buildDateTime(
+      item.original_shift.start_date,
+      item.original_shift.start_time || "09:00",
+    );
+    let end = buildDateTime(
+      item.original_shift.end_date || item.original_shift.start_date,
+      item.original_shift.end_time || item.original_shift.start_time || "09:00",
+    );
+    if (start && end && end <= start) end = addDays(end, 1);
+    return { start, end };
+  }, [item?.original_shift]);
+
+  const trackBands = useMemo(() => {
+    if (!trackWindow.start || !trackWindow.end) return [];
+    const resolveUser = (id) =>
+      authorizedUsers.find((u) => Number(u.serial_id) === Number(id));
+    const covered = (item.coverageSegments || []).map((seg) => ({
+      start: seg.start,
+      end: seg.end,
+      label: resolveUser(seg.covering_user_id)?.full_name || "מחליף",
+      variant: "covered",
+    }));
+    const needsHelp = (item.missingSegments || []).map((seg) => ({
+      start: seg.start,
+      end: seg.end,
+      label: "טרם נתפס",
+      variant: "needsHelp",
+    }));
+    const remaining = subtractSegments(trackWindow.start, trackWindow.end, [
+      ...covered,
+      ...needsHelp,
+    ]).map((seg) => ({
+      start: seg.start,
+      end: seg.end,
+      label: requesterName,
+      variant: "original",
+    }));
+    return [...covered, ...needsHelp, ...remaining].sort(
+      (a, b) => a.start - b.start,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trackWindow, item?.coverageSegments, item?.missingSegments]);
+
+  if (!trackBands.length) return null;
+
+  return (
+    <PartialShiftTrack
+      bands={trackBands}
+      windowStart={trackWindow.start}
+      windowEnd={trackWindow.end}
+    />
+  );
+}
 
 export default function KPIListModal({
   isOpen,
@@ -1019,6 +1082,16 @@ export default function KPIListModal({
                               <div className="text-sm text-gray-500">
                                 סיום: {endDate}
                               </div>
+                            </div>
+                          )}
+
+                          {type === "partial_gaps" && item.original_shift && (
+                            <div className="mt-2">
+                              <PartialGapCoverageTrack
+                                item={item}
+                                authorizedUsers={authorizedUsers}
+                                requesterName={item.user_name || "לא ידוע"}
+                              />
                             </div>
                           )}
 
