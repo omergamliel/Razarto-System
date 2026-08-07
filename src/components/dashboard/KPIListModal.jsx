@@ -908,7 +908,7 @@ export default function KPIListModal({
                             item.accepted_by_names?.length > 0 && (
                               <div className="mt-2 text-[11px] text-green-800 bg-green-50 border border-green-200 rounded-lg p-2">
                                 <p className="font-semibold">
-                                  ✓ ההחלפה אושרה — התקבלה על ידי:{" "}
+                                  ✓ ההחלפה אושרה — {item.user_name} ↔{" "}
                                   {item.accepted_by_names.join(", ")}
                                 </p>
                               </div>
@@ -943,20 +943,22 @@ export default function KPIListModal({
                             </span>
                           )}
 
-                          <div className="mt-1 grid grid-cols-2 gap-1 text-sm text-gray-600">
-                            <div className="flex items-center gap-1">
-                              <Clock className="w-3.5 h-3.5" /> {startTime}
+                          {type !== "approved" && (
+                            <div className="mt-1 grid grid-cols-2 gap-1 text-sm text-gray-600">
+                              <div className="flex items-center gap-1">
+                                <Clock className="w-3.5 h-3.5" /> {startTime}
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Clock className="w-3.5 h-3.5" /> {endTime}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                התחלה: {startDate}
+                              </div>
+                              <div className="text-sm text-gray-500">
+                                סיום: {endDate}
+                              </div>
                             </div>
-                            <div className="flex items-center gap-1">
-                              <Clock className="w-3.5 h-3.5" /> {endTime}
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              התחלה: {startDate}
-                            </div>
-                            <div className="text-sm text-gray-500">
-                              סיום: {endDate}
-                            </div>
-                          </div>
+                          )}
 
                           {type === "partial_gaps" &&
                             item.coverageSegments?.length > 0 && (
