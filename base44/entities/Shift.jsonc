@@ -34,7 +34,7 @@
         "Covered"
       ],
       "default": "Active",
-      "description": "\u05e1\u05d8\u05d8\u05d5\u05e1 \u05d4\u05de\u05e9\u05de\u05e8\u05ea"
+      "description": "\u05e1\u05d8\u05d8\u05d8\u05d5\u05e1 \u05d4\u05de\u05e9\u05de\u05e8\u05ea"
     }
   },
   "required": [
@@ -43,13 +43,21 @@
     "original_user_id"
   ],
   "rls": {
-    "read": {},
+    "read": {
+      "user_condition": {
+        "data.is_authorized": true
+      }
+    },
     "create": {
       "user_condition": {
         "role": "admin"
       }
     },
-    "update": {},
+    "update": {
+      "user_condition": {
+        "data.is_authorized": true
+      }
+    },
     "delete": {
       "user_condition": {
         "role": "admin"
