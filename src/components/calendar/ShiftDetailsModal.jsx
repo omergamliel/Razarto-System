@@ -191,17 +191,24 @@ export default function ShiftDetailsModal({
   const requestWindow = coverageSummary.requestWindow;
   const shiftWindow = coverageSummary.shiftWindow;
 
+  // Only users with an active role ('RR') can be assigned shifts — users
+  // with role 'None' are excluded from the reassign dropdown.
+  const rrUsers = useMemo(
+    () => authorizedUsers.filter((u) => u.role === "RR"),
+    [authorizedUsers],
+  );
+
   const departments = useMemo(() => {
-    return [...new Set(authorizedUsers.map((u) => u.department))]
+    return [...new Set(rrUsers.map((u) => u.department))]
       .filter(Boolean)
       .sort();
-  }, [authorizedUsers]);
+  }, [rrUsers]);
 
   const departmentUsers = useMemo(() => {
     return selectedDepartment
-      ? authorizedUsers.filter((u) => u.department === selectedDepartment)
+      ? rrUsers.filter((u) => u.department === selectedDepartment)
       : [];
-  }, [authorizedUsers, selectedDepartment]);
+  }, [rrUsers, selectedDepartment]);
 
   // --- Fetch Covering Users Info (to show names) ---
   const { data: coveringUsers = [] } = useQuery({
