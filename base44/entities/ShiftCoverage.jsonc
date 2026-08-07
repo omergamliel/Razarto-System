@@ -52,11 +52,21 @@
     "cover_end_time"
   ],
   "rls": {
-    "read": {},
-    "create": {
-      "created_by_id": "{{user.id}}"
+    "read": {
+      "user_condition": {
+        "data.is_authorized": true
+      }
     },
-    "update": {},
+    "create": {
+      "user_condition": {
+        "data.is_authorized": true
+      }
+    },
+    "update": {
+      "user_condition": {
+        "data.is_authorized": true
+      }
+    },
     "delete": {
       "user_condition": {
         "role": "admin"
