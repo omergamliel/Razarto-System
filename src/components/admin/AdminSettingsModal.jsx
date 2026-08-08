@@ -32,6 +32,7 @@ import {
   FlaskConical,
   XCircle,
   Download,
+  Tag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -64,6 +65,8 @@ import {
 import { runPureTests, runLiveTests } from "@/lib/testing/testRunner";
 import { exportAllData } from "@/lib/testing/exportData";
 import FaqManager from "@/components/admin/FaqManager";
+import ThemesTab from "@/components/admin/ThemesTab";
+import LogsTab from "@/components/admin/LogsTab";
 import { MONITOR_CHECKS, LOG_TYPE_OPTIONS } from "@/components/admin/adminConstants";
 
 // A native <input type="date"> keeps the OS/browser date picker (calendar
@@ -107,44 +110,6 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     permissionsPhone: "+972 54-688-1831",
     issuesPhone: "+972 53-622-1840",
   });
-  // כל הצבעים כאן הם הצבעים בפועל שכבר בשימוש ברכיבים המתאימים (Tailwind
-  // hex equivalents), לא צבעים מומצאים — ר' KPIHeader.jsx, ShiftCell.jsx,
-  // KPIListModal.jsx ו-HallOfFameModal.jsx.
-  const [themePalette, setThemePalette] = useState({
-    kpi: {
-      fullSwap: "#ef4444", // red-500 — KPIHeader "בקשות להחלפה מלאה"
-      partialSwap: "#eab308", // yellow-500 — "בקשות להחלפה חלקית"
-      history: "#22c55e", // green-500 — "היסטוריית החלפות"
-      futureShifts: "#3b82f6", // blue-500 — "המשמרות העתידיות שלי"
-    },
-    calendar: {
-      myShifts: "#3b82f6", // blue-500 — ShiftCell.jsx "mine"
-      regularShift: "#9ca3af", // gray-400 — ShiftCell.jsx ברירת מחדל
-      swapRequest: "#ef4444", // red-500 — ShiftCell.jsx "requested"
-      partialGap: "#eab308", // yellow-500 — ShiftCell.jsx "partial"
-      approvedSwap: "#22c55e", // green-500 — ShiftCell.jsx "covered"
-    },
-    buttons: {
-      volunteer: "#3b82f6", // blue-500 — כפתור "אחליף" ב-KPIListModal.jsx
-      swapDirect: "#6366f1", // indigo-500 — כפתור "הצע ראש בראש"
-      whatsapp: "#25d366", // צבע המותג של WhatsApp — כפתור השיתוף בפועל
-      calendar: "#2563eb", // blue-600 — כפתור "הוספה ליומן"
-      requestSwap: "#ef4444", // red-500 — כפתור "בקש החלפה"
-      cancel: "#dc2626", // red-600 — סגנון destructive
-      cancelRequest: "#dc2626", // red-600 — סגנון destructive
-    },
-    hallOfFame: {
-      first: "#eab308", // yellow-500 — HallOfFameModal.jsx מקום ראשון
-      second: "#9ca3af", // gray-400 — מקום שני
-      third: "#f97316", // orange-500 — מקום שלישי
-    },
-  });
-  const [logFilters, setLogFilters] = useState({
-    search: "",
-    date: "",
-    type: "all",
-  });
-
   // --- MODAL STATES ---
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [addUserStep, setAddUserStep] = useState("form"); // 'form' or 'success'
@@ -167,6 +132,9 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   const [selectedPermission, setSelectedPermission] = useState("");
   const [roleUser, setRoleUser] = useState(null);
   const [selectedRole, setSelectedRole] = useState("");
+  const [isSignOpen, setIsSignOpen] = useState(false);
+  const [signUser, setSignUser] = useState(null);
+  const [signValue, setSignValue] = useState("");
   const [userToDelete, setUserToDelete] = useState(null);
 
   // Archive Logic States
@@ -198,10 +166,6 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   const queryClient = useQueryClient();
 
   const monitorChecks = MONITOR_CHECKS;
-
-  const logEntries = useMemo(() => [], []);
-
-  const logTypeOptions = LOG_TYPE_OPTIONS;
 
   // --- HELPER: Permission Colors ---
   const getPermissionStyle = (perm) => {
@@ -319,6 +283,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         role: "RR",
         ...userData,
         serial_id: maxId + 1,
+        sign: `RR${String(maxId + 1).padStart(3, "0")}`,
       });
 
       // Also provision the person as a platform User so they can actually
@@ -364,6 +329,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       setIsEditUserOpen(false);
       setIsPermissionsOpen(false);
       setIsRoleOpen(false);
+      setIsSignOpen(false);
     },
     onError: () => toast.error("שגיאה בעדכון הפרטים."),
   });
@@ -587,6 +553,19 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     }
   };
 
+  const handleSaveSign = async () => {
+    if (!signUser) return;
+    setIsSubmitting(true);
+    try {
+      await updateUserMutation.mutateAsync({
+        id: signUser.id,
+        data: { sign: signValue },
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleDeleteConfirm = async () => {
     if (isArchiveMode) {
       toast.success("הבקשה להעברה לארכיון התקבלה (סימולציה)");
@@ -619,16 +598,6 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   };
 
   const filteredPeople = getFilteredPeople();
-
-  const filteredLogs = logEntries.filter((entry) => {
-    const matchesSearch =
-      entry.action.toLowerCase().includes(logFilters.search.toLowerCase()) ||
-      entry.user.toLowerCase().includes(logFilters.search.toLowerCase());
-    const matchesDate = !logFilters.date || entry.date === logFilters.date;
-    const matchesType =
-      logFilters.type === "all" || entry.type === logFilters.type;
-    return matchesSearch && matchesDate && matchesType;
-  });
 
   const statusColors = {
     ok: "bg-emerald-500",
@@ -820,11 +789,12 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
               {/* Table */}
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex-1 overflow-hidden flex flex-col">
                 <div className="hidden md:grid grid-cols-12 gap-4 p-4 border-b border-gray-100 bg-gray-50/50 text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                  <div className="col-span-3">שם מלא</div>
+                  <div className="col-span-2">שם מלא</div>
                   <div className="col-span-2">מחלקה</div>
                   <div className="col-span-2">אימייל</div>
                   <div className="col-span-2">הרשאות</div>
                   <div className="col-span-1">תפקיד</div>
+                  <div className="col-span-1">סימן</div>
                   <div className="col-span-1 text-center">קישוריות</div>
                   <div className="col-span-1 text-center">פעולות</div>
                 </div>
@@ -848,7 +818,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                           className="grid grid-cols-12 gap-2 md:gap-4 p-3 md:p-4 border-b border-gray-50 items-center hover:bg-blue-50/30 transition-colors group relative"
                         >
                           {/* Name */}
-                          <div className="col-span-7 md:col-span-3 flex flex-col justify-center">
+                          <div className="col-span-7 md:col-span-2 flex flex-col justify-center">
                             <div className="font-bold text-gray-800 text-sm truncate flex items-center gap-2">
                               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 text-blue-600 flex items-center justify-center text-xs font-bold shrink-0">
                                 {person.full_name?.charAt(0)}
@@ -872,6 +842,14 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                               >
                                 {person.role || "RR"}
                               </span>
+                              {person.sign && (
+                                <>
+                                  {" • "}
+                                  <span className="text-gray-500 font-mono">
+                                    {person.sign}
+                                  </span>
+                                </>
+                              )}
                             </div>
                           </div>
 
@@ -911,6 +889,13 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                               }`}
                             >
                               {person.role || "RR"}
+                            </span>
+                          </div>
+
+                          {/* Sign */}
+                          <div className="hidden md:block col-span-1">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-bold border shadow-sm bg-gray-50 text-gray-700 border-gray-200 font-mono">
+                              {person.sign || "—"}
                             </span>
                           </div>
 
@@ -973,6 +958,17 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                                 >
                                   <span>ניהול תפקיד</span>
                                   <UserCheck className="w-4 h-4" />
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setSignUser(person);
+                                    setSignValue(person.sign || "");
+                                    setIsSignOpen(true);
+                                  }}
+                                  className="flex items-center justify-end gap-2 cursor-pointer text-gray-700"
+                                >
+                                  <span>עריכת סימן</span>
+                                  <Tag className="w-4 h-4" />
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() => handleSendInvite(person)}
@@ -1264,322 +1260,9 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
             </div>
           )}
 
-          {activeTab === "themes" && (
-            <div className="space-y-3 md:space-y-4 overflow-y-auto">
-              <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800">
-                      דשבורד KPI
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      בחירה בצבעי פסטל נעימים
-                    </p>
-                  </div>
-                  <Palette className="w-5 h-5 text-blue-500" />
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
-                  {[
-                    { key: "fullSwap", label: "בקשות להחלפה מלאה" },
-                    { key: "partialSwap", label: "בקשות להחלפה חלקית" },
-                    { key: "history", label: "היסטוריית החלפות" },
-                    { key: "futureShifts", label: "המשמרות העתידיות שלי" },
-                  ].map((item) => (
-                    <div
-                      key={item.key}
-                      className="flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-gray-50"
-                    >
-                      <div className="flex flex-col text-sm text-gray-700">
-                        <span className="font-semibold">{item.label}</span>
-                        <span className="text-xs text-gray-500">
-                          גוון פסטלי מומלץ
-                        </span>
-                      </div>
-                      <input
-                        type="color"
-                        value={themePalette.kpi[item.key]}
-                        onChange={(e) =>
-                          setThemePalette((prev) => ({
-                            ...prev,
-                            kpi: { ...prev.kpi, [item.key]: e.target.value },
-                          }))
-                        }
-                        className="w-12 h-10 rounded-lg border border-gray-200"
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
+          {activeTab === "themes" && <ThemesTab />}
 
-              <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800">
-                      תצוגה קלנדרית
-                    </p>
-                    <p className="text-xs text-gray-500">התאמת צבע לכל סטטוס</p>
-                  </div>
-                  <CalendarDays className="w-5 h-5 text-blue-500" />
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                  {[
-                    { key: "myShifts", label: "המשמרות שלי" },
-                    { key: "regularShift", label: "משמרת רגילה" },
-                    { key: "swapRequest", label: "בקשה להחלפה" },
-                    { key: "partialGap", label: "כיסוי חלקי – פער" },
-                    { key: "approvedSwap", label: "החלפה אושרה" },
-                  ].map((item) => (
-                    <div
-                      key={item.key}
-                      className="flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-gray-50"
-                    >
-                      <span className="text-sm font-semibold text-gray-800">
-                        {item.label}
-                      </span>
-                      <input
-                        type="color"
-                        value={themePalette.calendar[item.key]}
-                        onChange={(e) =>
-                          setThemePalette((prev) => ({
-                            ...prev,
-                            calendar: {
-                              ...prev.calendar,
-                              [item.key]: e.target.value,
-                            },
-                          }))
-                        }
-                        className="w-12 h-10 rounded-lg border border-gray-200"
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800">
-                      כפתורים
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      התאמה לפעולות נפוצות
-                    </p>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-                  {[
-                    { key: "volunteer", label: "אני רוצה לעזור" },
-                    { key: "swapDirect", label: "החלפה ראש בראש" },
-                    { key: "whatsapp", label: "שיתוף בווצאפ" },
-                    { key: "calendar", label: "הוספה ליומן" },
-                    { key: "requestSwap", label: "בקש החלפה" },
-                    { key: "cancel", label: "ביטול" },
-                    { key: "cancelRequest", label: "ביטול בקשת החלפה" },
-                  ].map((item) => (
-                    <div
-                      key={item.key}
-                      className="flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-gray-50"
-                    >
-                      <span className="text-sm font-semibold text-gray-800">
-                        {item.label}
-                      </span>
-                      <input
-                        type="color"
-                        value={themePalette.buttons[item.key]}
-                        onChange={(e) =>
-                          setThemePalette((prev) => ({
-                            ...prev,
-                            buttons: {
-                              ...prev.buttons,
-                              [item.key]: e.target.value,
-                            },
-                          }))
-                        }
-                        className="w-12 h-10 rounded-lg border border-gray-200"
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800">
-                      היכל התהילה
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      עיצוב רקע לשלושת המקומות
-                    </p>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  {[
-                    { key: "first", label: "מקום ראשון" },
-                    { key: "second", label: "מקום שני" },
-                    { key: "third", label: "מקום שלישי" },
-                  ].map((item) => (
-                    <div
-                      key={item.key}
-                      className="flex items-center justify-between p-3 rounded-xl border border-gray-100 bg-gray-50"
-                    >
-                      <span className="text-sm font-semibold text-gray-800">
-                        {item.label}
-                      </span>
-                      <input
-                        type="color"
-                        value={themePalette.hallOfFame[item.key]}
-                        onChange={(e) =>
-                          setThemePalette((prev) => ({
-                            ...prev,
-                            hallOfFame: {
-                              ...prev.hallOfFame,
-                              [item.key]: e.target.value,
-                            },
-                          }))
-                        }
-                        className="w-12 h-10 rounded-lg border border-gray-200"
-                      />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === "logs" && (
-            <div className="space-y-3 md:space-y-4 overflow-y-auto">
-              <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800">
-                      פילטרים
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      חיפוש, תאריכים וסוג פעולה
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-emerald-600">
-                    <Circle className="w-2.5 h-2.5 fill-emerald-500 text-emerald-500" />{" "}
-                    לוגים עדכניים
-                  </div>
-                </div>
-                <div
-                  className="grid grid-cols-1 md:grid-cols-3 gap-3"
-                  dir="rtl"
-                >
-                  <div className="relative">
-                    <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <Input
-                      placeholder="חיפוש טקסט חופשי"
-                      value={logFilters.search}
-                      onChange={(e) =>
-                        setLogFilters((prev) => ({
-                          ...prev,
-                          search: e.target.value,
-                        }))
-                      }
-                      className="pr-9 rounded-xl"
-                    />
-                  </div>
-                  <div className="relative">
-                    <CalendarDays className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-                    <Input
-                      type="date"
-                      value={logFilters.date}
-                      onChange={(e) =>
-                        setLogFilters((prev) => ({
-                          ...prev,
-                          date: e.target.value,
-                        }))
-                      }
-                      className="pr-9 rounded-xl"
-                    />
-                  </div>
-                  <Select
-                    value={logFilters.type}
-                    onValueChange={(val) =>
-                      setLogFilters((prev) => ({ ...prev, type: val }))
-                    }
-                  >
-                    <SelectTrigger className="rounded-xl">
-                      <SelectValue placeholder="בחר סוג פעולה" />
-                    </SelectTrigger>
-                    <SelectContent dir="rtl">
-                      <SelectItem value="all">הכל</SelectItem>
-                      {logTypeOptions.map((type) => (
-                        <SelectItem key={type} value={type}>
-                          {type}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-right">
-                    <thead className="bg-gray-50 text-xs uppercase text-gray-500">
-                      <tr>
-                        <th className="px-4 py-3 font-semibold">סטטוס</th>
-                        <th className="px-4 py-3 font-semibold">משתמש</th>
-                        <th className="px-4 py-3 font-semibold">פעולה</th>
-                        <th className="px-4 py-3 font-semibold">תאריך</th>
-                        <th className="px-4 py-3 font-semibold">שעה</th>
-                        <th className="px-4 py-3 font-semibold">סוג פעולה</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {filteredLogs.slice(0, 10).map((log, idx) => (
-                        <tr
-                          key={`${log.user}-${idx}`}
-                          className="text-sm hover:bg-gray-50/60"
-                        >
-                          <td className="px-4 py-3">
-                            <span
-                              className={`inline-flex items-center gap-2 text-xs font-semibold ${log.status === "ok" ? "text-emerald-600" : log.status === "warn" ? "text-amber-600" : "text-rose-600"}`}
-                            >
-                              <span
-                                className={`w-3 h-3 rounded-full ${statusColors[log.status]} animate-pulse`}
-                              />
-                              {log.status === "ok"
-                                ? "תקין"
-                                : log.status === "warn"
-                                  ? "חריג"
-                                  : "אסור"}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 font-semibold text-gray-800">
-                            {log.user}
-                          </td>
-                          <td className="px-4 py-3 text-gray-700">
-                            {log.action}
-                          </td>
-                          <td className="px-4 py-3 text-gray-600">
-                            {log.displayDate}
-                          </td>
-                          <td className="px-4 py-3 text-gray-600">
-                            {log.time}
-                          </td>
-                          <td className="px-4 py-3 text-gray-600">
-                            {log.type}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="p-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-500 flex justify-between px-6">
-                  <span>
-                    מציג {filteredLogs.slice(0, 10).length} מתוך{" "}
-                    {filteredLogs.length}
-                  </span>
-                  <span className="hidden md:inline">עד 10 רשומות בעמוד</span>
-                </div>
-              </div>
-            </div>
-          )}
+          {activeTab === "logs" && <LogsTab />}
 
           {activeTab === "distribution" && (
             <div className="space-y-4 md:space-y-6 overflow-y-auto">
@@ -2327,6 +2010,49 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
               className="bg-orange-600 hover:bg-orange-700 text-white"
             >
               {isSubmitting ? "מעדכן..." : "שמור תפקיד"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* --- 3C. SIGN EDIT MODAL --- */}
+      <Dialog open={isSignOpen} onOpenChange={setIsSignOpen}>
+        <DialogContent className="sm:max-w-[425px] text-right" dir="rtl">
+          <DialogHeader className="text-right">
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <div className="bg-gray-100 p-2 rounded-full">
+                <Tag className="w-5 h-5 text-gray-600" />
+              </div>
+              עריכת סימן
+            </DialogTitle>
+            <DialogDescription className="text-right">
+              עדכן את הסימן עבור <b>{signUser?.full_name}</b>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="sign_value" className="text-right">
+                סימן
+              </Label>
+              <Input
+                id="sign_value"
+                value={signValue}
+                onChange={(e) => setSignValue(e.target.value)}
+                className="text-right font-mono"
+                placeholder="לדוגמה: RR001"
+              />
+            </div>
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setIsSignOpen(false)}>
+              ביטול
+            </Button>
+            <Button
+              onClick={handleSaveSign}
+              disabled={isSubmitting}
+              className="bg-gray-700 hover:bg-gray-800 text-white"
+            >
+              {isSubmitting ? "שומר..." : "שמור סימן"}
             </Button>
           </DialogFooter>
         </DialogContent>

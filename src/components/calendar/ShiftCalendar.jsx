@@ -254,6 +254,28 @@ export default function ShiftCalendar() {
     },
   });
 
+  // --- SYNC serial_id to the platform User entity ---
+  // inviteUser creates the platform User without a serial_id, and the
+  // completeOnboarding backend function links the AuthorizedPerson but
+  // doesn't copy serial_id onto the User. This keeps the two in sync: on
+  // mount (for users who already onboarded) and after onboarding resolves
+  // (new users), if the AuthorizedPerson has a serial_id the User entity
+  // doesn't yet reflect, push it over with updateMe.
+  useEffect(() => {
+    if (!authorizedPerson?.linked_user_id || !currentUser) return;
+    if (authorizedPerson.serial_id == null) return;
+    if (
+      Number(currentUser.serial_id) === Number(authorizedPerson.serial_id)
+    )
+      return;
+    base44.auth
+      .updateMe({ serial_id: authorizedPerson.serial_id })
+      .then(() => queryClient.invalidateQueries(["current-user"]))
+      .catch((e) =>
+        debugLog("⚠️ [ShiftCalendar] Failed to sync serial_id:", e),
+      );
+  }, [authorizedPerson, currentUser]);
+
   // --- MAIN DATA QUERIES (Shifts, Users, Requests, Coverages) ---
   const { data: shifts = [], isLoading: isShiftsLoading } = useQuery({
     queryKey: ["shifts"],
