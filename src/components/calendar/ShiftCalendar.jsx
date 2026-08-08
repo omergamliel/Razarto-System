@@ -1078,13 +1078,38 @@ export default function ShiftCalendar() {
 
   const deleteShiftMutation = useMutation({
     mutationFn: async (id) => {
+      // A covered shift still has SwapRequest / ShiftCoverage rows pointing
+      // at it (shift_ids / offered_shift_ids / shift_id) — Base44 rejects
+      // deleting an entity that's still referenced elsewhere, which made
+      // this silently no-op for any shift with full/partial coverage. Clear
+      // those referencing rows first so the shift delete can actually go
+      // through.
+      const relatedRequests = swapRequests.filter(
+        (r) =>
+          r.shift_ids?.includes(id) || r.offered_shift_ids?.includes(id),
+      );
+      const relatedCoverages = coverages.filter((c) => c.shift_id === id);
+      await Promise.all([
+        ...relatedRequests.map((r) =>
+          base44.entities.SwapRequest.delete(r.id),
+        ),
+        ...relatedCoverages.map((c) =>
+          base44.entities.ShiftCoverage.delete(c.id),
+        ),
+      ]);
       return await base44.entities.Shift.delete(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries(["shifts"]);
+      queryClient.invalidateQueries(["swap-requests"]);
+      queryClient.invalidateQueries(["coverages"]);
       toast.success("המשמרת נמחקה");
       setShowActionModal(false);
       setShowDetailsModal(false);
+    },
+    onError: (error) => {
+      console.error("❌ [ShiftCalendar] Delete shift failed:", error);
+      toast.error(`מחיקת המשמרת נכשלה: ${error?.message || "שגיאה לא ידועה"}`);
     },
   });
 
