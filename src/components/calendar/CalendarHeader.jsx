@@ -224,8 +224,6 @@ export default function CalendarHeader({
                     alt="Admin Panel"
                     className="w-6 h-6 md:w-7 md:h-7 object-contain group-hover:scale-110 transition-transform"
                   />
-                  {/* אינדיקטור קטן למנהל */}
-                  <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full border border-white"></span>
                 </button>
               )}
 

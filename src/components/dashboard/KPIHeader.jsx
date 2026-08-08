@@ -248,10 +248,15 @@ export default function KPIHeader({
           </div>
 
           {kpi.isAction ? (
-            <p className="text-[10px] md:text-xs font-bold text-gray-700 leading-tight">
-              <span className="md:hidden block px-1">{kpi.mobileTitle}</span>
-              <span className="hidden md:block">{kpi.desktopTitle}</span>
-            </p>
+            <div className="flex flex-col items-center md:items-start">
+              {/* Invisible placeholder keeps this tile's icon + text aligned
+                  with the count-bearing tiles above (same vertical structure). */}
+              <span className="text-xl md:text-3xl font-extrabold leading-none mb-1 md:mb-0 invisible">0</span>
+              <p className="text-[10px] md:text-xs font-bold text-gray-700 leading-tight">
+                <span className="md:hidden block px-1">{kpi.mobileTitle}</span>
+                <span className="hidden md:block">{kpi.desktopTitle}</span>
+              </p>
+            </div>
           ) : (
             <div className="flex flex-col items-center md:items-start">
               <span
