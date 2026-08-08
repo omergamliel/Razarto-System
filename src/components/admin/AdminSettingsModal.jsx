@@ -92,64 +92,102 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   const [activeTab, setActiveTab] = useState("users");
   const [systemStatus, setSystemStatus] = useState(true);
   const [systemSettings, setSystemSettings] = useState({
-    title: "מערכת ניהול החלפות",
-    subtitle: "דשבורד לניהול תהליכי משמרות והחלפות",
+    // הטקסטים בפועל שמוצגים תחת הלוגו ב-CalendarHeader.jsx
+    title: "מערכת לניהול משמרות",
+    subtitle: "צפייה במשמרות | ביצוע החלפות מסודרות",
     keywords: "Razarto, משמרות, החלפות",
     offlineMessage: "המערכת כרגע בתחזוקה מתוכננת. חזרו בעוד מספר דקות.",
   });
   const [supportSettings, setSupportSettings] = useState({
-    guideUrl: "https://base44.app/help",
-    videoUrl: "https://youtu.be/dummy-help-video",
-    permissionsPhone: "03-555-0101",
-    issuesPhone: "03-555-0123",
+    // אין כרגע מדריך שימוש אמיתי — ה-HelpSupportModal מציג הודעת "בקרוב" בלבד.
+    guideUrl: "",
+    // ה-embed בפועל ב-HelpSupportModal.jsx (מזהה סרטון YouTube)
+    videoUrl: "https://youtu.be/9u12tJQ1KF4",
+    // מספרי הוואטסאפ האמיתיים שמוזמנים בפועל מתוך HelpSupportModal.jsx
+    permissionsPhone: "+972 54-688-1831",
+    issuesPhone: "+972 53-622-1840",
   });
   const [faqItems, setFaqItems] = useState([
     {
       id: 1,
-      question: "איך מאשרים בקשת החלפה?",
-      answer: "נכנסים למשמרת הרלוונטית, לוחצים על בקשת ההחלפה ומאשרים.",
+      question: "איך פותחים בקשת כיסוי חדשה?",
+      answer:
+        'לחצו על המשמרת הרצויה בלוח, בחרו "בקש החלפה" ומלאו את שעות הכיסוי הנדרשות. המשמרת תסומן אוטומטית כדרושה כיסוי והצוות יקבל התראה.',
       expanded: false,
     },
     {
       id: 2,
-      question: "איך מעדכנים זמינות?",
-      answer: 'בתפריט האישי לחצו על "הזמינויות שלי" והגדירו שעות נוחות.',
+      question: "איך מאשרים הצעת כיסוי שהתקבלה?",
+      answer:
+        'כנסו למשמרת המסומנת, בדקו את פרטי ההצעה ולחצו על "אשר כיסוי". המערכת תעדכן את לוח המשמרות ותשלח התראה למאשר ולמציע.',
       expanded: false,
     },
     {
       id: 3,
-      question: "מה עושים אם שכחתי סיסמה?",
-      answer: "ניתן להתחבר עם Google OAUTH או לבקש איפוס דרך המייל.",
+      question: "איך מסננים משמרות לפי מחלקה ותפקיד?",
+      answer:
+        "בחלק העליון של לוח השנה יש מסננים למחלקה ולתפקיד. בחרו את הערכים הרצויים כדי לראות רק משמרות רלוונטיות אליכם ולקבל רשימה ממוקדת.",
+      expanded: false,
+    },
+    {
+      id: 4,
+      question: "איך מתאימים תפקידים או שעות אחרי יצירת משמרת?",
+      answer:
+        'מנהלים יכולים לפתוח את המשמרת הרצויה, לבחור "ערוך משמרת" ולעדכן מחלקה, תפקיד או שעות. השינויים מתעדכנים לכל הצוות בזמן אמת.',
+      expanded: false,
+    },
+    {
+      id: 5,
+      question: "מה המשמעות של הצבעים בלוח?",
+      answer:
+        "כחול = המשמרת שלך, אדום = דרוש כיסוי מלא, צהוב = דרוש כיסוי חלקי, ירוק = כיסוי שאושר, אפור = משמרות של אחרים. פס כתום מסמן את היום הנוכחי.",
+      expanded: false,
+    },
+    {
+      id: 6,
+      question: "איך מפעילים התראות וואטסאפ לעדכונים?",
+      answer:
+        "אחרי פתיחת בקשה או אישור כיסוי, לחצו על כפתור השיתוף בוואטסאפ כדי לשלוח עדכון מיידי לצוות. ניתן להעתיק את הקישור או לשלוח ישירות לקבוצת היחידה.",
+      expanded: false,
+    },
+    {
+      id: 7,
+      question: "איך רואים ביצועים וסטטוס כיסוי?",
+      answer:
+        "בלוח הבקרה (KPI Dashboard) מוצג מספר הבקשות הפתוחות, פערי הכיסוי והאישורים האחרונים. לחיצה על מדד פותחת את המשמרות הרלוונטיות לפעולה מהירה.",
       expanded: false,
     },
   ]);
+  // כל הצבעים כאן הם הצבעים בפועל שכבר בשימוש ברכיבים המתאימים (Tailwind
+  // hex equivalents), לא צבעים מומצאים — ר' KPIHeader.jsx, ShiftCell.jsx,
+  // KPIListModal.jsx ו-HallOfFameModal.jsx.
   const [themePalette, setThemePalette] = useState({
     kpi: {
-      fullSwap: "#c1f0c7",
-      partialSwap: "#f9d9c2",
-      history: "#d6e4ff",
-      futureShifts: "#ffe8f1",
+      fullSwap: "#ef4444", // red-500 — KPIHeader "בקשות להחלפה מלאה"
+      partialSwap: "#eab308", // yellow-500 — "בקשות להחלפה חלקית"
+      history: "#22c55e", // green-500 — "היסטוריית החלפות"
+      futureShifts: "#3b82f6", // blue-500 — "המשמרות העתידיות שלי"
     },
     calendar: {
-      myShifts: "#d1e8ff",
-      regularShift: "#e8f5c8",
-      swapRequest: "#ffd6e8",
-      partialGap: "#fff4c2",
-      approvedSwap: "#c7f6e2",
+      myShifts: "#3b82f6", // blue-500 — ShiftCell.jsx "mine"
+      regularShift: "#9ca3af", // gray-400 — ShiftCell.jsx ברירת מחדל
+      swapRequest: "#ef4444", // red-500 — ShiftCell.jsx "requested"
+      partialGap: "#eab308", // yellow-500 — ShiftCell.jsx "partial"
+      approvedSwap: "#22c55e", // green-500 — ShiftCell.jsx "covered"
     },
     buttons: {
-      volunteer: "#b4e3ff",
-      swapDirect: "#ffcde6",
-      whatsapp: "#c7f7d4",
-      calendar: "#e3dcff",
-      requestSwap: "#ffd8b8",
-      cancel: "#f5c2c0",
-      cancelRequest: "#e9e9e9",
+      volunteer: "#3b82f6", // blue-500 — כפתור "אחליף" ב-KPIListModal.jsx
+      swapDirect: "#6366f1", // indigo-500 — כפתור "הצע ראש בראש"
+      whatsapp: "#25d366", // צבע המותג של WhatsApp — כפתור השיתוף בפועל
+      calendar: "#2563eb", // blue-600 — כפתור "הוספה ליומן"
+      requestSwap: "#ef4444", // red-500 — כפתור "בקש החלפה"
+      cancel: "#dc2626", // red-600 — סגנון destructive
+      cancelRequest: "#dc2626", // red-600 — סגנון destructive
     },
     hallOfFame: {
-      first: "#fff2b2",
-      second: "#e3e8ff",
-      third: "#f5d6c6",
+      first: "#eab308", // yellow-500 — HallOfFameModal.jsx מקום ראשון
+      second: "#9ca3af", // gray-400 — מקום שני
+      third: "#f97316", // orange-500 — מקום שלישי
     },
   });
   const [logFilters, setLogFilters] = useState({
@@ -294,6 +332,49 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     queryFn: () => base44.entities.AuthorizedPerson.list(),
     enabled: isOpen,
   });
+
+  // Shares the same ['app-settings'] cache/entity as CalendarHeader.jsx's
+  // logo upload, so uploading it from either place updates the other.
+  const { data: appSettings = [] } = useQuery({
+    queryKey: ["app-settings"],
+    queryFn: () => base44.entities.AppSettings.list(),
+    enabled: isOpen,
+  });
+  const logoUrl = appSettings.find((s) => s.setting_key === "logo")?.logo_url || "";
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
+
+  const updateLogoMutation = useMutation({
+    mutationFn: async (url) => {
+      const existing = appSettings.find((s) => s.setting_key === "logo");
+      if (existing) {
+        return base44.entities.AppSettings.update(existing.id, { logo_url: url });
+      }
+      return base44.entities.AppSettings.create({
+        setting_key: "logo",
+        logo_url: url,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["app-settings"] });
+      toast.success("הלוגו עודכן בהצלחה");
+    },
+    onError: () => toast.error("שגיאה בהעלאת הלוגו"),
+  });
+
+  const handleLogoFileUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsUploadingLogo(true);
+    try {
+      const { file_url } = await base44.integrations.Core.UploadFile({ file });
+      await updateLogoMutation.mutateAsync(file_url);
+    } catch (error) {
+      toast.error("שגיאה בהעלאת הלוגו");
+    } finally {
+      setIsUploadingLogo(false);
+      e.target.value = "";
+    }
+  };
 
   // Fetches all shifts (shares the ['shifts'] cache with the rest of the app),
   // but shiftDistributionAlgorithm only ever looks at the ones that fall
@@ -775,7 +856,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         </div>
 
         {/* Content */}
-        <div className="flex-1 min-h-0 overflow-hidden bg-[#F9FAFB] p-4 md:p-8 flex flex-col gap-4 md:gap-6">
+        <div className="flex-1 min-h-0 overflow-hidden bg-[#F9FAFB] p-4 md:p-8 flex flex-col gap-3 md:gap-4">
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 shrink-0 flex flex-col p-3">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-2">
@@ -1069,9 +1150,9 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
           )}
 
           {activeTab === "settings" && (
-            <div className="space-y-4 md:space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-4">
+            <div className="space-y-3 md:space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-3">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-semibold text-gray-800">
@@ -1083,7 +1164,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                     </div>
                     <Globe className="w-5 h-5 text-blue-500" />
                   </div>
-                  <div className="grid gap-3" dir="rtl">
+                  <div className="grid gap-2" dir="rtl">
                     <div className="grid gap-1">
                       <Label className="text-sm text-gray-700">
                         כותרת ראשית
@@ -1124,13 +1205,21 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                       <input
                         type="file"
                         accept="image/png,image/jpeg,image/svg+xml"
-                        className="block w-full text-sm text-gray-600 file:mr-2 file:py-2 file:px-4 file:rounded-xl file:border-0 file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer"
+                        onChange={handleLogoFileUpload}
+                        disabled={isUploadingLogo}
+                        className="block w-full text-sm text-gray-600 file:mr-2 file:py-2 file:px-4 file:rounded-xl file:border-0 file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer disabled:opacity-60"
                       />
+                      {logoUrl && (
+                        <p className="text-xs text-gray-400 mt-1">
+                          לוגו נוכחי מוגדר — ניתן גם להחליף אותו בלחיצה על
+                          הלוגו בפינה העליונה של האפליקציה.
+                        </p>
+                      )}
                     </div>
                   </div>
                 </div>
 
-                <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-4">
+                <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-3">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-semibold text-gray-800">
@@ -1163,7 +1252,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                       </span>
                     </button>
                   </div>
-                  <div className="grid gap-3" dir="rtl">
+                  <div className="grid gap-2" dir="rtl">
                     <div className="grid gap-1">
                       <Label className="text-sm text-gray-700">
                         הודעה שמופיעה כשהמערכת כבויה
@@ -1197,7 +1286,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
               </div>
 
               <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center justify-between mb-3">
                   <div>
                     <p className="text-sm font-semibold text-gray-800">
                       מוניטור
@@ -1262,6 +1351,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                       onChange={(e) =>
                         handleSupportChange("guideUrl", e.target.value)
                       }
+                      placeholder="טרם קיים מדריך — כרגע מוצגת הודעת 'בקרוב' בעמוד התמיכה"
                       className="rounded-xl"
                       dir="ltr"
                     />
