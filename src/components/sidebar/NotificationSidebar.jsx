@@ -19,6 +19,7 @@ import {
   dispatchAction,
 } from "./messageStore";
 import { useScrollLock } from "@/hooks/useScrollLock";
+import { useNotificationScanner } from "@/hooks/useNotificationScanner";
 
 // Visual codes mirror the shift-status styles in ShiftCell.jsx so a
 // notification matches the look of the shift it refers to.
@@ -76,6 +77,10 @@ const TYPE_STYLES = {
 const getStyle = (type) => TYPE_STYLES[type] || TYPE_STYLES.info;
 
 export default function NotificationSidebar() {
+  // Populates messageStore by scanning current entity data on load/refetch —
+  // this is the only thing in the app that ever calls addMessage().
+  useNotificationScanner();
+
   const [messages, setMessages] = useState(getMessages());
   const [isOpen, setIsOpen] = useState(false);
 
@@ -128,7 +133,9 @@ export default function NotificationSidebar() {
                   <Bell className="w-5 h-5 text-gray-700" />
                   <h2 className="text-base font-bold text-gray-800">הודעות</h2>
                   {count > 0 && (
-                    <span className="text-xs font-medium text-gray-500">({count})</span>
+                    <span className="text-xs font-medium text-gray-500">
+                      ({count})
+                    </span>
                   )}
                 </div>
                 <div className="flex items-center gap-1">
@@ -157,7 +164,9 @@ export default function NotificationSidebar() {
                     <div className="w-14 h-14 rounded-full bg-gray-100 flex items-center justify-center mb-3">
                       <Bell className="w-7 h-7 text-gray-300" />
                     </div>
-                    <p className="text-sm font-medium text-gray-500">אין הודעות כרגע</p>
+                    <p className="text-sm font-medium text-gray-500">
+                      אין הודעות כרגע
+                    </p>
                     <p className="text-xs text-gray-400 mt-1 max-w-[220px]">
                       הודעות על משמרות, בקשות החלפה ופערי כיסוי יופיעו כאן.
                     </p>
@@ -184,7 +193,9 @@ export default function NotificationSidebar() {
 
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between gap-2">
-                              <span className={`text-[10px] font-bold uppercase tracking-wide ${style.text}`}>
+                              <span
+                                className={`text-[10px] font-bold uppercase tracking-wide ${style.text}`}
+                              >
                                 {style.label}
                               </span>
                               <button
