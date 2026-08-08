@@ -242,35 +242,23 @@ export default function KPIHeader({
           `}
         >
           <div
-            className={`p-1.5 md:p-3 rounded-lg md:rounded-xl bg-gradient-to-br ${kpi.gradient} text-white shadow-sm mb-1 md:mb-0`}
+            className={`p-1.5 md:p-3 rounded-lg md:rounded-xl bg-gradient-to-br ${kpi.gradient} text-white shadow-sm mb-1 md:mb-0 shrink-0`}
           >
             <kpi.icon className="w-4 h-4 md:w-6 md:h-6" />
           </div>
 
-          {kpi.isAction ? (
-            <div className="flex flex-col items-center md:items-start">
-              {/* Invisible placeholder keeps this tile's icon + text aligned
-                  with the count-bearing tiles above (same vertical structure). */}
-              <span className="text-xl md:text-3xl font-extrabold leading-none mb-1 md:mb-0 invisible">0</span>
-              <p className="text-[10px] md:text-xs font-bold text-gray-700 leading-tight">
-                <span className="md:hidden block px-1">{kpi.mobileTitle}</span>
-                <span className="hidden md:block">{kpi.desktopTitle}</span>
-              </p>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center md:items-start">
-              <span
-                className={`text-xl md:text-3xl font-extrabold ${kpi.textColor} leading-none mb-1 md:mb-0`}
-              >
-                {kpi.count}
-              </span>
+          <div className="flex flex-col items-center md:items-start">
+            <span
+              className={`text-xl md:text-3xl font-extrabold leading-none mb-1 md:mb-0 ${kpi.isAction ? "invisible" : kpi.textColor}`}
+            >
+              {kpi.isAction ? "0" : kpi.count}
+            </span>
 
-              <p className="text-[10px] md:text-xs font-bold text-gray-700 leading-tight">
-                <span className="md:hidden block px-1">{kpi.mobileTitle}</span>
-                <span className="hidden md:block">{kpi.desktopTitle}</span>
-              </p>
-            </div>
-          )}
+            <p className="text-[10px] md:text-xs font-bold text-gray-700 leading-tight min-h-[2.5em] flex items-center">
+              <span className="md:hidden block px-1">{kpi.mobileTitle}</span>
+              <span className="hidden md:block">{kpi.desktopTitle}</span>
+            </p>
+          </div>
         </motion.div>
       ))}
     </div>
