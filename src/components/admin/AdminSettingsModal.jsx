@@ -20,10 +20,8 @@ import {
   CheckCircle2,
   Palette,
   HelpCircle,
-  PhoneCall,
   ChevronUp,
   ChevronDown,
-  GripVertical,
   Circle,
   Plus,
   CalendarDays,
@@ -65,6 +63,8 @@ import {
 } from "@/components/ui/dialog";
 import { runPureTests, runLiveTests } from "@/lib/testing/testRunner";
 import { exportAllData } from "@/lib/testing/exportData";
+import FaqManager from "@/components/admin/FaqManager";
+import { MONITOR_CHECKS, LOG_TYPE_OPTIONS } from "@/components/admin/adminConstants";
 
 // A native <input type="date"> keeps the OS/browser date picker (calendar
 // icon, click-to-pick, keyboard entry) — only its DISPLAYED format is
@@ -107,57 +107,6 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     permissionsPhone: "+972 54-688-1831",
     issuesPhone: "+972 53-622-1840",
   });
-  const [faqItems, setFaqItems] = useState([
-    {
-      id: 1,
-      question: "איך פותחים בקשת החלפה על משמרת?",
-      answer:
-        'לחצו על המשמרת שלכם בלוח, בחרו "בקשת החלפה מלאה/חלקית", סמנו אם זו החלפה מלאה או חלקית (ובחלקית - סמנו את טווח השעות בסליידר) ואשרו עם "בקש החלפה". המשמרת תסומן מיד בלוח כדרושה כיסוי, ומסך האישור מאפשר לשתף אותה בלחיצה לקבוצת הוואטסאפ.',
-      expanded: false,
-    },
-    {
-      id: 2,
-      question: "איך מציעים כיסוי למשמרת שדרושה עבורה החלפה?",
-      answer:
-        'היכנסו למשמרת המסומנת בלוח (אדום = דרוש כיסוי מלא, צהוב = דרוש כיסוי חלקי) ולחצו "אשר כיסוי". אם הכיסוי שהצעתם סוגר את כל השעות החסרות, הבקשה נסגרת אוטומטית והמשמרת עוברת אליכם; אם הוא מכסה רק חלק מהשעות, הבקשה נשארת פתוחה להשלמה על ידי אנשי צוות נוספים.',
-      expanded: false,
-    },
-    {
-      id: 3,
-      question: "מה ההבדל בין התצוגה החודשית לשבועית?",
-      answer:
-        'בסרגל הניווט שמעל הלוח אפשר לעבור בין "חודשי" ל"שבועי" בלחיצת כפתור. התצוגה החודשית מציגה את כל החודש כגריד אחד, והתצוגה השבועית מתמקדת בשבוע הנוכחי בלבד עם תא גדול יותר לכל יום.',
-      expanded: false,
-    },
-    {
-      id: 4,
-      question: "איך משבצים אדם אחר במקום מי שמופיע במשמרת?",
-      answer:
-        'מנהלים יכולים לפתוח את המשמרת הרצויה, לבחור "ערוך שיבוץ", לבחור מחלקה, ואז לבחור מתוך רשימת אנשי הצוות הפעילים באותה מחלקה מי ישובץ במקום המשתמש הנוכחי. השינוי מתעדכן מיד בלוח לכל הצוות.',
-      expanded: false,
-    },
-    {
-      id: 5,
-      question: "מה המשמעות של הצבעים בלוח?",
-      answer:
-        "כחול = המשמרת שלך, אדום = דרוש כיסוי מלא, צהוב = דרוש כיסוי חלקי, ירוק = כיסוי שאושר, אפור = משמרת רגילה של מישהו אחר, סגול = חג או מועד. מסגרת כחולה מודגשת סביב תא היום מסמנת את היום הנוכחי.",
-      expanded: false,
-    },
-    {
-      id: 6,
-      question: "איך משתפים עדכון על בקשה או כיסוי בוואטסאפ?",
-      answer:
-        'מיד אחרי שליחת בקשת החלפה או אישור כיסוי מופיע מסך אישור עם כפתור "שתף בקבוצה בוואטסאפ" ששולח הודעה מוכנה עם קישור ישיר למשמרת - לא צריך להעתיק פרטים ידנית.',
-      expanded: false,
-    },
-    {
-      id: 7,
-      question: "איך רואים סטטוס בקשות והחלפות במבט מהיר?",
-      answer:
-        'בראש המסך מופיע לוח KPI עם הכרטיסים "בקשות להחלפה מלאה", "בקשות להחלפה חלקית", "היסטוריית החלפות" ו"המשמרות העתידיות שלי". לחיצה על כרטיס פותחת רשימה מפורטת של המשמרות הרלוונטיות אליו.',
-      expanded: false,
-    },
-  ]);
   // כל הצבעים כאן הם הצבעים בפועל שכבר בשימוש ברכיבים המתאימים (Tailwind
   // hex equivalents), לא צבעים מומצאים — ר' KPIHeader.jsx, ShiftCell.jsx,
   // KPIListModal.jsx ו-HallOfFameModal.jsx.
@@ -248,59 +197,11 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
 
   const queryClient = useQueryClient();
 
-  const monitorChecks = useMemo(
-    () => [
-      {
-        id: "storage",
-        label: "אחסון מערכת",
-        detail: "קצב קריאה/כתיבה תקין",
-        status: "ok",
-      },
-      {
-        id: "security",
-        label: "תאימות אבטחה",
-        detail: "חיבורים חתומים ותוקפים",
-        status: "ok",
-      },
-      {
-        id: "database",
-        label: "מסד נתונים",
-        detail: "חיבור יציב",
-        status: "ok",
-      },
-      {
-        id: "oauth",
-        label: "OAUTH Google",
-        detail: "זמין ומאושר",
-        status: "ok",
-      },
-      {
-        id: "notifications",
-        label: "חיווי התראות",
-        detail: "שליחת פושים ולמייל פעילה",
-        status: "ok",
-      },
-      {
-        id: "backup",
-        label: "גיבוי יומי",
-        detail: "נשמר ב-03:00",
-        status: "ok",
-      },
-    ],
-    [],
-  );
+  const monitorChecks = MONITOR_CHECKS;
 
   const logEntries = useMemo(() => [], []);
 
-  const logTypeOptions = [
-    "בקשות החלפה",
-    "כניסות משתמשים",
-    "שינויים בהרשאות",
-    "הוספת משמרות",
-    "מחיקת משמרות",
-    "שיתופים (WhatsApp, יומן)",
-    "עדכון מערכת",
-  ];
+  const logTypeOptions = LOG_TYPE_OPTIONS;
 
   // --- HELPER: Permission Colors ---
   const getPermissionStyle = (perm) => {
@@ -626,45 +527,6 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     setSupportSettings((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleFaqToggle = (id) => {
-    setFaqItems((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, expanded: !item.expanded } : item,
-      ),
-    );
-  };
-
-  const handleFaqChange = (id, field, value) => {
-    setFaqItems((prev) =>
-      prev.map((item) => (item.id === id ? { ...item, [field]: value } : item)),
-    );
-  };
-
-  const handleAddFaq = () => {
-    const nextId =
-      (faqItems.length ? Math.max(...faqItems.map((i) => i.id)) : 0) + 1;
-    setFaqItems((prev) => [
-      ...prev,
-      {
-        id: nextId,
-        question: "שאלה חדשה",
-        answer: "הקלידו תשובה",
-        expanded: true,
-      },
-    ]);
-  };
-
-  const moveFaq = (id, direction) => {
-    setFaqItems((prev) => {
-      const index = prev.findIndex((item) => item.id === id);
-      const newIndex = index + direction;
-      if (newIndex < 0 || newIndex >= prev.length) return prev;
-      const updated = [...prev];
-      const [removed] = updated.splice(index, 1);
-      updated.splice(newIndex, 0, removed);
-      return updated;
-    });
-  };
 
   const handleAddUserSubmit = async (e) => {
     e.preventDefault();
@@ -1398,122 +1260,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                 </div>
               </div>
 
-              <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800">
-                      שאלות נפוצות
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      תצוגה מודרנית עם גרירה לשינוי סדר
-                    </p>
-                  </div>
-                  <Button
-                    onClick={handleAddFaq}
-                    className="rounded-xl bg-blue-600 hover:bg-blue-700 text-white gap-2 h-10 px-3"
-                  >
-                    <Plus className="w-4 h-4" /> הוספת שאלה
-                  </Button>
-                </div>
-                <div className="space-y-3">
-                  {faqItems.map((item, idx) => (
-                    <div
-                      key={item.id}
-                      className="border border-gray-100 rounded-xl p-3 bg-gradient-to-br from-white to-gray-50 shadow-sm"
-                    >
-                      <div className="flex items-start gap-2">
-                        <div className="flex flex-col items-center text-gray-400 pt-1">
-                          <GripVertical className="w-4 h-4" />
-                          <div className="flex flex-col text-[10px] text-gray-500">
-                            <button
-                              onClick={() => moveFaq(item.id, -1)}
-                              className="hover:text-gray-700"
-                            >
-                              <ChevronUp className="w-3 h-3" />
-                            </button>
-                            <button
-                              onClick={() => moveFaq(item.id, 1)}
-                              className="hover:text-gray-700"
-                            >
-                              <ChevronDown className="w-3 h-3" />
-                            </button>
-                          </div>
-                        </div>
-                        <div className="flex-1 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <button
-                              onClick={() => handleFaqToggle(item.id)}
-                              className="text-right flex-1 text-sm font-semibold text-gray-800"
-                            >
-                              {item.question}
-                            </button>
-                            <div className="flex items-center gap-2 text-gray-500">
-                              <button
-                                onClick={() => handleFaqToggle(item.id)}
-                                className="p-2 rounded-lg hover:bg-gray-100"
-                              >
-                                {item.expanded ? (
-                                  <ChevronUp className="w-4 h-4" />
-                                ) : (
-                                  <ChevronDown className="w-4 h-4" />
-                                )}
-                              </button>
-                              <button
-                                onClick={() =>
-                                  setFaqItems((prev) =>
-                                    prev.filter((q) => q.id !== item.id),
-                                  )
-                                }
-                                className="p-2 rounded-lg hover:bg-red-50 text-red-600"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-                          {item.expanded && (
-                            <div className="grid gap-2" dir="rtl">
-                              <Label className="text-xs text-gray-600">
-                                שאלה
-                              </Label>
-                              <Input
-                                value={item.question}
-                                onChange={(e) =>
-                                  handleFaqChange(
-                                    item.id,
-                                    "question",
-                                    e.target.value,
-                                  )
-                                }
-                                className="rounded-xl"
-                              />
-                              <Label className="text-xs text-gray-600 mt-1">
-                                תשובה
-                              </Label>
-                              <Textarea
-                                value={item.answer}
-                                onChange={(e) =>
-                                  handleFaqChange(
-                                    item.id,
-                                    "answer",
-                                    e.target.value,
-                                  )
-                                }
-                                className="rounded-xl min-h-[80px]"
-                              />
-                              <div className="flex items-center justify-end gap-2 text-xs text-gray-500">
-                                <span>סעיף {idx + 1}</span>
-                                <span className="flex items-center gap-1">
-                                  <PhoneCall className="w-3 h-3" /> תמיכה זמינה
-                                </span>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <FaqManager />
             </div>
           )}
 

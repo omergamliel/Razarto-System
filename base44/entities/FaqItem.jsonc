@@ -1,0 +1,54 @@
+{
+  "name": "FaqItem",
+  "type": "object",
+  "properties": {
+    "question": {
+      "type": "string",
+      "description": "\u05d8\u05e7\u05e1\u05d8 \u05d4\u05e9\u05d0\u05dc\u05d4"
+    },
+    "answer": {
+      "type": "string",
+      "description": "\u05d8\u05e7\u05e1\u05d8 \u05d4\u05ea\u05e9\u05d5\u05d1\u05d4"
+    },
+    "order": {
+      "type": "number",
+      "default": 0,
+      "description": "\u05e1\u05d3\u05e8 \u05ea\u05e6\u05d5\u05d2\u05d4 \u2014 \u05e2\u05e8\u05db\u05d9\u05dd \u05e0\u05de\u05d5\u05db\u05d9\u05dd \u05d9\u05d5\u05ea\u05e8 \u05de\u05d5\u05e4\u05d9\u05e2\u05d9\u05dd \u05e8\u05d0\u05e9\u05d5\u05df"
+    }
+  },
+  "required": [
+    "question",
+    "answer"
+  ],
+  "rls": {
+    "read": {
+      "$or": [
+        {
+          "user_condition": {
+            "data.is_authorized": true
+          }
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
+}
