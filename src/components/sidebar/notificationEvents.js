@@ -62,90 +62,86 @@ export function computeNotificationEvents({
     }
   });
 
-  // 2 & 3. Coverage offered / cancelled on a shift I own.
+  // 2 & 3. Coverage offered on a shift I own (no "cancelled" event here — a
+  // helper can't cancel their own coverage as a user action; the only way a
+  // shift's coverage disappears is the owner reverting the whole shift to
+  // Active via cancelSwapMutation, which doesn't warrant notifying them
+  // about their own action).
   coverages.forEach((c) => {
     const shift = shiftById.get(c.shift_id);
     if (!shift) return;
     if (Number(shift.original_user_id) !== myId) return;
     if (Number(c.covering_user_id) === myId) return;
+    if (c.status !== "Pending" && c.status !== "Approved") return;
 
     const parentRequest = requestById.get(c.request_id);
     const coverer = nameOf(allUsers, c.covering_user_id);
     const dateLabel = formatShiftDate(shift);
 
-    if (c.status === "Cancelled") {
-      events.push({
-        fingerprint: `coverage-cancelled:${c.id}`,
-        type: "partial",
-        title: "כיסוי בוטל",
-        body: `${coverer} ביטל/ה את הכיסוי למשמרת שלך (${dateLabel}) — הפער נפתח מחדש`,
-        actionLabel: "צפייה בפער",
-        actionTarget: "kpi:partial_gaps:mine",
-      });
-      return;
-    }
-
-    if (c.status === "Pending" || c.status === "Approved") {
-      const resolved =
-        !!parentRequest && RESOLVED_STATUSES.includes(parentRequest.status);
-      const isPartialParent = parentRequest?.request_type === "Partial";
-      events.push({
-        fingerprint: `coverage-new:${c.id}`,
-        type: resolved ? "covered" : "partial",
-        title: resolved ? "המשמרת שלך כוסתה" : "הוצע כיסוי למשמרת שלך",
-        body: `${coverer} ${resolved ? "כיסה/תה" : "הציע/ה לכסות"} את המשמרת שלך (${dateLabel})`,
-        actionLabel: "צפייה בבקשה",
-        actionTarget: isPartialParent
-          ? "kpi:partial_gaps:mine"
-          : "kpi:swap_requests:mine",
-      });
-    }
+    const resolved =
+      !!parentRequest && RESOLVED_STATUSES.includes(parentRequest.status);
+    const isPartialParent = parentRequest?.request_type === "Partial";
+    events.push({
+      fingerprint: `coverage-new:${c.id}`,
+      type: resolved ? "covered" : "partial",
+      title: resolved ? "המשמרת שלך כוסתה" : "הוצע כיסוי למשמרת שלך",
+      body: `${coverer} ${resolved ? "כיסה/תה" : "הציע/ה לכסות"} את המשמרת שלך (${dateLabel})`,
+      actionLabel: "צפייה בבקשה",
+      actionTarget: isPartialParent
+        ? "kpi:partial_gaps:mine"
+        : "kpi:swap_requests:mine",
+    });
   });
 
-  // 4 & 5. My request got resolved, or a request I helped cover got resolved.
+  // 4. One of my own swap requests (any type) is still sitting unanswered.
   swapRequests.forEach((r) => {
-    if (!RESOLVED_STATUSES.includes(r.status)) return;
+    if (Number(r.requesting_user_id) !== myId) return;
+    if (r.status !== "Open") return;
+    events.push({
+      fingerprint: `sr-pending:${r.id}`,
+      type: "swap_requested",
+      title: "הבקשה שלך עדיין ממתינה",
+      body: "בקשת ההחלפה שלך עדיין לא התקבלה על ידי אף אחד",
+      actionLabel: "צפייה בבקשה",
+      actionTarget: "kpi:swap_requests:mine",
+    });
+  });
 
-    if (Number(r.requesting_user_id) === myId) {
-      const firstShiftId = (r.shift_ids || [])[0];
-      const currentOwnerId = shiftById.get(firstShiftId)?.original_user_id;
-      // Ownership only actually transfers for Head2Head/General accepts; a
-      // Full/Partial request closed via coverage leaves original_user_id
-      // untouched, so there's no "accepter" to name here (the coverage
-      // event above already named the coverer).
-      const accepterName =
-        currentOwnerId != null && Number(currentOwnerId) !== myId
-          ? nameOf(allUsers, currentOwnerId)
-          : null;
-      events.push({
-        fingerprint: `sr-closed:${r.id}`,
-        type: "covered",
-        title: "הבקשה שלך נסגרה",
-        body: accepterName
-          ? `הבקשה שלך נסגרה — ${accepterName} קיבל/ה`
-          : "הבקשה שלך נסגרה בהצלחה",
-        actionLabel: "צפייה בהיסטוריה",
-        actionTarget: "kpi:approved",
-      });
+  // 5. Final help-outcome of one of my own Partial swap requests, once it's
+  // done (Closed = fully covered; otherwise Cancelled — classify by whether
+  // any coverage was ever created for it, since cancelling clears coverage
+  // status but not the coverage records themselves).
+  swapRequests.forEach((r) => {
+    if (r.request_type !== "Partial") return;
+    if (Number(r.requesting_user_id) !== myId) return;
+    if (!RESOLVED_STATUSES.includes(r.status) && r.status !== "Cancelled")
       return;
+
+    const everHadCoverage = coverages.some((c) => c.request_id === r.id);
+
+    let title, body, type;
+    if (RESOLVED_STATUSES.includes(r.status)) {
+      title = "הבקשה החלקית שלך קיבלה מענה מלא";
+      body = "כל השעות שביקשת עבור המשמרת שלך כוסו";
+      type = "covered";
+    } else if (everHadCoverage) {
+      title = "הבקשה החלקית שלך קיבלה מענה חלקי";
+      body = "רק חלק מהשעות שביקשת כוסו לפני שהבקשה הסתיימה";
+      type = "partial";
+    } else {
+      title = "הבקשה החלקית שלך לא קיבלה מענה";
+      body = "אף אחד לא הציע כיסוי לשעות שביקשת";
+      type = "info";
     }
 
-    const myCoverageOnThisRequest = coverages.some(
-      (c) =>
-        c.request_id === r.id &&
-        Number(c.covering_user_id) === myId &&
-        c.status !== "Cancelled",
-    );
-    if (myCoverageOnThisRequest) {
-      events.push({
-        fingerprint: `sr-closed-covered-by-me:${r.id}`,
-        type: "covered",
-        title: "הבקשה שסייעת לכסות נסגרה",
-        body: "הבקשה שהצעת לכסות בה נסגרה בהצלחה",
-        actionLabel: "צפייה בהיסטוריה",
-        actionTarget: "kpi:approved",
-      });
-    }
+    events.push({
+      fingerprint: `sr-partial-outcome:${r.id}`,
+      type,
+      title,
+      body,
+      actionLabel: "צפייה בהיסטוריה",
+      actionTarget: "kpi:approved",
+    });
   });
 
   return events;
