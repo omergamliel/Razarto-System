@@ -1150,9 +1150,9 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
           )}
 
           {activeTab === "settings" && (
-            <div className="space-y-3 md:space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-3">
+            <div className="space-y-2 overflow-y-auto">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-2">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-semibold text-gray-800">
@@ -1164,7 +1164,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                     </div>
                     <Globe className="w-5 h-5 text-blue-500" />
                   </div>
-                  <div className="grid gap-2" dir="rtl">
+                  <div className="grid gap-1.5" dir="rtl">
                     <div className="grid gap-1">
                       <Label className="text-sm text-gray-700">
                         כותרת ראשית
@@ -1219,7 +1219,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                   </div>
                 </div>
 
-                <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-3">
+                <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-2">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm font-semibold text-gray-800">
@@ -1252,7 +1252,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                       </span>
                     </button>
                   </div>
-                  <div className="grid gap-2" dir="rtl">
+                  <div className="grid gap-1.5" dir="rtl">
                     <div className="grid gap-1">
                       <Label className="text-sm text-gray-700">
                         הודעה שמופיעה כשהמערכת כבויה
@@ -1286,7 +1286,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
               </div>
 
               <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
-                <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center justify-between mb-2">
                   <div>
                     <p className="text-sm font-semibold text-gray-800">
                       מוניטור
@@ -1300,7 +1300,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                     הכל תקין
                   </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                   {monitorChecks.map((item) => (
                     <div
                       key={item.id}
@@ -1325,7 +1325,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
           )}
 
           {activeTab === "support" && (
-            <div className="space-y-4 md:space-y-6">
+            <div className="space-y-3 md:space-y-4 overflow-y-auto">
               <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
                 <div className="flex items-center justify-between mb-4">
                   <div>
@@ -1518,7 +1518,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
           )}
 
           {activeTab === "themes" && (
-            <div className="space-y-4 md:space-y-6">
+            <div className="space-y-3 md:space-y-4 overflow-y-auto">
               <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
                 <div className="flex items-center justify-between mb-4">
                   <div>
@@ -1701,7 +1701,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
           )}
 
           {activeTab === "logs" && (
-            <div className="space-y-4 md:space-y-6">
+            <div className="space-y-3 md:space-y-4 overflow-y-auto">
               <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-3">
                 <div className="flex items-center justify-between">
                   <div>
