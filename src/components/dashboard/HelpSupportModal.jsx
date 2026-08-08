@@ -7,7 +7,6 @@ export default function HelpSupportModal({ isOpen, onClose }) {
   const [expandedIndex, setExpandedIndex] = useState(null);
   const [infoMessage, setInfoMessage] = useState('');
   const [showVideo, setShowVideo] = useState(false);
-  const [showSupportOptions, setShowSupportOptions] = useState(false);
 
   if (!isOpen) return null;
 
@@ -76,7 +75,7 @@ export default function HelpSupportModal({ isOpen, onClose }) {
       onClick: () => {
         setShowVideo(false);
         setInfoMessage('');
-        setShowSupportOptions((prev) => !prev);
+        window.open('https://wa.me/972536221840', '_blank');
       }
     }
   ];
@@ -156,31 +155,22 @@ export default function HelpSupportModal({ isOpen, onClose }) {
               })}
             </div>
 
-            <AnimatePresence>
-              {showSupportOptions && (
-                <motion.div
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 10 }}
-                  className="mb-6 rounded-2xl border border-emerald-100 bg-emerald-50 p-4 shadow-sm"
+            <div className="mb-6 rounded-2xl border border-emerald-100 bg-emerald-50 p-4 shadow-sm">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3" dir="rtl">
+                <Button
+                  onClick={() => window.open('https://wa.me/972536221840', '_blank')}
+                  className="h-12 w-full justify-center rounded-xl bg-emerald-600 text-white hover:bg-emerald-700"
                 >
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3" dir="rtl">
-                    <Button
-                      onClick={() => window.open('https://wa.me/972536221840', '_blank')}
-                      className="h-12 w-full justify-center rounded-xl bg-emerald-600 text-white hover:bg-emerald-700"
-                    >
-                      <MessageCircle className="ml-2 h-5 w-5" /> הצעות ובעיות במערכת
-                    </Button>
-                    <Button
-                      onClick={() => window.open('https://wa.me/972546881831', '_blank')}
-                      className="h-12 w-full justify-center rounded-xl bg-teal-600 text-white hover:bg-teal-700"
-                    >
-                      <MessageCircle className="ml-2 h-5 w-5" /> משתמשים והרשאות
-                    </Button>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                  <MessageCircle className="ml-2 h-5 w-5" /> הצעות ובעיות במערכת
+                </Button>
+                <Button
+                  onClick={() => window.open('https://wa.me/972546881831', '_blank')}
+                  className="h-12 w-full justify-center rounded-xl bg-teal-600 text-white hover:bg-teal-700"
+                >
+                  <MessageCircle className="ml-2 h-5 w-5" /> משתמשים והרשאות
+                </Button>
+              </div>
+            </div>
 
             <AnimatePresence>
               {showVideo && (
