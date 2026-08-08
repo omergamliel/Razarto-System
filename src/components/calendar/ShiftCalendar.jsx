@@ -1358,7 +1358,7 @@ export default function ShiftCalendar() {
       <BackgroundShapes />
 
       <div className="max-w-7xl mx-auto px-4 py-4 md:py-8 relative z-10 flex flex-col min-h-screen">
-        {/* Header */}
+        {/* Header (top bar + branding only, navigation rendered below the KPI band) */}
         <CalendarHeader
           currentDate={currentDate}
           setCurrentDate={setCurrentDate}
@@ -1371,10 +1371,11 @@ export default function ShiftCalendar() {
           onOpenHelp={() => setShowHelpSupport(true)}
           onLogout={() => setShowLogoutConfirm(true)}
           currentUser={authorizedPerson}
+          hideNavigation={true}
         />
 
         {/* KPI Header */}
-        <div className="mt-3 mb-1 md:mt-6 md:mb-2">
+        <div className="mb-2">
           <KPIHeader
             shifts={enrichedShifts}
             currentUser={authorizedPerson}
@@ -1413,6 +1414,17 @@ export default function ShiftCalendar() {
             }}
           />
         </div>
+
+        {/* Navigation (view mode + prev/next month) */}
+        <CalendarHeader
+          currentDate={currentDate}
+          setCurrentDate={setCurrentDate}
+          viewMode={viewMode}
+          setViewMode={setViewMode}
+          isAdmin={isAdmin}
+          currentUser={authorizedPerson}
+          hideHeader={true}
+        />
 
         {/* Calendar Grid */}
         <div className="flex-1 bg-white/80 backdrop-blur-xl rounded-3xl shadow-xl border border-white/50 p-2 md:p-6 mt-4 relative overflow-hidden">
