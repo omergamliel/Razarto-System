@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, HelpCircle, ChevronDown, ChevronUp, BookOpen, Video, MessageCircle, Play } from 'lucide-react';
+import { X, HelpCircle, ChevronDown, ChevronUp, Compass, Video, Lightbulb, Users, Play } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
@@ -22,7 +22,7 @@ export default function HelpSupportModal({ isOpen, onClose }) {
 
   const quickLinks = [
     {
-      icon: BookOpen,
+      icon: Compass,
       label: 'סיור באתר',
       color: 'from-blue-500/90 to-blue-600',
       shadow: 'shadow-blue-200',
@@ -44,7 +44,7 @@ export default function HelpSupportModal({ isOpen, onClose }) {
       }
     },
     {
-      icon: MessageCircle,
+      icon: Lightbulb,
       label: 'הצעות ובעיות במערכת',
       color: 'from-emerald-500 to-teal-600',
       shadow: 'shadow-emerald-200',
@@ -56,7 +56,7 @@ export default function HelpSupportModal({ isOpen, onClose }) {
       }
     },
     {
-      icon: MessageCircle,
+      icon: Users,
       label: 'משתמשים והרשאות',
       color: 'from-teal-500 to-cyan-600',
       shadow: 'shadow-teal-200',
