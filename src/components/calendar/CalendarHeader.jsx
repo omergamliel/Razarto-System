@@ -121,7 +121,7 @@ export default function CalendarHeader({
     <motion.div
       initial={{ opacity: 0, y: -20 }}
       animate={{ opacity: 1, y: 0 }}
-      className={`relative z-50 ${hideNavigation ? "mb-2" : "mb-6"}`}
+      className={`relative z-50 ${hideNavigation || hideHeader ? "mb-2" : "mb-6"}`}
     >
       {!hideHeader && (
         <>
