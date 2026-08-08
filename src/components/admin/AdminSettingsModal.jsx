@@ -790,10 +790,6 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                   בחר את המודול לניהול
                 </span>
               </div>
-              <div className="flex items-center gap-2 text-[11px] text-gray-500">
-                <span className="hidden md:inline">מותאם למובייל ודסקטופ</span>
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-              </div>
             </div>
 
             <div className="mt-3 flex flex-wrap gap-2 py-2" dir="rtl">
