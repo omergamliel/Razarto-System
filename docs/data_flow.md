@@ -66,6 +66,13 @@
 ## 7) לוגיקה של KPI
 - `KPIHeader` ו-`KPIListModal` שולחים Query-ים עצמאיים משלהם אל `SwapRequest`/`ShiftCoverage`/`Shift` כדי להציג מדדים (בקשות פתוחות/חלקיות, היסטוריה, משמרות עתידיות של המשתמש).
 
+## 7א) פופאפי התראה (Notification Sidebar)
+- `useNotificationScanner` (`src/hooks/`, מוזרק דרך `NotificationSidebar.jsx`) מריץ Query-ים עצמאיים משלו על אותם מפתחות בדיוק (`shifts`/`swap-requests`/`coverages`/`all-users`/`current-user`) — ללא קריאת רשת נוספת, רק צרכן נוסף לאותו Cache.
+- בכל שינוי בנתונים (טעינה ראשונית, או `invalidateQueries` בעקבות Mutation כלשהי באפליקציה): `computeNotificationEvents` (`src/components/sidebar/notificationEvents.js`) סורק מחדש את המצב הנוכחי ומזהה אירועים רלוונטיים למשתמש המחובר (בקשת Head2Head נכנסת, הצעת/ביטול כיסוי על משמרת שלו, בקשה שלו שנסגרה, בקשה שהוא כיסה שנסגרה) — **לא** דרך Hook לתוך ה-Mutations עצמן, אלא כ-diff טהור מול המצב.
+- כל אירוע מקבל טביעת אצבע יציבה, נבדקת מול סט שנשמר ב-`localStorage` (`razarto_notif_seen_<serial_id>`) כדי שלא תופיע פעמיים. אירוע חדש → `addMessage()` (`messageStore.js`) → מופיע כפופאפ צבעוני ב-`NotificationSidebar.jsx`.
+- לחיצה על כפתור הפעולה בפופאפ (`dispatchAction`) → `CustomEvent('razarto:sidebar-action')` → נתפס ב-`ShiftCalendar.jsx` → פותח את `KPIListModal` ישירות על הטאב הרלוונטי (למשל "בקשות אליי" לבקשת Head2Head נכנסת).
+- אין Websocket/SSE/Polling באפליקציה — לכן זו "התראה בהתעדכנות", לא Push אמיתי: משתמש אחר יראה פופאפ על פעולה שנעשתה עבורו רק בפעם הבאה שהדפדפן שלו טוען נתונים טריים (ראו `docs/components_sidebar.md` לפירוט מלא, כולל קטלוג האירועים והמגבלה הידועה סביב זיהוי מי ביטל בקשת Head2Head).
+
 ## 7ב) חלוקת משמרות הוגנת (מנהל/Manager, מ-`AdminSettingsModal`)
 1. מנהל פותח את טאב "חלוקת משמרות" ובוחר טווח תאריכים (התחלה/סיום).
 2. "הפעל חלוקה הוגנת" (`runDistributionMutation`) מסנן מתוך `AuthorizedPerson` את מי שההרשאה שלו `RR` או `Manager`, קורא ל-`distributeShifts()` (`shiftDistributionAlgorithm.js`, מודול לוגיקה טהור) עם כל המשמרות הקיימות ותאריכי החגים (בפועל, ראו הפער בסעיף הבא — רק שישי-שבת מתגלים כ"מיוחדים").
