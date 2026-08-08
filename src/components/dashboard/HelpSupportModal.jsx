@@ -44,14 +44,13 @@ export default function HelpSupportModal({ isOpen, onClose }) {
   const quickLinks = [
     {
       icon: BookOpen,
-      label: 'מדריך שימוש מלא',
+      label: 'סיור באתר',
       color: 'from-blue-500/90 to-blue-600',
       shadow: 'shadow-blue-200',
       accent: 'bg-white/20 text-white',
       onClick: () => {
         setShowVideo(false);
-        setShowSupportOptions(false);
-        setInfoMessage('בקרוב יתווסף מדריך שימוש מלא במערכת');
+        setInfoMessage('בקרוב יתווסף סיור באתר');
       }
     },
     {
@@ -63,12 +62,11 @@ export default function HelpSupportModal({ isOpen, onClose }) {
       onClick: () => {
         setInfoMessage('');
         setShowVideo(true);
-        setShowSupportOptions(false);
       }
     },
     {
       icon: MessageCircle,
-      label: 'תמיכה במערכת',
+      label: 'הצעות ובעיות במערכת',
       color: 'from-emerald-500 to-teal-600',
       shadow: 'shadow-emerald-200',
       accent: 'bg-white/20 text-white',
@@ -76,6 +74,18 @@ export default function HelpSupportModal({ isOpen, onClose }) {
         setShowVideo(false);
         setInfoMessage('');
         window.open('https://wa.me/972536221840', '_blank');
+      }
+    },
+    {
+      icon: MessageCircle,
+      label: 'משתמשים והרשאות',
+      color: 'from-teal-500 to-cyan-600',
+      shadow: 'shadow-teal-200',
+      accent: 'bg-white/20 text-white',
+      onClick: () => {
+        setShowVideo(false);
+        setInfoMessage('');
+        window.open('https://wa.me/972546881831', '_blank');
       }
     }
   ];
@@ -126,8 +136,7 @@ export default function HelpSupportModal({ isOpen, onClose }) {
           <div className="flex-1 overflow-y-auto p-5 md:p-6">
 
             {/* Quick Links - Responsive Grid */}
-            {/* שינוי חשוב: 1 עמודה במובייל, 3 במחשב */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
               {quickLinks.map((link, index) => {
                 const Icon = link.icon;
                 return (
@@ -139,37 +148,15 @@ export default function HelpSupportModal({ isOpen, onClose }) {
                     className={`relative overflow-hidden flex md:block items-center gap-3 md:gap-0 p-4 md:p-5 rounded-2xl border border-white/40 backdrop-blur-sm transition-all text-right md:text-center shadow-lg ${link.shadow}
                       bg-gradient-to-br ${link.color} text-white hover:-translate-y-1 hover:shadow-2xl focus:outline-none focus:ring-2 focus:ring-white/60 focus:ring-offset-0`}
                   >
-                    <div className={`flex h-11 w-11 items-center justify-center rounded-2xl ${link.accent} md:mx-auto md:mb-3`}> 
+                    <div className={`flex h-11 w-11 items-center justify-center rounded-2xl ${link.accent} md:mx-auto md:mb-3`}>
                       <Icon className="w-5 h-5" />
                     </div>
                     <div className="flex-1 md:flex md:flex-col md:items-center">
                       <p className="text-sm font-semibold drop-shadow-sm md:text-base">{link.label}</p>
                     </div>
-                    {link.label === 'סרטון הדרכה' && (
-                      <span className="absolute top-2 right-2 text-[10px] font-semibold px-2 py-1 rounded-full bg-white/20 text-white/90">
-                        חדש
-                      </span>
-                    )}
                   </motion.button>
                 );
               })}
-            </div>
-
-            <div className="mb-6 rounded-2xl border border-emerald-100 bg-emerald-50 p-4 shadow-sm">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3" dir="rtl">
-                <Button
-                  onClick={() => window.open('https://wa.me/972536221840', '_blank')}
-                  className="h-12 w-full justify-center rounded-xl bg-emerald-600 text-white hover:bg-emerald-700"
-                >
-                  <MessageCircle className="ml-2 h-5 w-5" /> הצעות ובעיות במערכת
-                </Button>
-                <Button
-                  onClick={() => window.open('https://wa.me/972546881831', '_blank')}
-                  className="h-12 w-full justify-center rounded-xl bg-teal-600 text-white hover:bg-teal-700"
-                >
-                  <MessageCircle className="ml-2 h-5 w-5" /> משתמשים והרשאות
-                </Button>
-              </div>
             </div>
 
             <AnimatePresence>
