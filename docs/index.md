@@ -15,6 +15,7 @@
 11. **`components_admin.md`** – ניהול משתמשים והרשאות.
 12. **`components_onboarding.md`** – מסכי הצטרפות.
 13. **`components_shared.md`** – קומפוננטות משותפות.
+13ב. **`components_sidebar.md`** – פאנל התראות/פופאפים (`NotificationSidebar` + `messageStore`).
 14. **`ui_components.md`** – ספריית קומפוננטות בסיסית (shadcn/ui).
 15. **`hooks.md`** – Hooks מותאמים.
 16. **`configuration.md`** – תצורת פרויקט וקבצי מערכת.
