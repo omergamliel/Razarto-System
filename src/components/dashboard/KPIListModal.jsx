@@ -193,6 +193,7 @@ export default function KPIListModal({
   isOpen,
   onClose,
   type,
+  initialTab = "all",
   currentUser,
   onOfferCover,
   onRequestSwap,
@@ -204,8 +205,17 @@ export default function KPIListModal({
 }) {
   const [visibleCount, setVisibleCount] = useState(10);
   const isPartialGapsView = type === "partial_gaps";
-  const [swapTab, setSwapTab] = useState("all");
-  const [partialGapsTab, setPartialGapsTab] = useState("all");
+  // Seeded from `initialTab` so a notification popup can deep-link straight
+  // into e.g. "בקשות אליי" or "הפערים שלי" instead of always opening on the
+  // default tab — ShiftCalendar.jsx bumps this component's `key` on every
+  // open, so this initial value is always fresh, never stale from a prior
+  // mount.
+  const [swapTab, setSwapTab] = useState(
+    ["mine", "incoming"].includes(initialTab) ? initialTab : "all",
+  );
+  const [partialGapsTab, setPartialGapsTab] = useState(
+    ["mine", "covering"].includes(initialTab) ? initialTab : "all",
+  );
   // Confirmation gate for onCancelRequest: { item, isDecline } | null.
   // isDecline only differentiates the dialog copy (incoming H2H "decline"
   // vs. every other "cancel my own request") — both paths call the same
