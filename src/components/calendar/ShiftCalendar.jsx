@@ -68,6 +68,12 @@ export default function ShiftCalendar() {
   // KPI & Success Modals
   const [showKPIListModal, setShowKPIListModal] = useState(false);
   const [kpiListType, setKpiListType] = useState("swap_requests");
+  // Which tab KPIListModal should start on, and a counter bumped on every
+  // open so its `key` changes even when re-opening the same `type` with a
+  // different tab (e.g. from a notification popup) — otherwise React would
+  // keep the old mounted instance and its local tab state.
+  const [kpiInitialTab, setKpiInitialTab] = useState("all");
+  const [kpiOpenSeq, setKpiOpenSeq] = useState(0);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [lastUpdatedShift, setLastUpdatedShift] = useState(null);
 
@@ -109,6 +115,26 @@ export default function ShiftCalendar() {
     setRoleError("אין לך הרשאה לקחת משמרות");
     roleErrorTimeoutRef.current = setTimeout(() => setRoleError(null), 3000);
   };
+
+  // Listens for the notification sidebar's action-button clicks
+  // (messageStore.js's dispatchAction) so a popup can open KPIListModal
+  // directly on the tab relevant to it. `detail.target` is "kpi:<type>" or
+  // "kpi:<type>:<tab>" — see src/components/sidebar/notificationEvents.js.
+  useEffect(() => {
+    const handleSidebarAction = (e) => {
+      const target = e.detail?.target;
+      if (typeof target !== "string" || !target.startsWith("kpi:")) return;
+      const [, type, tab] = target.split(":");
+      if (!type) return;
+      setKpiListType(type);
+      setKpiInitialTab(tab || "all");
+      setKpiOpenSeq((n) => n + 1);
+      setShowKPIListModal(true);
+    };
+    window.addEventListener("razarto:sidebar-action", handleSidebarAction);
+    return () =>
+      window.removeEventListener("razarto:sidebar-action", handleSidebarAction);
+  }, []);
 
   // Lock background scrolling while any modal/menu is open, so only the
   // open overlay scrolls — not the calendar behind it.
@@ -1354,6 +1380,8 @@ export default function ShiftCalendar() {
             currentUser={authorizedPerson}
             onKPIClick={(type) => {
               setKpiListType(type);
+              setKpiInitialTab("all");
+              setKpiOpenSeq((n) => n + 1);
               setShowKPIListModal(true);
             }}
             onStartSwitchFlow={() => {
@@ -1637,10 +1665,11 @@ export default function ShiftCalendar() {
       )}
 
       <KPIListModal
-        key={kpiListType}
+        key={`${kpiListType}-${kpiOpenSeq}`}
         isOpen={showKPIListModal}
         onClose={closeAllModals}
         type={kpiListType}
+        initialTab={kpiInitialTab}
         currentUser={authorizedPerson}
         onOfferCover={handleOfferCover}
         onRequestSwap={handleOpenSwapRequest}
