@@ -5,6 +5,7 @@ import {
   computeCoverageSummary,
 } from "@/components/calendar/whatsappTemplates";
 import { distributeShifts } from "@/components/calendar/shiftDistributionAlgorithm";
+import { computeNotificationEvents } from "@/components/sidebar/notificationEvents";
 import { assert, assertEqual } from "./assert";
 
 // No backend I/O in this file — every test here is a plain function call
@@ -248,6 +249,128 @@ function testDistributeShifts() {
   assertEqual(emptyResult.skipped.length, 3, "every day should be skipped with no eligible people");
 }
 
+function testComputeNotificationEvents() {
+  const me = { serial_id: 1, full_name: "Me", email: "me@x.com" };
+  const allUsers = [
+    me,
+    { serial_id: 2, full_name: "Alice", email: "alice@x.com" },
+    { serial_id: 3, full_name: "Bob", email: "bob@x.com" },
+  ];
+
+  const shifts = [
+    { id: "s1", original_user_id: 1, status: "Active", start_date: "2999-01-06" },
+    { id: "s2", original_user_id: 2, status: "Active", start_date: "2999-01-07" },
+    { id: "s3", original_user_id: 1, status: "Active", start_date: "2999-01-08" },
+    { id: "s4", original_user_id: 1, status: "Active", start_date: "2999-01-09" },
+    // Ownership already transferred to Bob (3) — simulates a closed General
+    // request having reassigned it away from me.
+    { id: "s5", original_user_id: 3, status: "Active", start_date: "2999-01-10" },
+  ];
+
+  const swapRequests = [
+    // #1: Alice's Head2Head request targets my shift (s1).
+    {
+      id: "r1",
+      request_type: "Head2Head",
+      status: "Open",
+      requesting_user_id: 2,
+      shift_ids: ["s2"],
+      offered_shift_ids: ["s1"],
+    },
+    // Backs coverage-new (c1) below: my own open Partial request.
+    {
+      id: "r2",
+      request_type: "Partial",
+      status: "Open",
+      requesting_user_id: 1,
+      shift_ids: ["s3"],
+    },
+    // Backs coverage-cancelled (c2) below.
+    {
+      id: "r3",
+      request_type: "Full",
+      status: "Partially_Covered",
+      requesting_user_id: 1,
+      shift_ids: ["s4"],
+    },
+    // #4: my General request, now closed — s5 already reassigned to Bob.
+    {
+      id: "r4",
+      request_type: "General",
+      status: "Closed",
+      requesting_user_id: 1,
+      shift_ids: ["s5"],
+      offered_shift_ids: [],
+    },
+    // #5: Alice's request, closed, which I helped cover (see c3 below).
+    {
+      id: "r5",
+      request_type: "Partial",
+      status: "Closed",
+      requesting_user_id: 2,
+      shift_ids: ["s2"],
+    },
+    // Negative: my own outgoing Head2Head request should never self-notify.
+    {
+      id: "r6",
+      request_type: "Head2Head",
+      status: "Open",
+      requesting_user_id: 1,
+      shift_ids: ["s1"],
+      offered_shift_ids: ["s2"],
+    },
+  ];
+
+  const coverages = [
+    // #2: Bob offers to cover part of my open Partial request (r2/s3).
+    { id: "c1", shift_id: "s3", covering_user_id: 3, status: "Pending", request_id: "r2" },
+    // #3: Bob cancels a coverage on my shift (r3/s4).
+    { id: "c2", shift_id: "s4", covering_user_id: 3, status: "Cancelled", request_id: "r3" },
+    // #5 backing: I cover part of Alice's request (r5/s2).
+    { id: "c3", shift_id: "s2", covering_user_id: 1, status: "Approved", request_id: "r5" },
+    // Negative: a coverage row where I'm both the shift owner and coverer
+    // should never fire — can't happen in real data, but the guard should
+    // hold regardless.
+    { id: "c4", shift_id: "s1", covering_user_id: 1, status: "Pending", request_id: "r6" },
+  ];
+
+  const events = computeNotificationEvents({ me, shifts, swapRequests, coverages, allUsers });
+  const fingerprints = events.map((e) => e.fingerprint);
+  const has = (fp) => fingerprints.includes(fp);
+
+  assert(has("h2h-incoming:r1"), "incoming Head2Head request should notify me");
+  assert(has("coverage-new:c1"), "a new coverage offer on my shift should notify me");
+  assert(has("coverage-cancelled:c2"), "a cancelled coverage on my shift should notify me");
+  assert(has("sr-closed:r4"), "my closed General request should notify me");
+  assert(has("sr-closed-covered-by-me:r5"), "a closed request I helped cover should notify me");
+
+  assert(!has("h2h-incoming:r6"), "my own outgoing Head2Head request should not self-notify");
+  assert(!has("coverage-new:c4"), "a coverage where I'm both owner and coverer should not notify");
+  assert(!has("coverage-cancelled:c4"), "c4 is Pending, not Cancelled — should not fire the cancelled event");
+
+  const closedEvent = events.find((e) => e.fingerprint === "sr-closed:r4");
+  assert(
+    closedEvent.body.includes("Bob"),
+    "the closed-request event should name the new owner once ownership actually transferred",
+  );
+
+  const coverageEvent = events.find((e) => e.fingerprint === "coverage-new:c1");
+  assertEqual(
+    coverageEvent.actionTarget,
+    "kpi:partial_gaps:mine",
+    "a coverage offer on a Partial request should deep-link to the partial-gaps 'mine' tab",
+  );
+
+  // Fingerprint stability: identical input must yield an identical fingerprint
+  // set (this is what useNotificationScanner's localStorage dedupe relies on).
+  const secondRun = computeNotificationEvents({ me, shifts, swapRequests, coverages, allUsers });
+  assertEqual(
+    JSON.stringify([...fingerprints].sort()),
+    JSON.stringify([...secondRun.map((e) => e.fingerprint)].sort()),
+    "re-running with identical input should produce an identical fingerprint set",
+  );
+}
+
 export const pureTests = [
   {
     id: "pure-resolve-swap-type",
@@ -272,5 +395,11 @@ export const pureTests = [
     name: "distributeShifts: weekly cap, togetherness, no-touch, empty-people",
     category: "pure",
     run: testDistributeShifts,
+  },
+  {
+    id: "pure-compute-notification-events",
+    name: "computeNotificationEvents: relevant-to-me detection + fingerprint stability",
+    category: "pure",
+    run: testComputeNotificationEvents,
   },
 ];
