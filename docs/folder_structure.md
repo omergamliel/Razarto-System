@@ -7,37 +7,33 @@
 .
 ├── docs/                      # תיעוד הפרויקט בעברית
 ├── src/
-│   ├── api/                   # שכבת SDK מול Base44
-│   ├── assets/                # קבצי מדיה סטטיים (SVG/תמונות)
+│   ├── api/                   # לקוח SDK מול Base44
 │   ├── components/            # קומפוננטות UI/פיצ'רים
 │   │   ├── admin/              # מסכי ניהול
 │   │   ├── calendar/           # לוח משמרות והחלפות
 │   │   ├── dashboard/          # KPI, עזרה, סטטיסטיקות
-│   │   ├── onboarding/         # מסכי הצטרפות
-│   │   └── ui/                 # קומפוננטות בסיסיות (shadcn)
-│   ├── hooks/                 # Hooks מותאמים
-│   ├── lib/                   # לוגיקה תשתיתית/Context/Utils
-│   ├── pages/                 # דפי אפליקציה
-│   ├── utils/                 # פונקציות עזר כלליות
+│   │   ├── onboarding/         # מסך הצטרפות ראשוני
+│   │   ├── sidebar/             # פאנל התראות/פופאפים (NotificationSidebar + messageStore)
+│   │   └── ui/                 # קומפוננטות בסיסיות (shadcn/ui + Radix)
+│   ├── hooks/                 # Hooks מותאמים (למשל זיהוי מובייל)
+│   ├── lib/                   # לוגיקה תשתיתית: Auth Context, Query Client, Utils
+│   ├── pages/                 # דפי אפליקציה (כרגע רק Home)
 │   ├── App.jsx                # קומפוננטת שורש
-│   ├── main.jsx               # Entry point
+│   ├── main.jsx                # Entry point
 │   ├── App.css, index.css     # סגנונות גלובליים
 │   └── pages.config.js        # מיפוי דפים ונתיב ראשי
 ├── index.html                 # תבנית HTML
 ├── package.json               # סקריפטים ותלויות
-├── vite.config.js             # קונפיגורציית Vite
-├── tailwind.config.js         # קונפיגורציית Tailwind
-├── postcss.config.js          # קונפיגורציית PostCSS
-├── eslint.config.js           # קונפיגורציית ESLint
-├── jsconfig.json              # הגדרות TypeScript/Paths
-└── components.json            # הגדרות shadcn/ui
+├── vite.config.js             # קונפיגורציית Vite (כולל תוסף Tailwind v4)
+└── .oxlintrc.json             # קונפיגורציית Oxlint (linter)
 ```
 
+> אין בפרויקט כרגע תיקיית `src/assets` או `src/utils` נפרדת, ואין קבצי `tailwind.config.js` / `postcss.config.js` / `eslint.config.js` / `jsconfig.json` / `components.json` בשורש – Tailwind מוגדר ישירות דרך תוסף Vite (`@tailwindcss/vite`), ובדיקת קוד מתבצעת עם Oxlint בלבד.
+
 ## הסברים כלליים
-- **`src/api/`** – מייצר לקוח SDK ומחבר ישויות/אינטגרציות.
-- **`src/lib/`** – שכבת לוגיקה תשתיתית (Auth, QueryClient, מעקב ניווט).
+- **`src/api/`** – יוצר לקוח SDK (`base44`) לכל קריאה ל־Entities/Auth/Integrations.
+- **`src/lib/`** – שכבת לוגיקה תשתיתית (Auth, QueryClient, מעקב ניווט, Utilities).
 - **`src/components/`** – הליבה הויזואלית והעסקית של האפליקציה.
-- **`src/pages/`** – דפים שמרכיבים את ה-Routes.
-- **`src/utils/`** – פונקציות עזר שאינן תלויות UI.
+- **`src/pages/`** – דפים שמרכיבים את ה-Routes (כרגע דף אחד בלבד – Home).
 
 > פירוט על כל קובץ נמצא במסמכי התיעוד הייעודיים בתוך `docs/`.
