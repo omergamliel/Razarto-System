@@ -856,7 +856,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         </div>
 
         {/* Content */}
-        <div className="flex-1 min-h-0 overflow-hidden bg-[#F9FAFB] p-4 md:p-8 flex flex-col gap-3 md:gap-4">
+        <div className="flex-1 min-h-0 overflow-hidden bg-[#F9FAFB] p-4 md:gap-4 flex flex-col gap-3 md:gap-4">
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 shrink-0 flex flex-col p-3">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-2">
