@@ -836,7 +836,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         className="fixed inset-0 m-auto z-50 bg-[#F9FAFB] md:rounded-3xl shadow-2xl w-full max-w-5xl h-full md:h-[90vh] flex flex-col text-right overflow-hidden"
       >
         {/* Header */}
-        <div className="bg-white px-6 py-4 md:px-8 md:py-6 border-b border-gray-100 flex items-center justify-between shrink-0">
+        <div className="bg-white px-4 py-3 md:px-6 md:py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
           <div className="flex flex-col gap-2">
             <div>
               <p className="text-[11px] uppercase tracking-[0.2em] text-blue-600 font-semibold">
@@ -856,7 +856,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         </div>
 
         {/* Content */}
-        <div className="flex-1 min-h-0 overflow-hidden bg-[#F9FAFB] p-4 md:gap-4 flex flex-col gap-3 md:gap-4">
+        <div className="flex-1 min-h-0 overflow-hidden bg-[#F9FAFB] p-3 md:p-5 flex flex-col gap-3 md:gap-4">
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 shrink-0 flex flex-col p-3">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-2">
