@@ -87,6 +87,34 @@ export default function CalendarGrid({
       transition={{ delay: 0.2 }}
       className="relative z-10"
     >
+      {/* Legend */}
+      <div className="mb-4 flex flex-wrap items-center justify-center gap-4 md:gap-6 text-sm">
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 rounded bg-gradient-to-br from-[#E3F2FD] to-[#BBDEFB] border border-[#64B5F6]" />
+          <span className="text-gray-600">משמרות שלי</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 rounded bg-white border border-gray-200" />
+          <span className="text-gray-600">משמרת רגילה</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 rounded bg-gradient-to-br from-[#FFEBEE] to-[#FFCDD2] border border-[#E57373]" />
+          <span className="text-gray-600">בקשה להחלפה</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 rounded bg-gradient-to-br from-[#E8F5E9] to-[#C8E6C9] border border-[#66BB6A]" />
+          <span className="text-gray-600">החלפה אושרה</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 rounded bg-gradient-to-br from-[#FFFDE7] to-[#FFF9C4] border border-[#FDD835]" />
+          <span className="text-gray-600">כיסוי חלקי - פער</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 rounded bg-purple-100 border border-purple-300" />
+          <span className="text-gray-600">חג / מועד</span>
+        </div>
+      </div>
+
       {/* Day Headers */}
       <div className="grid grid-cols-7 gap-2 mb-3">
         {HEBREW_DAYS.map((day, index) => (
@@ -125,34 +153,6 @@ export default function CalendarGrid({
             />
           </motion.div>
         ))}
-      </div>
-
-      {/* Legend */}
-      <div className="mt-6 flex flex-wrap items-center justify-center gap-4 md:gap-6 text-sm">
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded bg-gradient-to-br from-[#E3F2FD] to-[#BBDEFB] border border-[#64B5F6]" />
-          <span className="text-gray-600">משמרות שלי</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded bg-white border border-gray-200" />
-          <span className="text-gray-600">משמרת רגילה</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded bg-gradient-to-br from-[#FFEBEE] to-[#FFCDD2] border border-[#E57373]" />
-          <span className="text-gray-600">בקשה להחלפה</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded bg-gradient-to-br from-[#E8F5E9] to-[#C8E6C9] border border-[#66BB6A]" />
-          <span className="text-gray-600">החלפה אושרה</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded bg-gradient-to-br from-[#FFFDE7] to-[#FFF9C4] border border-[#FDD835]" />
-          <span className="text-gray-600">כיסוי חלקי - פער</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded bg-purple-100 border border-purple-300" />
-          <span className="text-gray-600">חג / מועד</span>
-        </div>
       </div>
     </motion.div>
   );
