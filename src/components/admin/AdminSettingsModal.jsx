@@ -765,10 +765,6 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                 ניהול מערכת
               </h2>
             </div>
-            <div className="flex items-center gap-2 text-xs text-gray-500">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>שכבת ניהול מוכנה לפריסה מלאה במובייל ובדסקטופ</span>
-            </div>
           </div>
           <button
             onClick={onClose}
