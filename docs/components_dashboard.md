@@ -23,11 +23,12 @@
 - `getTitleAndColor()` – קביעה דינמית של כותרת המודאל וצבעיו לפי סוג ה-KPI שנבחר.
 
 **כפתורי פעולה לפי סוג הפריט (Props מ-`ShiftCalendar`: `onOfferCover`, `onRequestSwap`, `onCancelRequest`, `onCancelCoverage`, `onAcceptHeadToHead`, `onAcceptGeneralRequest`, `onStartCounterOffer`):**
-- בקשה רגילה (Full/Partial) שלא שלי → "אחליף" (`onOfferCover`).
+- בקשה רגילה (Full/Partial) שלא שלי → "אחליף" (`onOfferCover`), ממוקם בשורה העליונה של הפריט (יחד עם התאריך והתגית), לא בעמודת הפעולות התחתונה. מועבר אליו תמיד `item.original_shift` (רשומת `Shift` אמיתית, לא ה-`SwapRequest` המועשר) — כך שהוא פותח את אותו `AcceptSwapModal` שנפתח בלחיצה על תא המשמרת בלוח עצמו (דרך `normalizeShiftContext`). לא מוצג אם המשתמש הנוכחי כבר מופיע ב-`item.covering_user_ids` (כלומר כבר מכסה חלק מהפער).
 - בקשת Head2Head נכנסת (אחת מהמשמרות המוצעות היא שלי) → "קבל" (`onAcceptHeadToHead`) או דחייה (`onCancelRequest`).
 - בקשה כללית (`General`) פתוחה של מישהו אחר → "קח את המשמרות" (`onAcceptGeneralRequest`, לקיחה בלי תמורה) או "הצע ראש בראש" (`onStartCounterOffer`, פותח `switchFlow` במצב הצעת-נגד).
 - בקשה/פער חלקי שלי → ביטול (`onCancelRequest`); אם אני רק מכסה חלק ממנה → ביטול ההשתתפות שלי בלבד (`onCancelCoverage`).
-- שלושה טאבים בתצוגת "בקשות להחלפה": כל הבקשות הפתוחות / הבקשות שלי / בקשות אליי (Head2Head שממוקדות אליי). תצוגת "פערים חלקיים" כוללת גם טאב "הפערים שלי".
+- שלושה טאבים בתצוגת "בקשות להחלפה": כל הבקשות הפתוחות / הבקשות שלי / בקשות אליי (Head2Head שממוקדות אליי). תצוגת "פערים חלקיים" כוללת **שלושה** טאבים: כל הפערים הפתוחים / "הפערים שלי" (בעלות בלבד — `item.original_user_id === currentUser.serial_id`) / "משמרות שאני מכסה" (`item.covering_user_ids` כולל אותי) — שני הטאבים האחרונים מוציאים זה את זה במפורש כדי שמשמרת שהמשתמש רק מכסה בה חלק לא תופיע גם תחת "הפערים שלי".
+- פריטי "פערים חלקיים" (`type === "partial_gaps"`) מציגים גם סליידר כיסוי חזותי (`PartialGapCoverageTrack`, עוטף מחדש את `PartialShiftTrack` הקיים מ-`components/calendar`) לפני רשימת הטקסט "מי מכסה עד כה" — אותו רכיב סליידר/מקרא בשימוש כבר בתצוגת "היסטוריה" (`SwapTransition.jsx`, `type === "approved"`), כעת גם בפריט חי לפני שהוא נסגר.
 - כל ארבע נקודות הקריאה ל-`onCancelRequest` (ביטול "שלי", ביטול פער חלקי, ביטול בקשה כללית שלי, דחיית Head2Head נכנסת) לא קוראות לו ישירות מה-`onClick` — הן פותחות קודם דיאלוג אישור מקומי (`pendingCancelAction` state + `Dialog` מ-`@/components/ui/dialog`, לא toast) עם טקסט "האם אתה בטוח?" וכפתורי אישור/ביטול; רק אישור בפועל קורא ל-`onCancelRequest(item)`.
 
 ---
