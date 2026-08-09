@@ -10,6 +10,7 @@ import {
   CheckCircle2,
   Clock,
   Calendar,
+  Gift,
 } from "lucide-react";
 import {
   subscribe,
@@ -63,6 +64,14 @@ const TYPE_STYLES = {
     badge: "bg-purple-500",
     text: "text-purple-700",
     icon: Calendar,
+  },
+  gift: {
+    label: "מתנה",
+    bg: "bg-pink-50",
+    border: "border-pink-300",
+    badge: "bg-pink-500",
+    text: "text-pink-700",
+    icon: Gift,
   },
   info: {
     label: "הודעה",
