@@ -74,9 +74,26 @@ export function computeNotificationEvents({
     if (Number(c.covering_user_id) === myId) return;
     if (c.status !== "Pending" && c.status !== "Approved") return;
 
-    const parentRequest = requestById.get(c.request_id);
     const coverer = nameOf(allUsers, c.covering_user_id);
     const dateLabel = formatShiftDate(shift);
+
+    // A gift is a full-shift coverage stamped with the "GIFT" sentinel
+    // request_id (see giftShiftMutation) — someone took this shift off me for
+    // free, so it gets its own celebratory popup instead of the ordinary
+    // "someone offered to cover" one.
+    if (c.request_id === "GIFT") {
+      events.push({
+        fingerprint: `gift:${c.id}`,
+        type: "gift",
+        title: "קיבלת מתנה! 🎁",
+        body: `המשמרת שלך (${dateLabel}) נלקחה במתנה על ידי ${coverer} — אין צורך להגיע`,
+        actionLabel: "",
+        actionTarget: null,
+      });
+      return;
+    }
+
+    const parentRequest = requestById.get(c.request_id);
 
     const resolved =
       !!parentRequest && RESOLVED_STATUSES.includes(parentRequest.status);
