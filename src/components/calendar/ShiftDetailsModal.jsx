@@ -13,6 +13,7 @@ import {
   CalendarPlus,
   Send,
   UserRoundPen,
+  Gift,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -58,6 +59,7 @@ export default function ShiftDetailsModal({
   onHeadToHead,
   onCancelRequest,
   onCancelCoverage,
+  onGift,
   onDelete,
   onApprove,
   onRequestSwap,
@@ -67,6 +69,7 @@ export default function ShiftDetailsModal({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showCancelRequestConfirm, setShowCancelRequestConfirm] =
     useState(false);
+  const [showGiftConfirm, setShowGiftConfirm] = useState(false);
   const [showReassignModal, setShowReassignModal] = useState(false);
   const [selectedDepartment, setSelectedDepartment] = useState("");
   const [selectedUserId, setSelectedUserId] = useState("");
@@ -498,6 +501,30 @@ export default function ShiftDetailsModal({
   const canRequestSwap = isOwnShift && !hasAnyRequest && !isPastShift;
   const canWhatsappShare = hasActiveRequest && isRequestOwner;
   const canAddToCalendarOrEmail = isOwnShift;
+
+  // "Gift" today's shift: an RR user (role !== 'None') can take a plain,
+  // unswapped shift that's live today off whoever is doing it, no strings
+  // attached. Gated to today's shift (range covers today) so it only ever
+  // applies to "the person doing today's shift", and to white shifts so it
+  // never collides with an in-progress swap/coverage flow.
+  const todayStr = format(new Date(), "yyyy-MM-dd");
+  const isTodayShift =
+    shiftStartDate && shiftEndDate
+      ? shiftStartDate <= todayStr && todayStr <= shiftEndDate
+      : shiftStartDate === todayStr;
+  const canTakeShifts = (currentUser?.role || "RR") !== "None";
+  const canGift =
+    canTakeShifts &&
+    !isOwnShift &&
+    isTodayShift &&
+    isWhiteShift &&
+    !isCoveredOrClosed;
+
+  const handleGiftConfirm = () => {
+    onGift?.(shift);
+    setShowGiftConfirm(false);
+    onClose();
+  };
 
   const statusIndicator = useMemo(() => {
     if (derivedStatus === "covered")
@@ -1068,6 +1095,16 @@ export default function ShiftDetailsModal({
                     </Button>
                   )}
 
+                  {canGift && (
+                    <Button
+                      onClick={() => setShowGiftConfirm(true)}
+                      className="min-w-[160px] flex-1 sm:flex-none h-12 bg-[#ec4899] hover:bg-[#db2777] focus-visible:ring focus-visible:ring-offset-2 focus-visible:ring-[#be185d] text-white rounded-xl shadow-md flex items-center justify-center gap-2"
+                    >
+                      <Gift className="w-5 h-5" />
+                      קח את המשמרת במתנה
+                    </Button>
+                  )}
+
                   {canAddToCalendarOrEmail && !isAdmin && (
                     <Button
                       onClick={handleAddToCalendar}
@@ -1131,6 +1168,32 @@ export default function ShiftDetailsModal({
                 onClick={handleCancelRequestConfirm}
               >
                 כן, בטל בקשה
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Gift Confirmation */}
+        <Dialog open={showGiftConfirm} onOpenChange={setShowGiftConfirm}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>מתנה למשמרת</DialogTitle>
+              <DialogDescription>
+                לקחת על עצמך את כל המשמרת של {ownerDisplayName} במתנה, ללא
+                תמורה? כל המשמרת תכוסה על ידך, ללא צורך בתמורה מ
+                {ownerDisplayName}.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setShowGiftConfirm(false)}>
+                ביטול
+              </Button>
+              <Button
+                onClick={handleGiftConfirm}
+                className="bg-[#ec4899] hover:bg-[#db2777] text-white"
+              >
+                <Gift className="w-4 h-4 ml-2" />
+                כן, תן במתנה
               </Button>
             </DialogFooter>
           </DialogContent>
