@@ -8,6 +8,7 @@ import { useScrollLock } from "@/hooks/useScrollLock";
 import {
   normalizeShiftContext,
   computeCoverageSummary,
+  buildGiftTemplate,
 } from "./whatsappTemplates";
 
 // Components
@@ -916,6 +917,63 @@ export default function ShiftCalendar() {
     },
   });
 
+  // "Gift": an RR user takes today's shift off whoever is doing it, no strings
+  // attached. Modeled as a full-shift ShiftCoverage by the giver (the app's
+  // existing "someone covers this shift" mechanism) with a sentinel
+  // request_id of "GIFT" — no schema change, and the recipient's notification
+  // scanner keys on that sentinel to show the "you got a gift" popup (there's
+  // no push channel, so the signal has to live on a persisted entity).
+  const giftShiftMutation = useMutation({
+    mutationFn: async (shift) => {
+      return base44.entities.ShiftCoverage.create({
+        request_id: "GIFT",
+        shift_id: shift.id,
+        covering_user_id: authorizedPerson.serial_id,
+        cover_start_date: shift.start_date,
+        cover_end_date: shift.end_date || shift.start_date,
+        cover_start_time: shift.start_time,
+        cover_end_time: shift.end_time || shift.start_time,
+        status: "Approved",
+      });
+    },
+    onSuccess: (_data, shift) => {
+      queryClient.invalidateQueries(["shifts"]);
+      queryClient.invalidateQueries(["coverages"]);
+      const recipientName =
+        allUsers.find(
+          (u) => Number(u.serial_id) === Number(shift.original_user_id),
+        )?.full_name ||
+        shift.original_user_name ||
+        "המשתמש";
+      // The WhatsApp option lives on the giver's success toast (per request),
+      // as an optional action rather than an automatic redirect.
+      toast.success(`המשמרת של ${recipientName} עברה אליך — מתנה נשלחה! 🎁`, {
+        duration: 10000,
+        action: {
+          label: "שליחה בוואטסאפ",
+          onClick: () => {
+            const message = buildGiftTemplate({
+              recipientName,
+              giverName: authorizedPerson.full_name,
+              startDate: shift.start_date,
+              startTime: shift.start_time,
+              endDate: shift.end_date,
+              endTime: shift.end_time,
+            });
+            window.open(
+              `https://wa.me/?text=${encodeURIComponent(message)}`,
+              "_blank",
+            );
+          },
+        },
+      });
+    },
+    onError: (error) => {
+      console.error("❌ [ShiftCalendar] Gift shift failed:", error);
+      toast.error(`שליחת המתנה נכשלה: ${error?.message || "שגיאה לא ידועה"}`);
+    },
+  });
+
   const offerCoverMutation = useMutation({
     mutationFn: async ({ shift, coverData }) => {
       const normalizedShift = normalizeShiftContext(shift, {
@@ -1607,6 +1665,13 @@ export default function ShiftCalendar() {
         }}
         onCancelRequest={(shift) => cancelSwapMutation.mutate(shift.id)}
         onCancelCoverage={(shift) => cancelMyCoverageMutation.mutate(shift)}
+        onGift={(shift) => {
+          if (!canTakeShifts) {
+            showRoleError();
+            return;
+          }
+          giftShiftMutation.mutate(shift);
+        }}
         onDelete={deleteShiftMutation.mutate}
         onApprove={() => approveSwapMutation.mutate(selectedShift)}
         onRequestSwap={() => {
