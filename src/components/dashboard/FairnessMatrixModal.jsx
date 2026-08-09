@@ -83,7 +83,11 @@ export default function FairnessMatrixModal({ isOpen, onClose, currentUser }) {
         count: userCounts.get(p.serial_id) || 0,
         isMe: currentUser && p.serial_id === currentUser.serial_id,
       }))
-      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "he"));
+      .sort((a, b) => {
+        // Current user (if RR and present) always floats to the top.
+        if (a.isMe !== b.isMe) return a.isMe ? -1 : 1;
+        return b.count - a.count || a.name.localeCompare(b.name, "he");
+      });
 
     const myDepartment = currentUser?.department;
     const departments = Array.from(deptCounts.entries())
@@ -115,7 +119,10 @@ export default function FairnessMatrixModal({ isOpen, onClose, currentUser }) {
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4" dir="rtl">
+      <div
+        className="fixed inset-0 z-[60] flex items-center justify-center p-4"
+        dir="rtl"
+      >
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -186,7 +193,8 @@ export default function FairnessMatrixModal({ isOpen, onClose, currentUser }) {
                 החודש הנוכחי
               </Button>
               <div className="text-xs text-gray-500 mr-auto self-end pb-2">
-                סה"כ משמרות בטווח: <span className="font-bold text-gray-800">{totalInRange}</span>
+                סה"כ משמרות בטווח:{" "}
+                <span className="font-bold text-gray-800">{totalInRange}</span>
               </div>
             </div>
 
@@ -217,46 +225,50 @@ export default function FairnessMatrixModal({ isOpen, onClose, currentUser }) {
           {/* Content */}
           <div className="p-4 md:p-6 overflow-y-auto flex-1">
             {isLoading ? (
-              <div className="text-center py-10 text-gray-500">טוען נתונים...</div>
+              <div className="text-center py-10 text-gray-500">
+                טוען נתונים...
+              </div>
             ) : tab === "users" ? (
               stats.users.length === 0 ? (
                 <div className="text-center py-10 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
-                  <p className="text-gray-500 font-medium">אין משמרות בטווח שנבחר</p>
+                  <p className="text-gray-500 font-medium">
+                    אין משמרות בטווח שנבחר
+                  </p>
                 </div>
               ) : (
-                <div className="space-y-2">
-                  {stats.users.map((u, idx) => (
+                <div className="space-y-1.5">
+                  {stats.users.map((u) => (
                     <div
                       key={u.id}
-                      className={`flex items-center gap-3 rounded-xl p-3 border transition-colors ${
+                      className={`rounded-xl px-3 py-2 border transition-colors ${
                         u.isMe
                           ? "bg-blue-50 border-blue-300 ring-1 ring-blue-200"
                           : "bg-gray-50 border-gray-100"
                       }`}
                     >
-                      <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-100 to-indigo-100 text-blue-600 flex items-center justify-center text-xs font-bold shrink-0">
-                        {idx + 1}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-baseline gap-2 min-w-0">
                           <span className="font-semibold text-gray-800 text-sm truncate">
                             {u.name}
                           </span>
-                          <span className="text-sm font-bold text-gray-700 shrink-0">
-                            {u.count}
-                          </span>
+                          {u.department && (
+                            <span className="text-[11px] text-gray-400 shrink-0">
+                              {DEPARTMENT_LABELS[u.department] ||
+                                `מחלקה ${u.department}`}
+                            </span>
+                          )}
                         </div>
-                        <div className="mt-1 h-2 rounded-full bg-gray-200 overflow-hidden">
-                          <div
-                            className="h-full bg-gradient-to-l from-blue-400 to-indigo-500 rounded-full transition-all"
-                            style={{ width: `${(u.count / stats.maxCount) * 100}%` }}
-                          />
-                        </div>
-                        {u.department && (
-                          <span className="text-[10px] text-gray-400">
-                            {DEPARTMENT_LABELS[u.department] || `מחלקה ${u.department}`}
-                          </span>
-                        )}
+                        <span className="text-sm font-bold text-gray-700 shrink-0">
+                          {u.count}
+                        </span>
+                      </div>
+                      <div className="mt-1 h-2 rounded-full bg-gray-200 overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-l from-blue-400 to-indigo-500 rounded-full transition-all"
+                          style={{
+                            width: `${(u.count / stats.maxCount) * 100}%`,
+                          }}
+                        />
                       </div>
                     </div>
                   ))}
@@ -264,7 +276,9 @@ export default function FairnessMatrixModal({ isOpen, onClose, currentUser }) {
               )
             ) : stats.departments.length === 0 ? (
               <div className="text-center py-10 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
-                <p className="text-gray-500 font-medium">אין משמרות בטווח שנבחר</p>
+                <p className="text-gray-500 font-medium">
+                  אין משמרות בטווח שנבחר
+                </p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -292,7 +306,9 @@ export default function FairnessMatrixModal({ isOpen, onClose, currentUser }) {
                       <div className="mt-1 h-2 rounded-full bg-gray-200 overflow-hidden">
                         <div
                           className="h-full bg-gradient-to-l from-indigo-400 to-purple-500 rounded-full transition-all"
-                          style={{ width: `${(d.count / stats.maxCount) * 100}%` }}
+                          style={{
+                            width: `${(d.count / stats.maxCount) * 100}%`,
+                          }}
                         />
                       </div>
                     </div>
