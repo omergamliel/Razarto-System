@@ -225,6 +225,7 @@ export default function KPIHeader({
       {kpis.map((kpi, index) => (
         <motion.div
           key={kpi.id}
+          data-tour={`kpi-${kpi.id}`}
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: index * 0.05 }}
