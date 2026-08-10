@@ -1,7 +1,7 @@
-import React from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Loader2, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import React from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Loader2, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 export default function SwitchFlowBand({
   step,
@@ -16,29 +16,31 @@ export default function SwitchFlowBand({
   isCounterOffer = false,
   targetOwnerName,
 }) {
-  const isOwnStep = step === 'own';
+  const isOwnStep = step === "own";
 
   let title;
   if (isCounterOffer) {
     title = targetOwnerName
       ? `בחרו את המשמרות שלכם להצעה ראש בראש מול ${targetOwnerName}`
-      : 'בחרו את המשמרות שלכם להצעת החלפה ראש בראש';
+      : "בחרו את המשמרות שלכם להצעת החלפה ראש בראש";
   } else if (isOwnStep) {
-    title = 'בחרו את המשמרות שלכם שתרצו להציע להחלפה';
+    title = "בחרו את המשמרות שלכם שתרצו להציע להחלפה";
   } else {
-    title = 'בחרו את המשמרות של אחרים שתרצו לקחת במקום';
+    title = "בחרו את המשמרות של אחרים שתרצו לקחת במקום";
   }
 
   const counterText = isOwnStep
     ? `${ownCount} משמרות נבחרו`
     : `${targetCount} משמרות נבחרו`;
 
-  const submitLabel = isSubmitting
-    ? <Loader2 className="w-4 h-4 animate-spin" />
-    : 'אישור ושליחה';
+  const submitLabel = isSubmitting ? (
+    <Loader2 className="w-4 h-4 animate-spin" />
+  ) : (
+    "אישור ושליחה"
+  );
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50">
+    <div className="fixed bottom-0 left-0 right-0 z-50" data-tour="switch-band">
       <AnimatePresence>
         {warning && (
           <motion.div
