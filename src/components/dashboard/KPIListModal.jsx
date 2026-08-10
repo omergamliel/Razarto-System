@@ -773,6 +773,7 @@ export default function KPIListModal({
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
+          data-tour="kpi-modal"
           className="relative bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col"
         >
           <div className={`bg-gradient-to-r ${color} p-6 ${textColor}`}>
