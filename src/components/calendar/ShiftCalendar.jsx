@@ -1532,7 +1532,10 @@ export default function ShiftCalendar() {
         />
 
         {/* Calendar Grid */}
-        <div className="flex-1 bg-white/80 backdrop-blur-xl rounded-3xl shadow-xl border border-white/50 p-2 md:p-6 mt-1 relative overflow-hidden">
+        <div
+          className="flex-1 bg-white/80 backdrop-blur-xl rounded-3xl shadow-xl border border-white/50 p-2 md:p-6 mt-1 relative overflow-hidden"
+          data-tour="calendar-grid"
+        >
           <CalendarGrid
             currentDate={currentDate}
             viewMode={viewMode}
