@@ -176,6 +176,17 @@ const HIGHLIGHT_PAD = 8; // breathing room around the spotlighted element
 const GAP = 14; // distance between spotlight and the explanation box
 const EDGE = 16; // min distance any floating piece keeps from the screen edge
 
+// Explicit copy of Tailwind's default `font-sans` stack. The tour box lives as
+// a sibling of the app root and the host (Base44) wraps the app in a container
+// that injects its own `<container> h3 { font-family: … }` rule — specificity
+// (0,1,1) — which OUTRANKS our `.font-sans` class (0,1,0), so the class alone
+// can't win on the title. An inline style beats any selector short of
+// !important, so we set the family inline on every text node in the box. This
+// is the same stack `font-sans` would have resolved to, so it stays identical
+// to the rest of the app.
+const FONT_STACK =
+  'ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji"';
+
 function getEl(selector) {
   if (!selector) return null;
   return document.querySelector(`[data-tour="${selector}"]`);
@@ -416,6 +427,7 @@ function AppTour() {
           animate={{ opacity: tipPos ? 1 : 0, y: tipPos ? 0 : 8 }}
           className="absolute bg-white rounded-2xl shadow-2xl border border-gray-100 p-5"
           style={{
+            fontFamily: FONT_STACK,
             width: TIP_WIDTH,
             maxWidth: "calc(100vw - 32px)",
             top: tipPos ? tipPos.top : rect ? rect.top + rect.height + GAP : EDGE,
@@ -439,19 +451,27 @@ function AppTour() {
           </button>
 
           {/* Heading: "<process> - <feature>" (dash-separated, per request).
-              font-sans is set on the element itself (not just inherited from
-              the overlay root) so a class selector wins over any bare `h3 {}`
-              font rule the host injects — otherwise the title alone renders in
-              the browser's default serif while the body stays sans. */}
+              fontFamily is set INLINE (not just via the .font-sans class) because
+              the host wraps the app in a container and injects a
+              `<container> h3 { font-family: … }` rule whose specificity (0,1,1)
+              outranks our class (0,1,0); an inline style beats any selector, so
+              the title renders in the same sans stack as the rest of the app
+              instead of falling back to the browser's serif. */}
           <div className="mb-2 pl-6">
-            <h3 className="font-sans text-base md:text-lg font-extrabold leading-snug">
+            <h3
+              className="text-base md:text-lg font-extrabold leading-snug"
+              style={{ fontFamily: FONT_STACK }}
+            >
               <span className="text-blue-500">{step.process}</span>
               <span className="text-gray-300"> - </span>
               <span className="text-gray-900">{step.title}</span>
             </h3>
           </div>
 
-          <p className="font-sans text-sm text-gray-600 leading-relaxed">
+          <p
+            className="text-sm text-gray-600 leading-relaxed"
+            style={{ fontFamily: FONT_STACK }}
+          >
             {step.body}
           </p>
 
