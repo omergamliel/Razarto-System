@@ -167,7 +167,10 @@ export default function CalendarHeader({
               </div>
 
               {/* TEXT AREA */}
-              <div className="flex flex-col items-start justify-center">
+              <div
+                className="flex flex-col items-start justify-center"
+                data-tour="user-greeting"
+              >
                 <span className="text-gray-500 text-[10px] md:text-xs font-medium leading-none mb-0.5">
                   {getTimeBasedGreeting()},
                 </span>
@@ -184,6 +187,7 @@ export default function CalendarHeader({
               {/* 1. היכל התהילה */}
               <button
                 onClick={onOpenHallOfFame}
+                data-tour="hall-of-fame"
                 className="group relative p-2 rounded-xl hover:bg-gray-100 transition-all duration-200"
                 title="היכל התהילה"
               >
@@ -197,6 +201,7 @@ export default function CalendarHeader({
               {/* 1b. טבלת צדק */}
               <button
                 onClick={onOpenFairnessMatrix}
+                data-tour="fairness"
                 className="group relative p-2 rounded-xl hover:bg-gray-100 transition-all duration-200"
                 title="טבלת צדק"
               >
@@ -206,6 +211,7 @@ export default function CalendarHeader({
               {/* 2. תמיכה ועזרה */}
               <button
                 onClick={onOpenHelp}
+                data-tour="help"
                 className="group relative p-2 rounded-xl hover:bg-gray-100 transition-all duration-200"
                 title="תמיכה ועזרה"
               >
@@ -245,7 +251,10 @@ export default function CalendarHeader({
           {/* ----------------------------- */}
           {/* 2. אזור המיתוג (כותרת ראשית בלבד - לוגו הועבר למעלה) */}
           {/* ----------------------------- */}
-          <div className="flex flex-col items-center justify-center mb-3 px-2 text-center">
+          <div
+            className="flex flex-col items-center justify-center mb-3 px-2 text-center"
+            data-tour="brand"
+          >
             <h1
               className="text-3xl md:text-5xl font-extrabold text-gray-800 tracking-wider mb-0.5"
               style={{ letterSpacing: "0.1em" }}
@@ -268,7 +277,10 @@ export default function CalendarHeader({
       {/* 3. סרגל ניווט תחתון (ממורכז) */}
       {/* ----------------------------- */}
       {!hideNavigation && (
-        <div className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-100 p-3 md:p-4">
+        <div
+          className="bg-white/80 backdrop-blur-sm rounded-2xl shadow-sm border border-gray-100 p-3 md:p-4"
+          data-tour="calendar-nav"
+        >
           {/* שיניתי את הסדר כאן כדי למרכז */}
           <div className="flex flex-col md:flex-row-reverse items-center justify-between gap-3 md:gap-4">
             {/* כפתורי תצוגה (ימין ב-RTL, שמאל במסך) */}
