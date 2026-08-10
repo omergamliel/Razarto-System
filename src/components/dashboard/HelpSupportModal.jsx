@@ -28,8 +28,12 @@ export default function HelpSupportModal({ isOpen, onClose }) {
       shadow: 'shadow-blue-200',
       accent: 'bg-white/20 text-white',
       onClick: () => {
-        setShowVideo(false);
-        setInfoMessage('בקרוב יתווסף סיור באתר');
+        // Close the help modal first so the tour can spotlight the app behind
+        // it, then hand off to the globally-mounted <AppTour /> (inlined in
+        // Home.jsx) via its event. Inlined dispatch — no shared module to import
+        // from, since the Base44 host only allows editing existing files.
+        onClose();
+        window.dispatchEvent(new CustomEvent('razarto:start-tour'));
       }
     },
     {
