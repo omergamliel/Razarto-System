@@ -137,6 +137,33 @@ export default function ShiftCalendar() {
       window.removeEventListener("razarto:sidebar-action", handleSidebarAction);
   }, []);
 
+  // Lets the guided walkthrough (AppTour in Home.jsx) open the real menus so it
+  // can spotlight them — the KPI list on a given tab, or the switch-flow band.
+  // This only toggles UI state; it never creates/updates/deletes any entity,
+  // and the tour renders a full-screen click-blocker above these overlays so
+  // their own action buttons (accept/cancel/confirm) can't be triggered during
+  // the tour. `detail.open` is "kpi" | "switchflow" | null (null = close all).
+  useEffect(() => {
+    const handleTourControl = (e) => {
+      const { open, kpiType, kpiTab } = e.detail || {};
+      // Reset tour-driven surfaces first so each step is a clean, idempotent
+      // request for exactly the state it wants.
+      setShowKPIListModal(false);
+      setSwitchFlow(null);
+      if (open === "kpi") {
+        setKpiListType(kpiType || "swap_requests");
+        setKpiInitialTab(kpiTab || "all");
+        setKpiOpenSeq((n) => n + 1);
+        setShowKPIListModal(true);
+      } else if (open === "switchflow") {
+        setSwitchFlow({ step: "own", ownShiftIds: [], targetShiftIds: [] });
+      }
+    };
+    window.addEventListener("razarto:tour-control", handleTourControl);
+    return () =>
+      window.removeEventListener("razarto:tour-control", handleTourControl);
+  }, []);
+
   // Lock background scrolling while any modal/menu is open, so only the
   // open overlay scrolls — not the calendar behind it.
   const anyModalOpen =
