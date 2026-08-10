@@ -19,23 +19,32 @@ import NotificationSidebar from "@/components/sidebar/NotificationSidebar";
 // ones. Home.jsx is the natural home: it's where the overlay is mounted, next
 // to the other global chrome (NotificationSidebar). The trigger is likewise
 // inlined in HelpSupportModal.jsx as a window.dispatchEvent(new CustomEvent(...))
-// — no shared module to import from, so the two sides just agree on the event
-// name string below.
+// — no shared module to import from, so the sides agree on the event names.
 //
-// Copy contract (per product request):
-//   box heading = `<process> - <title>`  (process = the whole flow the feature
-//   belongs to, shown as a prefix before the dash; title = an easy name for the
-//   specific feature). Each step points at a real element via a data-tour attr.
+// READ-ONLY GUARANTEE: some steps open real menus (the KPI list on a given tab,
+// the switch-flow band) so the user can see them, by dispatching
+// `razarto:tour-control` which ShiftCalendar handles. That only toggles UI
+// state — no entity is ever created/updated/deleted — and the overlay renders a
+// full-screen click-blocker above those menus, so their own action buttons
+// (accept / cancel / confirm) cannot be triggered while the tour is running.
+//
+// Copy contract: box heading = `<process> - <title>` (process = the whole flow
+// the feature belongs to, shown as a prefix before the dash; title = an easy
+// name for the specific feature).
 // ---------------------------------------------------------------------------
 
 const TOUR_EVENT = "razarto:start-tour";
+const TOUR_CONTROL_EVENT = "razarto:tour-control";
 
+// `control` (optional) is the detail dispatched to ShiftCalendar when a step is
+// entered, to open the menu the step wants to spotlight. Steps without one
+// implicitly close any tour-opened menu ({ open: null }).
 const TOUR_STEPS = [
   {
     selector: "brand",
     process: "ברוכים הבאים",
     title: "מערכת Razarto",
-    body: "המערכת לניהול משמרות והחלפות. סיור קצר זה יעבור על עיקרי המסך — אפשר לצאת בכל שלב.",
+    body: "המערכת לניהול משמרות והחלפות. סיור זה יעבור על כל התפריטים והתהליכים — אפשר לצאת בכל שלב.",
     radius: 18,
   },
   {
@@ -54,43 +63,73 @@ const TOUR_STEPS = [
     selector: "calendar-grid",
     process: "צפייה במשמרות",
     title: "לוח המשמרות",
-    body: "כל משמרת צבועה לפי מצבה. לחיצה על משמרת פותחת את פרטיה ואת הפעולות האפשריות.",
+    body: "כל משמרת צבועה לפי מצבה. לחיצה על משמרת פותחת תפריט פעולות: בקשת החלפה מלאה או חלקית, הצעת כיסוי, החלפה ראש-בראש, או העברת משמרת במתנה.",
+  },
+  {
+    selector: "kpi-band",
+    process: "לוח מחוונים",
+    title: "מוני הבקשות",
+    body: "ארבעה מונים חיים — בקשות מלאה, בקשות חלקית, היסטוריה, והמשמרות שלי — לצד כפתור פעולה. לחיצה על מונה פותחת את הרשימה שלו; נראה אותן מיד.",
   },
   {
     selector: "kpi-switch_request",
     process: "בקשת החלפה",
-    title: "התחלת בקשת החלפה",
-    body: "הכפתור הסגול מתחיל תהליך החלפה: בוחרים משמרת שלכם, ואז (לא חובה) משמרת יעד להחלפה ישירה.",
+    title: "התחלת בקשה",
+    body: "הכפתור הסגול מתחיל תהליך החלפה. נפתח אותו עכשיו כדי לראות איך זה עובד.",
   },
   {
-    selector: "kpi-swap_requests",
+    selector: "switch-band",
+    process: "בקשת החלפה",
+    title: "בחירת המשמרות",
+    body: "שלב 1: בוחרים בלוח את המשמרות שלכם ולוחצים 'המשך'. שלב 2: בוחרים משמרת יעד להחלפה ישירה, או 'שלח כבקשה כללית' כדי לפתוח אותה לכולם. (זו רק תצוגה — לא נשלחת בקשה.)",
+    control: { open: "switchflow" },
+    radius: 10,
+  },
+  {
+    selector: "kpi-modal",
     process: "מעקב בקשות",
     title: "בקשות להחלפה מלאה",
-    body: "מונה הבקשות הפתוחות להחלפת משמרת שלמה. לחיצה פותחת את הרשימה, כולל בקשות שממתינות לתשובה שלכם.",
+    body: "כל הבקשות הפתוחות להחלפת משמרת שלמה. הלשוניות למעלה מסננות: כל הבקשות / הבקשות שלי / בקשות אליי.",
+    control: { open: "kpi", kpiType: "swap_requests", kpiTab: "all" },
+    radius: 20,
   },
   {
-    selector: "kpi-partial_gaps",
-    process: "מעקב בקשות",
-    title: "בקשות להחלפה חלקית",
-    body: "בקשות לכיסוי חלק ממשמרת ופערים שנותרו פתוחים — כאן אפשר להציע לכסות שעות בודדות.",
+    selector: "kpi-modal",
+    process: "קבלת בקשות",
+    title: "בקשות שהגיעו אליך",
+    body: "בלשונית 'בקשות אליי' מרוכזות בקשות ראש-בראש וכלליות שממתינות לתשובתך. בכל שורה יש כפתורים לאישור או דחייה של הבקשה.",
+    control: { open: "kpi", kpiType: "swap_requests", kpiTab: "incoming" },
+    radius: 20,
   },
   {
-    selector: "kpi-approved",
-    process: "מעקב בקשות",
-    title: "היסטוריית החלפות",
-    body: "כל ההחלפות שנסגרו והבקשות שהושלמו, לצפייה ולמעקב.",
+    selector: "kpi-modal",
+    process: "ניהול הבקשות שלך",
+    title: "ביטול בקשה",
+    body: "בלשונית 'הבקשות שלי' מופיעות הבקשות שפתחת. אפשר לבטל בקשה שכבר אינה רלוונטית ישירות מהרשימה.",
+    control: { open: "kpi", kpiType: "swap_requests", kpiTab: "mine" },
+    radius: 20,
   },
   {
-    selector: "kpi-my_shifts",
-    process: "המשמרות שלי",
-    title: "המשמרות העתידיות שלי",
-    body: "ספירה מהירה של המשמרות הקרובות שלכם — כולל משמרות שקיבלתם בכיסוי.",
+    selector: "kpi-modal",
+    process: "כיסוי חלקי",
+    title: "הצעת כיסוי לפערים",
+    body: "פערים חלקיים במשמרות שאפשר לכסות שעות בודדות מהם. הלשוניות: כל הפערים / הפערים שלי / מה שאני מכסה — וכפתור 'הצעת כיסוי' בכל שורה.",
+    control: { open: "kpi", kpiType: "partial_gaps", kpiTab: "all" },
+    radius: 20,
+  },
+  {
+    selector: "kpi-modal",
+    process: "היסטוריה",
+    title: "החלפות שהושלמו",
+    body: "כל ההחלפות שנסגרו והבקשות שהושלמו, מרוכזות כאן למעקב ולתיעוד.",
+    control: { open: "kpi", kpiType: "approved", kpiTab: "all" },
+    radius: 20,
   },
   {
     selector: "notif-button",
     process: "התראות",
     title: "מרכז ההתראות",
-    body: "כאן יופיעו התראות על פעולות של אחרים שרלוונטיות אליכם — למשל הצעת החלפה שנשלחה אליכם.",
+    body: "כאן יופיעו התראות על פעולות של אחרים שרלוונטיות אליכם — למשל הצעת החלפה שנשלחה אליכם, או בקשה שלכם שנסגרה.",
     radius: 999,
   },
   {
@@ -123,6 +162,13 @@ function getEl(selector) {
   return document.querySelector(`[data-tour="${selector}"]`);
 }
 
+// Ask ShiftCalendar to open/close a menu for the current step (or close all).
+function dispatchControl(control) {
+  window.dispatchEvent(
+    new CustomEvent(TOUR_CONTROL_EVENT, { detail: control || { open: null } }),
+  );
+}
+
 // Guided walkthrough overlay. Stays inert until a `razarto:start-tour` event
 // fires, then spotlights each target in turn with a transparent-black mask and
 // an explanation box. The mask is a single element sized to the target with a
@@ -130,17 +176,18 @@ function getEl(selector) {
 // target dark, leaving it as a clear "spotlight", and animates smoothly as the
 // highlight moves between steps (no SVG mask needed).
 function AppTour() {
-  // The subset of TOUR_STEPS whose target actually exists right now.
+  // The subset of TOUR_STEPS whose target actually exists / can be opened.
   const [steps, setSteps] = useState([]);
   const [index, setIndex] = useState(0);
   const [running, setRunning] = useState(false);
   const [rect, setRect] = useState(null); // spotlight box, viewport coords
-  const [tipPos, setTipPos] = useState(null); // {top,left,placement}
+  const [tipPos, setTipPos] = useState(null); // {top,left}
   const tipRef = useRef(null);
 
   const step = running ? steps[index] : null;
 
   const stop = useCallback(() => {
+    dispatchControl({ open: null }); // close any menu the tour opened
     setRunning(false);
     setRect(null);
     setTipPos(null);
@@ -149,8 +196,7 @@ function AppTour() {
 
   // Measure the current step's target and store its viewport rect.
   const measure = useCallback(() => {
-    const current = steps[index];
-    const el = getEl(current?.selector);
+    const el = getEl(steps[index]?.selector);
     if (!el) {
       setRect(null);
       return;
@@ -159,10 +205,11 @@ function AppTour() {
     setRect({ top: r.top, left: r.left, width: r.width, height: r.height });
   }, [steps, index]);
 
-  // Launch: build the live step list (skipping missing targets) and start.
+  // Launch: a step is "live" if its target exists now, or if it opens its own
+  // menu (control) — those targets mount a moment later and are polled for.
   useEffect(() => {
     const onStart = () => {
-      const live = TOUR_STEPS.filter((s) => getEl(s.selector));
+      const live = TOUR_STEPS.filter((s) => s.control || getEl(s.selector));
       if (live.length === 0) return;
       setSteps(live);
       setIndex(0);
@@ -172,19 +219,48 @@ function AppTour() {
     return () => window.removeEventListener(TOUR_EVENT, onStart);
   }, []);
 
-  // On each step: bring the target into view, then measure (twice, so we catch
-  // the position both before and after any smooth-scroll settles).
+  // On each step: drive the app UI (open/close the relevant menu), then poll
+  // until the target element exists, scroll it into view, and track it through
+  // any entry animation (modal scale / band slide-up) for ~0.8s.
   useEffect(() => {
     if (!running) return;
-    const el = getEl(steps[index]?.selector);
-    if (!el) {
-      measure();
-      return;
-    }
-    el.scrollIntoView({ block: "center", behavior: "smooth" });
-    measure();
-    const t = setTimeout(measure, 380);
-    return () => clearTimeout(t);
+    const current = steps[index];
+    dispatchControl(current.control);
+
+    let cancelled = false;
+    let rafId = 0;
+    let tries = 0;
+
+    const track = (el) => {
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
+      const t0 = performance.now();
+      const loop = () => {
+        if (cancelled) return;
+        measure();
+        if (performance.now() - t0 < 800) rafId = requestAnimationFrame(loop);
+      };
+      loop();
+    };
+
+    const findThenTrack = () => {
+      if (cancelled) return;
+      const el = getEl(current.selector);
+      if (el) {
+        track(el);
+        return;
+      }
+      tries += 1;
+      if (tries < 60) rafId = requestAnimationFrame(findThenTrack);
+      else measure(); // give up → tooltip shows at fallback position
+    };
+
+    // Small delay so a menu dispatched above has a frame to mount.
+    const startT = setTimeout(findThenTrack, current.control ? 80 : 0);
+    return () => {
+      cancelled = true;
+      clearTimeout(startT);
+      if (rafId) cancelAnimationFrame(rafId);
+    };
   }, [running, index, steps, measure]);
 
   // Keep the spotlight glued to the target while scrolling/resizing.
@@ -199,8 +275,9 @@ function AppTour() {
     };
   }, [running, measure]);
 
-  // Position the explanation box relative to the spotlight: below by default,
-  // above if it would overflow the bottom, always clamped inside the viewport.
+  // Position the explanation box relative to the spotlight. Preference order:
+  // below → above → beside (left/right) → pinned to the bottom edge (overlapping
+  // a large target). Always clamped fully inside the viewport.
   useLayoutEffect(() => {
     if (!running || !rect) {
       setTipPos(null);
@@ -211,24 +288,36 @@ function AppTour() {
     const vh = window.innerHeight;
     const vw = window.innerWidth;
 
-    let top = rect.top + rect.height + GAP;
-    let placement = "bottom";
-    if (top + tipH > vh - EDGE) {
-      const above = rect.top - GAP - tipH;
-      if (above >= EDGE) {
-        top = above;
-        placement = "top";
-      } else {
-        // No room above or below — clamp to bottom edge and overlap gently.
-        top = Math.max(EDGE, vh - EDGE - tipH);
-        placement = "bottom";
-      }
+    const clampX = (x) => Math.min(Math.max(x, EDGE), vw - EDGE - tipW);
+    const clampY = (y) => Math.min(Math.max(y, EDGE), vh - EDGE - tipH);
+    const centerX = clampX(rect.left + rect.width / 2 - tipW / 2);
+    const centerY = clampY(rect.top + rect.height / 2 - tipH / 2);
+
+    const spaceBelow = vh - (rect.top + rect.height) - GAP - EDGE;
+    const spaceAbove = rect.top - GAP - EDGE;
+    const spaceLeft = rect.left - GAP - EDGE;
+    const spaceRight = vw - (rect.left + rect.width) - GAP - EDGE;
+
+    let top;
+    let left;
+    if (spaceBelow >= tipH) {
+      top = rect.top + rect.height + GAP;
+      left = centerX;
+    } else if (spaceAbove >= tipH) {
+      top = rect.top - GAP - tipH;
+      left = centerX;
+    } else if (spaceLeft >= tipW) {
+      left = rect.left - GAP - tipW;
+      top = centerY;
+    } else if (spaceRight >= tipW) {
+      left = rect.left + rect.width + GAP;
+      top = centerY;
+    } else {
+      top = Math.max(EDGE, vh - EDGE - tipH);
+      left = centerX;
     }
 
-    let left = rect.left + rect.width / 2 - tipW / 2;
-    left = Math.min(Math.max(left, EDGE), vw - EDGE - tipW);
-
-    setTipPos({ top, left, placement });
+    setTipPos({ top, left });
   }, [running, rect, index]);
 
   const isLast = index >= steps.length - 1;
@@ -257,13 +346,14 @@ function AppTour() {
   return (
     <AnimatePresence>
       <div
-        className="fixed inset-0"
+        className="fixed inset-0 font-sans"
         style={{ zIndex: 100000 }}
         dir="rtl"
         aria-live="polite"
       >
         {/* Click-blocker: swallows interaction with the app underneath so the
-            tour stays in control. Clicking the dark area advances the tour. */}
+            tour stays in control (and no menu action can fire). Clicking the
+            dark area advances the tour. */}
         <div className="absolute inset-0" onClick={next} />
 
         {/* Spotlight + transparent-black mask (the big box-shadow is the mask). */}
