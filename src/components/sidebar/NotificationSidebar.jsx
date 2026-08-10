@@ -95,6 +95,15 @@ export default function NotificationSidebar() {
 
   useEffect(() => subscribe(setMessages), []);
 
+  // Let the guided walkthrough (AppTour in Home.jsx) open/close this panel so
+  // it can spotlight it. UI-only — toggles the same isOpen state a click would,
+  // reads no data and writes nothing.
+  useEffect(() => {
+    const handler = (e) => setIsOpen(!!e.detail?.open);
+    window.addEventListener("razarto:tour-notif", handler);
+    return () => window.removeEventListener("razarto:tour-notif", handler);
+  }, []);
+
   // Lock background scrolling while the sidebar panel is open.
   useScrollLock(isOpen);
 
@@ -134,6 +143,7 @@ export default function NotificationSidebar() {
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              data-tour="notif-panel"
               className="fixed top-0 right-0 z-50 h-full w-[88vw] max-w-[380px] bg-white shadow-2xl border-l border-gray-200 flex flex-col"
               dir="rtl"
             >
