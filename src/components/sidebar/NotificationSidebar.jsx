@@ -106,6 +106,7 @@ export default function NotificationSidebar() {
       <button
         onClick={() => setIsOpen((o) => !o)}
         aria-label={isOpen ? "סגירת הודעות" : "פתיחת הודעות"}
+        data-tour="notif-button"
         className="fixed bottom-5 right-5 z-40 flex items-center justify-center h-12 w-12 rounded-full bg-black hover:bg-gray-800 shadow-lg transition-colors"
         dir="rtl"
       >
