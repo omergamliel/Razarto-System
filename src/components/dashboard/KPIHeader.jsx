@@ -221,7 +221,10 @@ export default function KPIHeader({
   ];
 
   return (
-    <div className="grid grid-cols-5 gap-1 sm:gap-2 mb-3 md:mb-6">
+    <div
+      className="grid grid-cols-5 gap-1 sm:gap-2 mb-3 md:mb-6"
+      data-tour="kpi-band"
+    >
       {kpis.map((kpi, index) => (
         <motion.div
           key={kpi.id}
