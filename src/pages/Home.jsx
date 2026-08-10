@@ -34,11 +34,14 @@ import NotificationSidebar from "@/components/sidebar/NotificationSidebar";
 // ---------------------------------------------------------------------------
 
 const TOUR_EVENT = "razarto:start-tour";
-const TOUR_CONTROL_EVENT = "razarto:tour-control";
+const TOUR_CONTROL_EVENT = "razarto:tour-control"; // → ShiftCalendar (KPI list / switch band)
+const TOUR_NOTIF_EVENT = "razarto:tour-notif"; // → NotificationSidebar (panel open/close)
 
-// `control` (optional) is the detail dispatched to ShiftCalendar when a step is
-// entered, to open the menu the step wants to spotlight. Steps without one
-// implicitly close any tour-opened menu ({ open: null }).
+// Optional per-step UI drivers, dispatched when a step is entered so the tour
+// can spotlight a real menu:
+//   control: { open: "kpi"|"switchflow"|null, kpiType?, kpiTab? }  (ShiftCalendar)
+//   notif:   true                                                  (open the notifications panel)
+// A step without either implicitly closes every tour-opened surface.
 const TOUR_STEPS = [
   {
     selector: "brand",
@@ -128,9 +131,25 @@ const TOUR_STEPS = [
   {
     selector: "notif-button",
     process: "התראות",
-    title: "מרכז ההתראות",
-    body: "כאן יופיעו התראות על פעולות של אחרים שרלוונטיות אליכם — למשל הצעת החלפה שנשלחה אליכם, או בקשה שלכם שנסגרה.",
+    title: "כפתור מרכז ההתראות",
+    body: "הכפתור הצף בפינה הימנית-תחתונה פותח את מרכז ההתראות. נקודה כחולה עליו מסמנת שיש התראה חדשה שטרם נצפתה.",
     radius: 999,
+  },
+  {
+    selector: "notif-panel",
+    process: "התראות",
+    title: "רשימת ההתראות",
+    body: "נפתח את הפאנל: כאן מרוכזות התראות על פעולות של אחרים שרלוונטיות אליכם — הצעת החלפה שהגיעה אליכם, כיסוי שהוצע או בוטל למשמרת שלכם, ובקשה שלכם שנסגרה. ההתראות נאספות מהנתונים הקיימים בכל טעינה.",
+    notif: true,
+    radius: 16,
+  },
+  {
+    selector: "notif-panel",
+    process: "התראות",
+    title: "צבע, פעולה וניקוי",
+    body: "כל התראה צבועה לפי סוג המשמרת (אדום=בקשת החלפה, צהוב=פער כיסוי, ירוק=מכוסה, כחול=שלי, ועוד). כפתור הפעולה שבתוך התראה קופץ ישירות לרשימה הרלוונטית, ואפשר להסיר התראה בודדת או 'נקה הכל' מהכותרת.",
+    notif: true,
+    radius: 16,
   },
   {
     selector: "hall-of-fame",
@@ -162,10 +181,16 @@ function getEl(selector) {
   return document.querySelector(`[data-tour="${selector}"]`);
 }
 
-// Ask ShiftCalendar to open/close a menu for the current step (or close all).
-function dispatchControl(control) {
+// Drive the app's real menus for a step (or close everything when step is null):
+// the KPI list / switch band (ShiftCalendar) and the notifications panel.
+function applyStepUI(step) {
   window.dispatchEvent(
-    new CustomEvent(TOUR_CONTROL_EVENT, { detail: control || { open: null } }),
+    new CustomEvent(TOUR_CONTROL_EVENT, {
+      detail: step?.control || { open: null },
+    }),
+  );
+  window.dispatchEvent(
+    new CustomEvent(TOUR_NOTIF_EVENT, { detail: { open: !!step?.notif } }),
   );
 }
 
@@ -187,7 +212,7 @@ function AppTour() {
   const step = running ? steps[index] : null;
 
   const stop = useCallback(() => {
-    dispatchControl({ open: null }); // close any menu the tour opened
+    applyStepUI(null); // close any menu/panel the tour opened
     setRunning(false);
     setRect(null);
     setTipPos(null);
@@ -209,7 +234,11 @@ function AppTour() {
   // menu (control) — those targets mount a moment later and are polled for.
   useEffect(() => {
     const onStart = () => {
-      const live = TOUR_STEPS.filter((s) => s.control || getEl(s.selector));
+      // A step is live if its target exists now, or if it opens its own surface
+      // (control / notif) whose target mounts a moment later and is polled for.
+      const live = TOUR_STEPS.filter(
+        (s) => s.control || s.notif || getEl(s.selector),
+      );
       if (live.length === 0) return;
       setSteps(live);
       setIndex(0);
@@ -225,7 +254,7 @@ function AppTour() {
   useEffect(() => {
     if (!running) return;
     const current = steps[index];
-    dispatchControl(current.control);
+    applyStepUI(current);
 
     let cancelled = false;
     let rafId = 0;
@@ -254,8 +283,11 @@ function AppTour() {
       else measure(); // give up → tooltip shows at fallback position
     };
 
-    // Small delay so a menu dispatched above has a frame to mount.
-    const startT = setTimeout(findThenTrack, current.control ? 80 : 0);
+    // Small delay so a menu/panel dispatched above has a frame to mount.
+    const startT = setTimeout(
+      findThenTrack,
+      current.control || current.notif ? 80 : 0,
+    );
     return () => {
       cancelled = true;
       clearTimeout(startT);
@@ -406,16 +438,22 @@ function AppTour() {
             <X className="w-4 h-4" />
           </button>
 
-          {/* Heading: "<process> - <feature>" (dash-separated, per request) */}
+          {/* Heading: "<process> - <feature>" (dash-separated, per request).
+              font-sans is set on the element itself (not just inherited from
+              the overlay root) so a class selector wins over any bare `h3 {}`
+              font rule the host injects — otherwise the title alone renders in
+              the browser's default serif while the body stays sans. */}
           <div className="mb-2 pl-6">
-            <h3 className="text-base md:text-lg font-extrabold leading-snug">
+            <h3 className="font-sans text-base md:text-lg font-extrabold leading-snug">
               <span className="text-blue-500">{step.process}</span>
               <span className="text-gray-300"> - </span>
               <span className="text-gray-900">{step.title}</span>
             </h3>
           </div>
 
-          <p className="text-sm text-gray-600 leading-relaxed">{step.body}</p>
+          <p className="font-sans text-sm text-gray-600 leading-relaxed">
+            {step.body}
+          </p>
 
           {/* Footer: progress + navigation */}
           <div className="mt-4 flex items-center justify-between gap-3">
