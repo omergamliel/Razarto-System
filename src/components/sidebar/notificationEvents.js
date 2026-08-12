@@ -62,6 +62,28 @@ export function computeNotificationEvents({
     }
   });
 
+  // 1b. Incoming gift offer: someone (an RR user) offered to take one of my
+  // shifts as a gift — a SwapRequest with request_type "Gift", still Open, whose
+  // gifted shift (shift_ids) I own. It isn't applied until I accept it from my
+  // incoming-requests list, so surface it as an actionable offer, not a done deal.
+  swapRequests.forEach((r) => {
+    if (r.request_type !== "Gift") return;
+    if (r.status !== "Open") return;
+    if (Number(r.requesting_user_id) === myId) return;
+    const giftedShift = (r.shift_ids || [])
+      .map((id) => shiftById.get(id))
+      .find((s) => s && Number(s.original_user_id) === myId);
+    if (!giftedShift) return;
+    events.push({
+      fingerprint: `gift-offer:${r.id}`,
+      type: "gift",
+      title: "הוצעה לך מתנה 🎁",
+      body: `${nameOf(allUsers, r.requesting_user_id)} מציע לקחת על עצמו את המשמרת שלך (${formatShiftDate(giftedShift)}) במתנה — אשרו את ההצעה כדי להשתחרר מהמשמרת`,
+      actionLabel: "צפייה בהצעה",
+      actionTarget: "kpi:swap_requests:incoming",
+    });
+  });
+
   // 2 & 3. Coverage offered on a shift I own (no "cancelled" event here — a
   // helper can't cancel their own coverage as a user action; the only way a
   // shift's coverage disappears is the owner reverting the whole shift to
@@ -76,22 +98,6 @@ export function computeNotificationEvents({
 
     const coverer = nameOf(allUsers, c.covering_user_id);
     const dateLabel = formatShiftDate(shift);
-
-    // A gift is a full-shift coverage stamped with the "GIFT" sentinel
-    // request_id (see giftShiftMutation) — someone took this shift off me for
-    // free, so it gets its own celebratory popup instead of the ordinary
-    // "someone offered to cover" one.
-    if (c.request_id === "GIFT") {
-      events.push({
-        fingerprint: `gift:${c.id}`,
-        type: "gift",
-        title: "קיבלת מתנה! 🎁",
-        body: `המשמרת שלך (${dateLabel}) נלקחה במתנה על ידי ${coverer} — אין צורך להגיע`,
-        actionLabel: "",
-        actionTarget: null,
-      });
-      return;
-    }
 
     const parentRequest = requestById.get(c.request_id);
 
@@ -111,9 +117,12 @@ export function computeNotificationEvents({
   });
 
   // 4. One of my own swap requests (any type) is still sitting unanswered.
+  // Gifts are excluded — the giver already got a confirmation toast, and this
+  // message's "swap request" wording doesn't fit a one-directional gift offer.
   swapRequests.forEach((r) => {
     if (Number(r.requesting_user_id) !== myId) return;
     if (r.status !== "Open") return;
+    if (r.request_type === "Gift") return;
     events.push({
       fingerprint: `sr-pending:${r.id}`,
       type: "swap_requested",
