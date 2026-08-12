@@ -1303,8 +1303,9 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                     </Button>
                   </div>
                 ) : (
-                  <div className="overflow-y-auto flex-1 min-h-0 custom-scrollbar p-3 md:p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-                    {groupSymbols.map((symbol) => {
+                  <div className="overflow-y-auto flex-1 min-h-0 custom-scrollbar p-3 md:p-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 content-start">
+                      {groupSymbols.map((symbol) => {
                     const members = membersBySymbol.get(symbol) || [];
                     const activeSeg = activeSegmentBySymbol.get(symbol);
                     const activeEmail = activeSeg?.active
@@ -1434,7 +1435,8 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                         )}
                       </div>
                     );
-                    })}
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
