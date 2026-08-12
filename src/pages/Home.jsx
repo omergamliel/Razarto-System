@@ -39,9 +39,14 @@ const TOUR_NOTIF_EVENT = "razarto:tour-notif"; // → NotificationSidebar (panel
 
 // Optional per-step UI drivers, dispatched when a step is entered so the tour
 // can spotlight a real menu:
-//   control: { open: "kpi"|"switchflow"|null, kpiType?, kpiTab? }  (ShiftCalendar)
-//   notif:   true                                                  (open the notifications panel)
+//   control: { open: "kpi"|"switchflow"|null, kpiType?, kpiTab?, demo? }  (ShiftCalendar)
+//   notif:   true                                                          (open the notifications panel)
 // A step without either implicitly closes every tour-opened surface.
+//
+// `demo: true` (on a KPI control, or implied for the notifications steps) tells
+// the target surface to render make-believe example rows in different stages
+// instead of the account's real (often empty) data — so the walkthrough always
+// shows a populated list. It's read-only synthetic data; nothing is persisted.
 const TOUR_STEPS = [
   {
     selector: "brand",
@@ -92,40 +97,45 @@ const TOUR_STEPS = [
     selector: "kpi-modal",
     process: "מעקב בקשות",
     title: "בקשות להחלפה מלאה",
-    body: "כל הבקשות הפתוחות להחלפת משמרת שלמה. הלשוניות למעלה מסננות: כל הבקשות / הבקשות שלי / בקשות אליי.",
-    control: { open: "kpi", kpiType: "swap_requests", kpiTab: "all" },
+    body: "כל הבקשות הפתוחות להחלפת משמרת שלמה. הלשוניות למעלה מסננות: כל הבקשות / הבקשות שלי / בקשות אליי. (השורות כאן הן דוגמאות להמחשה.)",
+    control: { open: "kpi", kpiType: "swap_requests", kpiTab: "all", demo: true },
     radius: 20,
   },
   {
     selector: "kpi-modal",
     process: "קבלת בקשות",
     title: "בקשות שהגיעו אליך",
-    body: "בלשונית 'בקשות אליי' מרוכזות בקשות ראש-בראש וכלליות שממתינות לתשובתך. בכל שורה יש כפתורים לאישור או דחייה של הבקשה.",
-    control: { open: "kpi", kpiType: "swap_requests", kpiTab: "incoming" },
+    body: "בלשונית 'בקשות אליי' מרוכזות בקשות שממתינות לתשובתך — החלפה ראש-בראש שהוצעה לך ומתנה שמישהו מציע לקחת את המשמרת שלך. בכל שורה יש כפתורים לאישור או דחייה. (דוגמאות להמחשה.)",
+    control: {
+      open: "kpi",
+      kpiType: "swap_requests",
+      kpiTab: "incoming",
+      demo: true,
+    },
     radius: 20,
   },
   {
     selector: "kpi-modal",
     process: "ניהול הבקשות שלך",
     title: "ביטול בקשה",
-    body: "בלשונית 'הבקשות שלי' מופיעות הבקשות שפתחת. אפשר לבטל בקשה שכבר אינה רלוונטית ישירות מהרשימה.",
-    control: { open: "kpi", kpiType: "swap_requests", kpiTab: "mine" },
+    body: "בלשונית 'הבקשות שלי' מופיעות הבקשות שפתחת. אפשר לבטל בקשה שכבר אינה רלוונטית ישירות מהרשימה. (דוגמה להמחשה.)",
+    control: { open: "kpi", kpiType: "swap_requests", kpiTab: "mine", demo: true },
     radius: 20,
   },
   {
     selector: "kpi-modal",
     process: "כיסוי חלקי",
     title: "הצעת כיסוי לפערים",
-    body: "פערים חלקיים במשמרות שאפשר לכסות שעות בודדות מהם. הלשוניות: כל הפערים / הפערים שלי / מה שאני מכסה — וכפתור 'הצעת כיסוי' בכל שורה.",
-    control: { open: "kpi", kpiType: "partial_gaps", kpiTab: "all" },
+    body: "פערים חלקיים במשמרות שאפשר לכסות שעות בודדות מהם. הפס הצבעוני בכל שורה מראה מה כבר מכוסה ומה עדיין פנוי. הלשוניות: כל הפערים / הפערים שלי / מה שאני מכסה — וכפתור 'הצעת כיסוי'. (דוגמאות להמחשה.)",
+    control: { open: "kpi", kpiType: "partial_gaps", kpiTab: "all", demo: true },
     radius: 20,
   },
   {
     selector: "kpi-modal",
     process: "היסטוריה",
     title: "החלפות שהושלמו",
-    body: "כל ההחלפות שנסגרו והבקשות שהושלמו, מרוכזות כאן למעקב ולתיעוד.",
-    control: { open: "kpi", kpiType: "approved", kpiTab: "all" },
+    body: "כל ההחלפות שנסגרו והבקשות שהושלמו, מרוכזות כאן למעקב ולתיעוד. (דוגמאות להמחשה.)",
+    control: { open: "kpi", kpiType: "approved", kpiTab: "all", demo: true },
     radius: 20,
   },
   {
@@ -139,7 +149,7 @@ const TOUR_STEPS = [
     selector: "notif-panel",
     process: "התראות",
     title: "רשימת ההתראות",
-    body: "נפתח את הפאנל: כאן מרוכזות התראות על פעולות של אחרים שרלוונטיות אליכם — הצעת החלפה שהגיעה אליכם, כיסוי שהוצע או בוטל למשמרת שלכם, ובקשה שלכם שנסגרה. ההתראות נאספות מהנתונים הקיימים בכל טעינה.",
+    body: "נפתח את הפאנל: כאן מרוכזות התראות על פעולות של אחרים שרלוונטיות אליכם — הצעת החלפה שהגיעה אליכם, מתנה שהוצעה, כיסוי למשמרת שלכם, ובקשה שלכם שנסגרה. ההתראות נאספות מהנתונים הקיימים בכל טעינה. (ההתראות כאן הן דוגמאות להמחשה.)",
     notif: true,
     radius: 16,
   },
@@ -201,7 +211,12 @@ function applyStepUI(step) {
     }),
   );
   window.dispatchEvent(
-    new CustomEvent(TOUR_NOTIF_EVENT, { detail: { open: !!step?.notif } }),
+    new CustomEvent(TOUR_NOTIF_EVENT, {
+      // The notifications steps always run in demo mode so the panel shows a
+      // representative set of example notifications instead of the (possibly
+      // empty) real feed.
+      detail: { open: !!step?.notif, demo: !!step?.notif },
+    }),
   );
 }
 
