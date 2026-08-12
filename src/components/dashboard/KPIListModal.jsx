@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useMemo, useCallback } from "react";
+import React, {
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  useRef,
+} from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
@@ -31,6 +37,7 @@ import { base44 } from "@/api/base44Client";
 import LoadingSkeleton from "../LoadingSkeleton";
 import {
   buildSwapTemplate,
+  buildGiftTemplate,
   mergeOverlappingSegments,
   buildDateTime,
   subtractSegments,
@@ -408,6 +415,7 @@ export default function KPIListModal({
   onClose,
   type,
   initialTab = "all",
+  focusRequestId = null,
   currentUser: currentUserProp,
   onOfferCover,
   onRequestSwap,
@@ -420,6 +428,10 @@ export default function KPIListModal({
   demoMode = false,
 }) {
   const [visibleCount, setVisibleCount] = useState(10);
+  // Scroll-to + transient highlight for a request the modal was opened to
+  // focus (see focusRequestId prop / handleGoToRequest in ShiftCalendar).
+  const itemRefs = useRef({});
+  const [highlightedId, setHighlightedId] = useState(null);
   const isPartialGapsView = type === "partial_gaps";
   // Seeded from `initialTab` so a notification popup can deep-link straight
   // into e.g. "בקשות אליי" or "הפערים שלי" instead of always opening on the
@@ -437,6 +449,26 @@ export default function KPIListModal({
   // vs. every other "cancel my own request") — both paths call the same
   // onCancelRequest(item).
   const [pendingCancelAction, setPendingCancelAction] = useState(null);
+
+  // Scroll to and briefly highlight the focused request once the list is open.
+  // Lift the "show more" cap first so a request past the initial 10 is still
+  // rendered (and therefore has a ref to scroll to).
+  useEffect(() => {
+    if (!isOpen || !focusRequestId) return undefined;
+    setVisibleCount((c) => Math.max(c, 1000));
+    setHighlightedId(focusRequestId);
+    const scrollTimer = setTimeout(() => {
+      const el = itemRefs.current[focusRequestId];
+      if (el?.scrollIntoView) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 200);
+    const clearTimer = setTimeout(() => setHighlightedId(null), 2600);
+    return () => {
+      clearTimeout(scrollTimer);
+      clearTimeout(clearTimer);
+    };
+  }, [isOpen, focusRequestId]);
 
   const requestCancelConfirm = (item, isDecline = false) =>
     setPendingCancelAction({ item, isDecline });
@@ -922,6 +954,27 @@ export default function KPIListModal({
     window.open(whatsappUrl, "_blank");
   };
 
+  // Gift offers carry a different message than a swap request: the giver is
+  // telling the shift's owner (the recipient) that they'll take the shift for
+  // free. On a Gift item, requesting_user_id is the giver (item.user_name,
+  // resolved from that id) and original_user_id is the recipient/owner.
+  const handleGiftWhatsapp = (item) => {
+    const recipient = authorizedUsers.find(
+      (u) => Number(u?.serial_id) === Number(item.original_user_id),
+    );
+    const message = buildGiftTemplate({
+      recipientName: recipient?.full_name || item.original_user_name || "",
+      giverName: item.user_name || currentUser?.full_name || "",
+      startDate: item.start_date || item.shift_date,
+      startTime: item.start_time || item.req_start_time || "09:00",
+      endDate: item.end_date || item.shift_date,
+      endTime:
+        item.end_time || item.req_end_time || item.req_start_time || "09:00",
+    });
+    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, "_blank");
+  };
+
   // --- Render ---
   const getTitleAndColor = () => {
     switch (type) {
@@ -978,9 +1031,16 @@ export default function KPIListModal({
                 item.original_user_id === currentUser?.serial_id)),
         );
       }
-      // "all" — hide targeted Gift offers; they're private to the giver ("הבקשות
-      // שלי") and the recipient ("בקשות אליי"), not open to everyone.
-      return sortedData.filter((item) => item.request_type !== "Gift");
+      // "all" — hide targeted Gift offers between OTHER people (they're
+      // private to the giver and recipient), but still surface gifts I'm part
+      // of (as giver or as the shift's owner/recipient) so a gift I just sent
+      // actually shows up in the requests menu.
+      return sortedData.filter(
+        (item) =>
+          item.request_type !== "Gift" ||
+          item.requesting_user_id === currentUser?.serial_id ||
+          Number(item.original_user_id) === Number(currentUser?.serial_id),
+      );
     }
 
     if (type === "partial_gaps" && partialGapsTab === "mine") {
@@ -1229,7 +1289,10 @@ export default function KPIListModal({
                   return (
                     <div
                       key={item.id || idx}
-                      className={`bg-gray-50 rounded-xl p-4 border border-gray-200 hover:shadow-md transition-all ${tone.wrapper}`}
+                      ref={(el) => {
+                        if (item.id) itemRefs.current[item.id] = el;
+                      }}
+                      className={`bg-gray-50 rounded-xl p-4 border border-gray-200 hover:shadow-md transition-all ${tone.wrapper} ${highlightedId && item.id === highlightedId ? "ring-2 ring-blue-400 ring-offset-2" : ""}`}
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="flex-1 min-w-0">
@@ -1454,7 +1517,7 @@ export default function KPIListModal({
 
                         <div className="flex flex-col gap-2 flex-shrink-0 items-end">
                           {type === "swap_requests" && isMyRequest && (
-                            <div className="flex gap-2">
+                            <div className="flex flex-col gap-2 items-end">
                               <Button
                                 variant="outline"
                                 size="icon"
@@ -1465,18 +1528,20 @@ export default function KPIListModal({
                               >
                                 <XCircle className="w-4 h-4" />
                               </Button>
-                              {item.request_type !== "Gift" && (
-                                <Button
-                                  variant="outline"
-                                  size="icon"
-                                  className="rounded-full text-green-600 border-green-200"
-                                  onClick={() => handleReshareWhatsapp(item)}
-                                  disabled={actionsDisabled}
-                                  title="שלח בוואטסאפ"
-                                >
-                                  <MessageCircle className="w-4 h-4" />
-                                </Button>
-                              )}
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="rounded-full text-green-600 border-green-200"
+                                onClick={() =>
+                                  item.request_type === "Gift"
+                                    ? handleGiftWhatsapp(item)
+                                    : handleReshareWhatsapp(item)
+                                }
+                                disabled={actionsDisabled}
+                                title="שלח בוואטסאפ"
+                              >
+                                <MessageCircle className="w-4 h-4" />
+                              </Button>
                             </div>
                           )}
 
@@ -1494,7 +1559,7 @@ export default function KPIListModal({
                           )}
 
                           {isGeneralRequestForOthers && (
-                            <div className="flex gap-2">
+                            <div className="flex flex-col gap-2 items-end">
                               <Button
                                 onClick={() => {
                                   if (actionsDisabled) return;
@@ -1524,7 +1589,12 @@ export default function KPIListModal({
                             </div>
                           )}
 
-                          {isGeneralRequestMine && (
+                          {/* The cancel action for a General request that is
+                              mine is already rendered by the swap_requests +
+                              isMyRequest block above, so only surface it here
+                              when this item is shown outside that view (avoids
+                              the duplicate cancel button). */}
+                          {isGeneralRequestMine && type !== "swap_requests" && (
                             <Button
                               variant="outline"
                               size="icon"
@@ -1538,7 +1608,7 @@ export default function KPIListModal({
                           )}
 
                           {isIncomingHeadToHead && (
-                            <div className="flex gap-2">
+                            <div className="flex flex-col gap-2 items-end">
                               <Button
                                 onClick={() => {
                                   if (actionsDisabled) return;
@@ -1565,7 +1635,7 @@ export default function KPIListModal({
                           )}
 
                           {isIncomingGift && (
-                            <div className="flex gap-2">
+                            <div className="flex flex-col gap-2 items-end">
                               <Button
                                 onClick={() => {
                                   if (actionsDisabled) return;
@@ -1591,18 +1661,21 @@ export default function KPIListModal({
                           )}
 
                           {(item.is_shift_object || isMyRequest) && (
-                            <div className="flex gap-2">
-                              <Button
-                                onClick={() => handleAddToCalendar(item)}
-                                size="icon"
-                                variant={
-                                  isFutureShiftsView ? "default" : "outline"
-                                }
-                                disabled={actionsDisabled}
-                                className={`rounded-full w-10 h-10 ${isFutureShiftsView ? "bg-[#a9def9] text-[#0b3a5e] hover:bg-[#8cd3f6]" : "border-blue-200 text-blue-600 hover:bg-blue-50"} transition-colors shadow-sm ${actionsDisabled ? "opacity-60 cursor-not-allowed" : ""}`}
-                              >
-                                <CalendarPlus className="w-5 h-5" />
-                              </Button>
+                            <div className="flex flex-col gap-2 items-end">
+                              {/* "שמור ביומן" is only meaningful in the
+                                  future-shifts (my_shifts) view, so hide it
+                                  everywhere else. */}
+                              {isFutureShiftsView && (
+                                <Button
+                                  onClick={() => handleAddToCalendar(item)}
+                                  size="icon"
+                                  variant="default"
+                                  disabled={actionsDisabled}
+                                  className={`rounded-full w-10 h-10 bg-[#a9def9] text-[#0b3a5e] hover:bg-[#8cd3f6] transition-colors shadow-sm ${actionsDisabled ? "opacity-60 cursor-not-allowed" : ""}`}
+                                >
+                                  <CalendarPlus className="w-5 h-5" />
+                                </Button>
+                              )}
                               {isFutureShiftsView && item.is_shift_object && (
                                 <Button
                                   onClick={() => handleReshareWhatsapp(item)}
