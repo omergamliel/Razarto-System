@@ -63,6 +63,7 @@ export default function ShiftDetailsModal({
   onDelete,
   onApprove,
   onRequestSwap,
+  onGoToRequest,
   currentUser,
   isAdmin,
 }) {
@@ -87,7 +88,13 @@ export default function ShiftDetailsModal({
       // miss it entirely, hiding the still-active request from this modal.
       const reqs = await base44.entities.SwapRequest.list();
       const match = reqs.find(
-        (r) => r.shift_ids?.includes(shift.id) && r.status !== "Cancelled",
+        (r) =>
+          r.shift_ids?.includes(shift.id) &&
+          r.status !== "Cancelled" &&
+          // A Gift is an offer BY someone else to take this shift as relief;
+          // it is not a swap request the owner made, so it must not drive the
+          // "בקשה לכיסוי מלא/חלקי" swap state on this shift.
+          r.request_type !== "Gift",
       );
       return match || null;
     },
@@ -504,14 +511,13 @@ export default function ShiftDetailsModal({
 
   // "Gift" today's shift: an RR user (role !== 'None') can take a plain,
   // unswapped shift that's live today off whoever is doing it, no strings
-  // attached. Gated to today's shift (range covers today) so it only ever
-  // applies to "the person doing today's shift", and to white shifts so it
-  // never collides with an in-progress swap/coverage flow.
+  // attached. Gated to the shift that STARTS today — an overnight shift that
+  // began yesterday still "covers" today (it ends ~09:00 the next morning),
+  // but it belongs to yesterday and must not be giftable, so we key off the
+  // start date only. Also gated to white shifts so it never collides with an
+  // in-progress swap/coverage flow.
   const todayStr = format(new Date(), "yyyy-MM-dd");
-  const isTodayShift =
-    shiftStartDate && shiftEndDate
-      ? shiftStartDate <= todayStr && todayStr <= shiftEndDate
-      : shiftStartDate === todayStr;
+  const isTodayShift = shiftStartDate === todayStr;
   const canTakeShifts = (currentUser?.role || "RR") !== "None";
   const canGift =
     canTakeShifts &&
@@ -1054,7 +1060,16 @@ export default function ShiftDetailsModal({
                     <Button
                       onClick={() => {
                         onClose();
-                        onOfferCover(shift);
+                        // For a full-coverage request, don't open the
+                        // offer-cover flow here — route the helper to the
+                        // requests menu, focused on the exact request the shift
+                        // owner created (task: אני רוצה לעזור! on a "כיסוי מלא"
+                        // request). Partial requests keep the inline flow.
+                        if (isFullRequest && onGoToRequest) {
+                          onGoToRequest(resolvedActiveRequest, shift);
+                        } else {
+                          onOfferCover(shift);
+                        }
                       }}
                       className="min-w-[160px] flex-1 sm:flex-none h-12 bg-[#22c55e] hover:bg-[#16a34a] focus-visible:ring focus-visible:ring-offset-2 focus-visible:ring-[#15803d] text-white rounded-xl shadow-md flex flex-row-reverse items-center justify-center gap-2"
                     >
