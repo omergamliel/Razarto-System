@@ -190,6 +190,210 @@ function PartialGapCoverageTrack({ item, authorizedUsers, requesterName }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Guided-tour demo data (see the demoMode usage below).
+//
+// Produces a small, internally-consistent world of shifts / swap requests /
+// coverages / users, anchored to the real current user and today's date, so
+// the walkthrough can spotlight every KPI list and tab with rows in a mix of
+// stages: open requests, an incoming head-to-head, an incoming gift, a
+// partially-covered gap, a fully-open gap, a shift I'm covering, and closed
+// history. Shapes mirror the base44 entities the enrichment code expects; it
+// is never persisted (demo mode disables the real queries entirely).
+// ---------------------------------------------------------------------------
+function buildDemoKpiData(currentUser) {
+  const meId = currentUser?.serial_id ?? 999000;
+  const meName = currentUser?.full_name || "אני";
+
+  const users = [
+    {
+      serial_id: meId,
+      full_name: meName,
+      department: currentUser?.department || "המחלקה שלי",
+    },
+    { serial_id: 990001, full_name: "דני כהן", department: "חדר מיון" },
+    { serial_id: 990002, full_name: "מאיה לוי", department: "טיפול נמרץ" },
+    { serial_id: 990003, full_name: "יוסי אברהם", department: "כירורגיה" },
+    { serial_id: 990004, full_name: "נועה פרידמן", department: "פנימית" },
+  ];
+
+  const dayOffset = (n) => {
+    const d = new Date();
+    d.setDate(d.getDate() + n);
+    return d.toISOString().split("T")[0];
+  };
+
+  // Full shift = start_time === end_time (see isFullShift). Timed shifts use a
+  // real window so partial-gap math produces visible covered/uncovered bands.
+  const full = (id, userId, offset, name) => ({
+    id,
+    original_user_id: userId,
+    original_user_name: name,
+    start_date: dayOffset(offset),
+    end_date: dayOffset(offset),
+    start_time: "08:00",
+    end_time: "08:00",
+    status: "Swap_Requested",
+  });
+  const timed = (id, userId, offset, start, end, name) => ({
+    id,
+    original_user_id: userId,
+    original_user_name: name,
+    start_date: dayOffset(offset),
+    end_date: dayOffset(offset),
+    start_time: start,
+    end_time: end,
+    status: "Swap_Requested",
+  });
+
+  const shifts = [
+    // full-shift swap requests
+    full("demo-sh-dani", 990001, 2, "דני כהן"),
+    full("demo-sh-maya", 990002, 4, "מאיה לוי"),
+    full("demo-sh-me-h2h", meId, 5, meName),
+    full("demo-sh-yossi", 990003, 6, "יוסי אברהם"),
+    full("demo-sh-me-gift", meId, 1, meName),
+    full("demo-sh-me-mine", meId, 7, meName),
+    // partial-gap shifts
+    timed("demo-sh-me-partial", meId, 3, "08:00", "20:00", meName),
+    timed("demo-sh-maya-partial", 990002, 3, "08:00", "16:00", "מאיה לוי"),
+    timed("demo-sh-yossi-partial", 990003, 4, "08:00", "18:00", "יוסי אברהם"),
+    // history — closed swap, shift already reassigned to me
+    {
+      ...full("demo-sh-closed", meId, -3, meName),
+      status: "Active",
+    },
+  ];
+
+  const reqDates = (shift) => ({
+    req_start_date: shift.start_date,
+    req_end_date: shift.end_date,
+    req_start_time: shift.start_time,
+    req_end_time: shift.end_time,
+  });
+  const shiftById = (id) => shifts.find((s) => s.id === id);
+
+  const swapRequests = [
+    // open — general (open to everyone)
+    {
+      id: "demo-req-general",
+      request_type: "General",
+      requesting_user_id: 990001,
+      shift_ids: ["demo-sh-dani"],
+      offered_shift_ids: [],
+      status: "Open",
+      ...reqDates(shiftById("demo-sh-dani")),
+    },
+    // open — head-to-head addressed to me (Maya offers her shift for mine)
+    {
+      id: "demo-req-h2h",
+      request_type: "Head2Head",
+      requesting_user_id: 990002,
+      shift_ids: ["demo-sh-maya"],
+      offered_shift_ids: ["demo-sh-me-h2h"],
+      status: "Open",
+      ...reqDates(shiftById("demo-sh-maya")),
+    },
+    // open — plain full request by someone else
+    {
+      id: "demo-req-full",
+      request_type: "Full",
+      requesting_user_id: 990003,
+      shift_ids: ["demo-sh-yossi"],
+      offered_shift_ids: [],
+      status: "Open",
+      ...reqDates(shiftById("demo-sh-yossi")),
+    },
+    // open — gift offered to me (Noa offers to take my shift for free)
+    {
+      id: "demo-req-gift",
+      request_type: "Gift",
+      requesting_user_id: 990004,
+      shift_ids: ["demo-sh-me-gift"],
+      offered_shift_ids: [],
+      status: "Open",
+      ...reqDates(shiftById("demo-sh-me-gift")),
+    },
+    // open — my own request (shows under "הבקשות שלי")
+    {
+      id: "demo-req-mine",
+      request_type: "General",
+      requesting_user_id: meId,
+      shift_ids: ["demo-sh-me-mine"],
+      offered_shift_ids: [],
+      status: "Open",
+      ...reqDates(shiftById("demo-sh-me-mine")),
+    },
+    // open — partial gap on my shift (partially covered below)
+    {
+      id: "demo-req-partial-mine",
+      request_type: "Partial",
+      requesting_user_id: meId,
+      shift_ids: ["demo-sh-me-partial"],
+      offered_shift_ids: [],
+      status: "Partially_Covered",
+      ...reqDates(shiftById("demo-sh-me-partial")),
+    },
+    // open — partial gap on someone else's shift, fully uncovered
+    {
+      id: "demo-req-partial-maya",
+      request_type: "Partial",
+      requesting_user_id: 990002,
+      shift_ids: ["demo-sh-maya-partial"],
+      offered_shift_ids: [],
+      status: "Open",
+      ...reqDates(shiftById("demo-sh-maya-partial")),
+    },
+    // open — partial gap on Yossi's shift that I'm partly covering
+    {
+      id: "demo-req-partial-yossi",
+      request_type: "Partial",
+      requesting_user_id: 990003,
+      shift_ids: ["demo-sh-yossi-partial"],
+      offered_shift_ids: [],
+      status: "Partially_Covered",
+      ...reqDates(shiftById("demo-sh-yossi-partial")),
+    },
+    // history — a closed swap I accepted
+    {
+      id: "demo-req-closed",
+      request_type: "General",
+      requesting_user_id: 990001,
+      shift_ids: ["demo-sh-closed"],
+      offered_shift_ids: [],
+      status: "Closed",
+      ...reqDates(shiftById("demo-sh-closed")),
+    },
+  ];
+
+  const coverages = [
+    // Dani covers the first half of my partial shift → leaves a 14:00–20:00 gap
+    {
+      id: "demo-cov-mine",
+      shift_id: "demo-sh-me-partial",
+      covering_user_id: 990001,
+      status: "Approved",
+      cover_start_date: dayOffset(3),
+      cover_start_time: "08:00",
+      cover_end_date: dayOffset(3),
+      cover_end_time: "14:00",
+    },
+    // I cover the first part of Yossi's partial shift → shows under "מכסה"
+    {
+      id: "demo-cov-yossi",
+      shift_id: "demo-sh-yossi-partial",
+      covering_user_id: meId,
+      status: "Approved",
+      cover_start_date: dayOffset(4),
+      cover_start_time: "08:00",
+      cover_end_date: dayOffset(4),
+      cover_end_time: "12:00",
+    },
+  ];
+
+  return { users, shifts, swapRequests, coverages };
+}
+
 export default function KPIListModal({
   isOpen,
   onClose,
@@ -204,6 +408,7 @@ export default function KPIListModal({
   onAcceptGeneralRequest,
   onAcceptGift,
   onStartCounterOffer,
+  demoMode = false,
 }) {
   const [visibleCount, setVisibleCount] = useState(10);
   const isPartialGapsView = type === "partial_gaps";
@@ -244,38 +449,58 @@ export default function KPIListModal({
   // happens to refetch. ShiftCalendar keeps these keys populated and calls
   // queryClient.invalidateQueries on them after every mutation; using the same
   // keys here means those invalidations refresh this modal's data too.
-  const { data: swapRequestsAll = [], isLoading: isSwapRequestsLoading } =
+  const { data: swapRequestsReal = [], isLoading: isSwapRequestsLoading } =
     useQuery({
       queryKey: ["swap-requests"],
       queryFn: () => base44.entities.SwapRequest.list(),
-      enabled: isOpen,
+      enabled: isOpen && !demoMode,
     });
 
-  const { data: shiftsAll = [], isLoading: isShiftsLoading } = useQuery({
+  const { data: shiftsReal = [], isLoading: isShiftsLoading } = useQuery({
     queryKey: ["shifts"],
     queryFn: () => base44.entities.Shift.list(),
-    enabled: isOpen,
+    enabled: isOpen && !demoMode,
   });
 
-  const { data: coveragesAll = [], isLoading: isCoveragesLoading } = useQuery({
+  const { data: coveragesReal = [], isLoading: isCoveragesLoading } = useQuery({
     queryKey: ["coverages"],
     queryFn: () => base44.entities.ShiftCoverage.list(),
     // Keep this hook active for every type while the modal is mounted to avoid
     // changing the hook graph when switching KPI views mid-session.
-    enabled: isOpen,
+    enabled: isOpen && !demoMode,
   });
 
-  const { data: authorizedUsers = [], isLoading: isUsersLoading } = useQuery({
-    queryKey: ["all-users"],
-    queryFn: () => base44.entities.AuthorizedPerson.list(),
-    enabled: isOpen,
-  });
+  const { data: authorizedUsersReal = [], isLoading: isUsersLoading } = useQuery(
+    {
+      queryKey: ["all-users"],
+      queryFn: () => base44.entities.AuthorizedPerson.list(),
+      enabled: isOpen && !demoMode,
+    },
+  );
+
+  // Guided-tour "demo mode": while the walkthrough spotlights this modal, feed
+  // it a self-consistent set of make-believe requests/shifts/coverages so every
+  // tab has representative rows in different stages — instead of whatever (often
+  // empty) real data the account happens to have. This is purely local, read-
+  // only synthetic data; no entity is ever queried or written in demo mode (the
+  // real queries above are disabled), and the tour's click-blocker keeps the row
+  // action buttons inert. Built around the real currentUser so the "mine" /
+  // "incoming to me" tabs resolve correctly.
+  const demoDataset = useMemo(
+    () => (demoMode ? buildDemoKpiData(currentUser) : null),
+    [demoMode, currentUser],
+  );
+  const swapRequestsAll = demoDataset ? demoDataset.swapRequests : swapRequestsReal;
+  const shiftsAll = demoDataset ? demoDataset.shifts : shiftsReal;
+  const coveragesAll = demoDataset ? demoDataset.coverages : coveragesReal;
+  const authorizedUsers = demoDataset ? demoDataset.users : authorizedUsersReal;
 
   const isLoading =
-    isSwapRequestsLoading ||
-    isShiftsLoading ||
-    isUsersLoading ||
-    ((isPartialGapsView || type === "approved") && isCoveragesLoading);
+    !demoMode &&
+    (isSwapRequestsLoading ||
+      isShiftsLoading ||
+      isUsersLoading ||
+      ((isPartialGapsView || type === "approved") && isCoveragesLoading));
 
   // --- Helpers ---
   const enrichRequestsWithShiftInfo = useCallback(
