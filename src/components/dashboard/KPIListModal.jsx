@@ -13,6 +13,7 @@ import {
   MessageCircle,
   XCircle,
   CheckCircle2,
+  Gift,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -201,6 +202,7 @@ export default function KPIListModal({
   onCancelRequest,
   onAcceptHeadToHead,
   onAcceptGeneralRequest,
+  onAcceptGift,
   onStartCounterOffer,
 }) {
   const [visibleCount, setVisibleCount] = useState(10);
@@ -559,7 +561,7 @@ export default function KPIListModal({
     // specific person's shift instead of open to anyone), so they belong
     // in the same "בקשות להחלפה מלאה" bucket as plain Full requests.
     const fullRequests = openRequests.filter((r) =>
-      ["Full", "Head2Head", "General"].includes(r.request_type),
+      ["Full", "Head2Head", "General", "Gift"].includes(r.request_type),
     );
     const partialRequests = openRequests.filter(
       (r) => r.request_type === "Partial",
@@ -724,17 +726,22 @@ export default function KPIListModal({
           (item) => item.requesting_user_id === currentUser?.serial_id,
         );
       if (swapTab === "incoming") {
-        // Head2Head requests where one of the offered/target shifts is mine —
-        // i.e. someone else is proposing to swap with me specifically.
+        // Requests addressed to me specifically: a Head2Head where one of the
+        // offered/target shifts is mine, or a Gift offer to take one of my
+        // shifts (its gifted shift's owner is me).
         return sortedData.filter(
           (item) =>
             item.requesting_user_id !== currentUser?.serial_id &&
-            item.offered_shifts?.some(
+            (item.offered_shifts?.some(
               (s) => s.original_user_id === currentUser?.serial_id,
-            ),
+            ) ||
+              (item.request_type === "Gift" &&
+                item.original_user_id === currentUser?.serial_id)),
         );
       }
-      return sortedData;
+      // "all" — hide targeted Gift offers; they're private to the giver ("הבקשות
+      // שלי") and the recipient ("בקשות אליי"), not open to everyone.
+      return sortedData.filter((item) => item.request_type !== "Gift");
     }
 
     if (type === "partial_gaps" && partialGapsTab === "mine") {
@@ -879,6 +886,12 @@ export default function KPIListModal({
                     item.offered_shifts?.some(
                       (s) => s.original_user_id === currentUser?.serial_id,
                     );
+                  // Gift offer addressed to me: someone offered to take one of
+                  // my shifts as a gift. I accept (take the relief) or decline.
+                  const isIncomingGift =
+                    item.request_type === "Gift" &&
+                    !isMyRequest &&
+                    item.original_user_id === currentUser?.serial_id;
                   // Whether the viewer owns this partial-gap shift, or
                   // joined it as a covering user — each gets a different
                   // cancel action (give up the whole request vs. just their
@@ -1008,6 +1021,11 @@ export default function KPIListModal({
                                 כללית
                               </span>
                             )}
+                            {item.request_type === "Gift" && (
+                              <span className="text-[11px] px-2 py-0.5 rounded-full bg-pink-100 text-pink-700 border border-pink-200">
+                                מתנה 🎁
+                              </span>
+                            )}
                             {item.request_type === "Full" && (
                               <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-200">
                                 מלאה
@@ -1024,6 +1042,7 @@ export default function KPIListModal({
                               type !== "approved" &&
                               item.request_type !== "Head2Head" &&
                               item.request_type !== "General" &&
+                              item.request_type !== "Gift" &&
                               // Already covering part of this shift? Then this
                               // isn't the "offer to cover" flow for them anymore
                               // (that's handled from the shift details modal /
@@ -1207,16 +1226,18 @@ export default function KPIListModal({
                               >
                                 <XCircle className="w-4 h-4" />
                               </Button>
-                              <Button
-                                variant="outline"
-                                size="icon"
-                                className="rounded-full text-green-600 border-green-200"
-                                onClick={() => handleReshareWhatsapp(item)}
-                                disabled={actionsDisabled}
-                                title="שלח בוואטסאפ"
-                              >
-                                <MessageCircle className="w-4 h-4" />
-                              </Button>
+                              {item.request_type !== "Gift" && (
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="rounded-full text-green-600 border-green-200"
+                                  onClick={() => handleReshareWhatsapp(item)}
+                                  disabled={actionsDisabled}
+                                  title="שלח בוואטסאפ"
+                                >
+                                  <MessageCircle className="w-4 h-4" />
+                                </Button>
+                              )}
                             </div>
                           )}
 
@@ -1298,6 +1319,32 @@ export default function KPIListModal({
                                 onClick={() => requestCancelConfirm(item, true)}
                                 disabled={actionsDisabled}
                                 title="דחה בקשה"
+                              >
+                                <XCircle className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          )}
+
+                          {isIncomingGift && (
+                            <div className="flex gap-2">
+                              <Button
+                                onClick={() => {
+                                  if (actionsDisabled) return;
+                                  onAcceptGift && onAcceptGift(item);
+                                }}
+                                size="sm"
+                                disabled={actionsDisabled}
+                                className={`bg-pink-500 text-white hover:bg-pink-600 px-3 h-9 ${actionsDisabled ? "opacity-60 cursor-not-allowed" : ""}`}
+                              >
+                                קבל מתנה <Gift className="w-4 h-4 mr-1" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="rounded-full text-red-600 border-red-200"
+                                onClick={() => requestCancelConfirm(item, true)}
+                                disabled={actionsDisabled}
+                                title="דחה מתנה"
                               >
                                 <XCircle className="w-4 h-4" />
                               </Button>
