@@ -18,6 +18,7 @@ import { motion } from "framer-motion";
 import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useSystemSettings } from "@/hooks/useAppSettings";
 
 export default function CalendarHeader({
   currentDate,
@@ -51,6 +52,14 @@ export default function CalendarHeader({
     queryKey: ["app-settings"],
     queryFn: () => base44.entities.AppSettings.list(),
   });
+
+  // Admin-configurable brand title / subtitle (ניהול מערכת ▸ הגדרות). Fall
+  // back to the built-in copy when nothing has been saved so the header is
+  // never blank.
+  const systemSettings = useSystemSettings();
+  const brandTitle = systemSettings.title?.trim() || "מערכת לניהול משמרות";
+  const brandSubtitle =
+    systemSettings.subtitle?.trim() || "צפייה במשמרות | ביצוע החלפות מסודרות";
 
   const logoUrl =
     appSettings.find((s) => s.setting_key === "logo")?.logo_url || "";
@@ -263,10 +272,10 @@ export default function CalendarHeader({
             </h1>
             <div className="flex flex-col items-center gap-0.5">
               <span className="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-xs md:text-sm font-medium">
-                מערכת לניהול משמרות
+                {brandTitle}
               </span>
               <p className="text-gray-400 text-[10px] md:text-xs">
-                צפייה במשמרות | ביצוע החלפות מסודרות
+                {brandSubtitle}
               </p>
             </div>
           </div>
