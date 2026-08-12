@@ -33,6 +33,9 @@ import {
   XCircle,
   Download,
   Tag,
+  Users,
+  Star,
+  UserMinus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,7 +70,11 @@ import { exportAllData } from "@/lib/testing/exportData";
 import FaqManager from "@/components/admin/FaqManager";
 import ThemesTab from "@/components/admin/ThemesTab";
 import LogsTab from "@/components/admin/LogsTab";
-import { MONITOR_CHECKS, LOG_TYPE_OPTIONS } from "@/components/admin/adminConstants";
+import {
+  MONITOR_CHECKS,
+  LOG_TYPE_OPTIONS,
+  DEFAULT_GROUP_SYMBOLS,
+} from "@/components/admin/adminConstants";
 
 // A native <input type="date"> keeps the OS/browser date picker (calendar
 // icon, click-to-pick, keyboard entry) — only its DISPLAYED format is
@@ -137,6 +144,16 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   const [signValue, setSignValue] = useState("");
   const [userToDelete, setUserToDelete] = useState(null);
 
+  // --- Groups tab ("ניהול קבוצות") ---
+  // Which group's "add members" dialog is open (the symbol string, or null),
+  // and the set of AuthorizedPerson ids selected to add to it.
+  const [groupPickerSymbol, setGroupPickerSymbol] = useState(null);
+  const [groupPickerSelected, setGroupPickerSelected] = useState([]);
+  const [groupPickerSearch, setGroupPickerSearch] = useState("");
+  // Add-group input, and the group pending a delete confirmation.
+  const [newGroupSymbol, setNewGroupSymbol] = useState("");
+  const [groupToDelete, setGroupToDelete] = useState(null);
+
   // Archive Logic States
   const [isArchiveMode, setIsArchiveMode] = useState(false);
   const [archiveReason, setArchiveReason] = useState("");
@@ -197,6 +214,65 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     queryFn: () => base44.entities.AuthorizedPerson.list(),
     enabled: isOpen,
   });
+
+  // Group "active member" records (repurposed ShiftSegment entity): one row per
+  // group symbol that currently has an active member — { symbol, username
+  // (active member's email), active }. Drives the "ניהול קבוצות" tab and gates
+  // shift distribution (only active members are assigned shifts).
+  const { data: shiftSegments = [] } = useQuery({
+    queryKey: ["shift-segments"],
+    queryFn: () => base44.entities.ShiftSegment.list(),
+    enabled: isOpen,
+  });
+
+  // symbol -> the ShiftSegment row for that group (holds its active member, if
+  // any). Each ShiftSegment row now IS a group definition.
+  const activeSegmentBySymbol = useMemo(() => {
+    const map = new Map();
+    shiftSegments.forEach((seg) => {
+      if (seg.symbol) map.set(seg.symbol, seg);
+    });
+    return map;
+  }, [shiftSegments]);
+
+  // The live list of groups: every ShiftSegment symbol, plus any symbol already
+  // referenced by a user's `sign` (so pre-existing groups without a row still
+  // appear). Sorted with Hebrew collation. This replaces the old fixed list.
+  const groupSymbols = useMemo(() => {
+    const set = new Set();
+    shiftSegments.forEach((seg) => seg.symbol && set.add(seg.symbol));
+    authorizedPeople.forEach((p) => p.sign && set.add(p.sign));
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "he"));
+  }, [shiftSegments, authorizedPeople]);
+
+  // symbol -> that group's members (people whose `sign` is the symbol),
+  // sorted by name; drives the "ניהול קבוצות" tab.
+  const membersBySymbol = useMemo(() => {
+    const map = new Map();
+    authorizedPeople.forEach((p) => {
+      if (!p.sign) return;
+      if (!map.has(p.sign)) map.set(p.sign, []);
+      map.get(p.sign).push(p);
+    });
+    map.forEach((arr) =>
+      arr.sort((a, b) => (a.full_name || "").localeCompare(b.full_name || "")),
+    );
+    return map;
+  }, [authorizedPeople]);
+
+  // Candidates for the "add members to group" dialog: everyone not already in
+  // the open group, filtered by the dialog's search box.
+  const groupPickerCandidates = useMemo(() => {
+    if (!groupPickerSymbol) return [];
+    const term = groupPickerSearch.trim().toLowerCase();
+    return authorizedPeople.filter(
+      (p) =>
+        p.sign !== groupPickerSymbol &&
+        (term === "" ||
+          p.full_name?.toLowerCase().includes(term) ||
+          p.email?.toLowerCase().includes(term)),
+    );
+  }, [authorizedPeople, groupPickerSymbol, groupPickerSearch]);
 
   // Shares the same ['app-settings'] cache/entity as CalendarHeader.jsx's
   // logo upload, so uploading it from either place updates the other.
@@ -283,7 +359,8 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         role: "RR",
         ...userData,
         serial_id: maxId + 1,
-        sign: `RR${String(maxId + 1).padStart(3, "0")}`,
+        // No group ("sign") on creation — a new user is assigned to one of the
+        // 24 groups later from the "ניהול קבוצות" tab (or "עריכת סימן").
       });
 
       // Also provision the person as a platform User so they can actually
@@ -348,19 +425,177 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     onError: () => toast.error("שגיאה במחיקת המשתמש."),
   });
 
+  // 3b. Groups — set a group's active member. Only one member per group may be
+  // active (or none): the group's single ShiftSegment row points its `username`
+  // at the active member's email. Passing person=null (or clicking the
+  // already-active member) clears the active member WITHOUT deleting the row —
+  // the row is the group definition itself, so it must survive. The active
+  // member must belong to the group already.
+  const setActiveMemberMutation = useMutation({
+    mutationFn: async ({ symbol, person }) => {
+      const existing = activeSegmentBySymbol.get(symbol);
+      const clearing =
+        !person || (existing?.active && existing?.username === person.email);
+      if (clearing) {
+        if (existing) {
+          await base44.entities.ShiftSegment.update(existing.id, {
+            username: null,
+            active: false,
+          });
+        }
+        return;
+      }
+      if (existing) {
+        await base44.entities.ShiftSegment.update(existing.id, {
+          username: person.email,
+          active: true,
+        });
+      } else {
+        // Group referenced only by members' `sign` and no row yet — create it.
+        await base44.entities.ShiftSegment.create({
+          symbol,
+          username: person.email,
+          active: true,
+        });
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(["shift-segments"]);
+    },
+    onError: () => toast.error("שגיאה בעדכון המשתמש הפעיל בקבוצה."),
+  });
+
+  // 3b-i. Groups — add a new group (a ShiftSegment row with just a symbol).
+  const addGroupMutation = useMutation({
+    mutationFn: async (symbol) => {
+      const trimmed = (symbol || "").trim();
+      if (!trimmed) throw new Error("empty");
+      if (groupSymbols.includes(trimmed)) throw new Error("duplicate");
+      await base44.entities.ShiftSegment.create({
+        symbol: trimmed,
+        active: false,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(["shift-segments"]);
+      toast.success("הקבוצה נוספה.");
+      setNewGroupSymbol("");
+    },
+    onError: (err) => {
+      if (err?.message === "duplicate") toast.error("קבוצה בשם זה כבר קיימת.");
+      else if (err?.message === "empty") toast.error("יש להזין שם קבוצה.");
+      else toast.error("שגיאה בהוספת הקבוצה.");
+    },
+  });
+
+  // 3b-ii. Groups — remove a group entirely: delete its ShiftSegment row (if
+  // any) and clear `sign` from every member so no user points at a dead group.
+  const removeGroupMutation = useMutation({
+    mutationFn: async (symbol) => {
+      const seg = activeSegmentBySymbol.get(symbol);
+      if (seg) await base44.entities.ShiftSegment.delete(seg.id);
+      const members = authorizedPeople.filter((p) => p.sign === symbol);
+      await Promise.all(
+        members.map((m) =>
+          base44.entities.AuthorizedPerson.update(m.id, { sign: null }),
+        ),
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(["shift-segments"]);
+      queryClient.invalidateQueries(["authorized-people"]);
+      toast.success("הקבוצה הוסרה.");
+      setGroupToDelete(null);
+    },
+    onError: () => toast.error("שגיאה בהסרת הקבוצה."),
+  });
+
+  // 3b-iii. Groups — one-click seed of the default 24 groups, for the empty
+  // state. Only creates the ones that don't already exist.
+  const seedDefaultGroupsMutation = useMutation({
+    mutationFn: async () => {
+      const missing = DEFAULT_GROUP_SYMBOLS.filter(
+        (s) => !groupSymbols.includes(s),
+      );
+      await Promise.all(
+        missing.map((s) =>
+          base44.entities.ShiftSegment.create({ symbol: s, active: false }),
+        ),
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(["shift-segments"]);
+      toast.success("קבוצות ברירת המחדל נוצרו.");
+    },
+    onError: () => toast.error("שגיאה ביצירת קבוצות ברירת המחדל."),
+  });
+
+  // 3c. Groups — add one or more users to a group by setting their `sign` to
+  // the group symbol (same effect as "עריכת סימן", in bulk).
+  const addUsersToGroupMutation = useMutation({
+    mutationFn: async ({ symbol, personIds }) => {
+      await Promise.all(
+        personIds.map((id) =>
+          base44.entities.AuthorizedPerson.update(id, { sign: symbol }),
+        ),
+      );
+    },
+    onSuccess: (_data, { personIds }) => {
+      queryClient.invalidateQueries(["authorized-people"]);
+      toast.success(`נוספו ${personIds.length} משתמשים לקבוצה.`);
+      setGroupPickerSymbol(null);
+      setGroupPickerSelected([]);
+      setGroupPickerSearch("");
+    },
+    onError: () => toast.error("שגיאה בהוספת משתמשים לקבוצה."),
+  });
+
+  // 3d. Groups — remove a user from their group (clear `sign`). If they were the
+  // group's active member, clear just the active flag on the group's row (never
+  // delete the row — it's the group definition itself).
+  const removeFromGroupMutation = useMutation({
+    mutationFn: async ({ person }) => {
+      await base44.entities.AuthorizedPerson.update(person.id, { sign: null });
+      const seg = person.sign ? activeSegmentBySymbol.get(person.sign) : null;
+      if (seg && seg.active && seg.username === person.email) {
+        await base44.entities.ShiftSegment.update(seg.id, {
+          username: null,
+          active: false,
+        });
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(["authorized-people"]);
+      queryClient.invalidateQueries(["shift-segments"]);
+      toast.success("המשתמש הוסר מהקבוצה.");
+    },
+    onError: () => toast.error("שגיאה בהסרת המשתמש מהקבוצה."),
+  });
+
   // 4. Fair shift distribution — only RR and Manager permission holders are
   // in the rotation pool (Admins/View users are excluded from being
   // auto-assigned shifts by this algorithm).
   const runDistributionMutation = useMutation({
     mutationFn: async ({ startDate, endDate }) => {
+      // Strict active-only rule: a person is assigned shifts only if they are
+      // the active member of their group (a ShiftSegment row with active=true
+      // whose username matches their email), on top of the existing RR/Manager
+      // + role check. Users in no group, or non-active group members, are
+      // excluded.
+      const activeEmails = new Set(
+        shiftSegments
+          .filter((seg) => seg.active && seg.username)
+          .map((seg) => seg.username),
+      );
       const eligiblePeople = authorizedPeople.filter(
         (p) =>
           ["RR", "Manager"].includes(p.permissions) &&
-          (p.role || "RR") !== "None",
+          (p.role || "RR") !== "None" &&
+          activeEmails.has(p.email),
       );
       if (eligiblePeople.length === 0) {
         throw new Error(
-          "אין עובדים זכאים (RR או Manager, עם תפקיד RR) לחלוקת משמרות",
+          "אין עובדים זכאים לחלוקה — נדרש משתמש פעיל בקבוצה (RR או Manager, עם תפקיד RR). הגדירו משתמשים פעילים בלשונית 'ניהול קבוצות'.",
         );
       }
 
@@ -559,7 +794,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     try {
       await updateUserMutation.mutateAsync({
         id: signUser.id,
-        data: { sign: signValue },
+        data: { sign: signValue === "none" ? null : signValue },
       });
     } finally {
       setIsSubmitting(false);
@@ -616,6 +851,11 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         id: "users",
         label: "משתמשים",
         icon: "https://cdn-icons-png.flaticon.com/128/9888/9888730.png",
+      },
+      {
+        id: "groups",
+        label: "ניהול קבוצות",
+        Icon: Users,
       },
       {
         id: "support",
@@ -1003,6 +1243,200 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                     מציג {filteredPeople.length} מתוך {authorizedPeople.length}
                   </span>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "groups" && (
+            <div className="flex-1 min-h-0 flex flex-col gap-4">
+              <div className="bg-white p-3 md:p-4 rounded-2xl shadow-sm border border-gray-100 flex flex-col gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                    <Users className="w-4 h-4 text-blue-600" /> ניהול קבוצות
+                  </p>
+                  <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+                    הקבוצות דינמיות — ניתן להוסיף ולהסיר קבוצות. כל משתמש משויך
+                    לקבוצה (השדה "סימן"), ובכל קבוצה ניתן לסמן משתמש אחד בלבד
+                    כ<b>פעיל</b> (או אף אחד) — מערכת חלוקת המשמרות תשבץ משמרות אך
+                    ורק למשתמשים הפעילים.
+                  </p>
+                </div>
+                <form
+                  className="flex items-center gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    addGroupMutation.mutate(newGroupSymbol);
+                  }}
+                >
+                  <Input
+                    value={newGroupSymbol}
+                    onChange={(e) => setNewGroupSymbol(e.target.value)}
+                    placeholder="שם קבוצה חדשה..."
+                    className="h-9 max-w-xs"
+                  />
+                  <Button
+                    type="submit"
+                    size="sm"
+                    disabled={
+                      !newGroupSymbol.trim() || addGroupMutation.isPending
+                    }
+                    className="gap-1 bg-blue-600 hover:bg-blue-700 text-white h-9"
+                  >
+                    <Plus className="w-4 h-4" /> הוסף קבוצה
+                  </Button>
+                </form>
+              </div>
+
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex-1 overflow-hidden flex flex-col">
+                {groupSymbols.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3 p-6 text-center">
+                    <Users className="w-10 h-10 opacity-20" />
+                    <span>אין קבוצות עדיין</span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={seedDefaultGroupsMutation.isPending}
+                      onClick={() => seedDefaultGroupsMutation.mutate()}
+                      className="gap-1"
+                    >
+                      <Plus className="w-4 h-4" /> צור 24 קבוצות ברירת מחדל
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="overflow-y-auto flex-1 min-h-0 custom-scrollbar p-3 md:p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {groupSymbols.map((symbol) => {
+                    const members = membersBySymbol.get(symbol) || [];
+                    const activeSeg = activeSegmentBySymbol.get(symbol);
+                    const activeEmail = activeSeg?.active
+                      ? activeSeg.username
+                      : null;
+                    // Only treat the group as "has active" when its active email
+                    // still belongs to a current member of the group.
+                    const hasActiveMember =
+                      !!activeEmail &&
+                      members.some((m) => m.email === activeEmail);
+                    return (
+                      <div
+                        key={symbol}
+                        className="border border-gray-100 rounded-xl p-3 flex flex-col gap-2 bg-gray-50/40"
+                      >
+                        {/* Group header + add button */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center text-base font-bold border border-blue-100">
+                              {symbol}
+                            </div>
+                            <div>
+                              <p className="text-sm font-bold text-gray-800">
+                                קבוצה {symbol}
+                              </p>
+                              <p className="text-[11px] text-gray-400">
+                                {members.length} חברים
+                                {hasActiveMember ? " · יש פעיל" : " · אין פעיל"}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="gap-1 text-xs h-8"
+                              onClick={() => {
+                                setGroupPickerSymbol(symbol);
+                                setGroupPickerSelected([]);
+                                setGroupPickerSearch("");
+                              }}
+                            >
+                              <UserPlus className="w-3.5 h-3.5" /> הוסף
+                            </Button>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              title="הסר קבוצה"
+                              className="h-8 w-8 text-gray-300 hover:text-red-500"
+                              onClick={() => setGroupToDelete(symbol)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+
+                        {/* Members */}
+                        {members.length === 0 ? (
+                          <p className="text-xs text-gray-300 py-3 text-center">
+                            אין חברים בקבוצה
+                          </p>
+                        ) : (
+                          <div className="flex flex-col gap-1">
+                            {members.map((m) => {
+                              const isActive =
+                                activeEmail && m.email === activeEmail;
+                              return (
+                                <div
+                                  key={m.id}
+                                  className={`flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 border ${
+                                    isActive
+                                      ? "bg-amber-50 border-amber-200"
+                                      : "bg-white border-gray-100"
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span className="text-sm text-gray-700 truncate">
+                                      {m.full_name}
+                                    </span>
+                                    {isActive && (
+                                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-200 text-amber-800 font-semibold shrink-0">
+                                        פעיל
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      title={isActive ? "בטל פעיל" : "סמן כפעיל"}
+                                      className={`h-7 w-7 ${
+                                        isActive
+                                          ? "text-amber-500"
+                                          : "text-gray-300 hover:text-amber-500"
+                                      }`}
+                                      onClick={() =>
+                                        setActiveMemberMutation.mutate({
+                                          symbol,
+                                          person: isActive ? null : m,
+                                        })
+                                      }
+                                    >
+                                      <Star
+                                        className={`w-4 h-4 ${
+                                          isActive ? "fill-amber-400" : ""
+                                        }`}
+                                      />
+                                    </Button>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      title="הסר מהקבוצה"
+                                      className="h-7 w-7 text-gray-300 hover:text-red-500"
+                                      onClick={() =>
+                                        removeFromGroupMutation.mutate({
+                                          person: m,
+                                        })
+                                      }
+                                    >
+                                      <UserMinus className="w-4 h-4" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -2032,15 +2466,31 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
               <Label htmlFor="sign_value" className="text-right">
-                סימן
+                קבוצה (סימן)
               </Label>
-              <Input
-                id="sign_value"
-                value={signValue}
-                onChange={(e) => setSignValue(e.target.value)}
-                className="text-right font-mono"
-                placeholder="לדוגמה: RR001"
-              />
+              <Select
+                value={signValue || undefined}
+                onValueChange={setSignValue}
+                dir="rtl"
+              >
+                <SelectTrigger id="sign_value" className="text-right">
+                  <SelectValue placeholder="בחרו קבוצה" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— ללא קבוצה —</SelectItem>
+                  {groupSymbols.length === 0 ? (
+                    <div className="px-2 py-1.5 text-xs text-gray-400 text-center">
+                      אין קבוצות — צרו קבוצות בלשונית "ניהול קבוצות"
+                    </div>
+                  ) : (
+                    groupSymbols.map((s) => (
+                      <SelectItem key={s} value={s}>
+                        קבוצה {s}
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter className="flex-col sm:flex-row gap-2">
@@ -2053,6 +2503,161 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
               className="bg-gray-700 hover:bg-gray-800 text-white"
             >
               {isSubmitting ? "שומר..." : "שמור סימן"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* --- 3D. ADD MEMBERS TO GROUP MODAL --- */}
+      <Dialog
+        open={!!groupPickerSymbol}
+        onOpenChange={(o) => {
+          if (!o) {
+            setGroupPickerSymbol(null);
+            setGroupPickerSelected([]);
+            setGroupPickerSearch("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[480px] text-right" dir="rtl">
+          <DialogHeader className="text-right">
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <div className="bg-blue-100 p-2 rounded-full">
+                <UserPlus className="w-5 h-5 text-blue-600" />
+              </div>
+              הוספת משתמשים לקבוצה {groupPickerSymbol}
+            </DialogTitle>
+            <DialogDescription className="text-right">
+              הסימן של המשתמשים שייבחרו ישתנה ל-<b>{groupPickerSymbol}</b>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <div className="relative mb-2">
+              <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                placeholder="חיפוש לפי שם או מייל..."
+                value={groupPickerSearch}
+                onChange={(e) => setGroupPickerSearch(e.target.value)}
+                className="pr-10"
+              />
+            </div>
+            <div className="max-h-64 overflow-y-auto flex flex-col gap-1 custom-scrollbar">
+              {groupPickerCandidates.length === 0 ? (
+                <p className="text-sm text-gray-400 text-center py-6">
+                  אין משתמשים זמינים להוספה
+                </p>
+              ) : (
+                groupPickerCandidates.map((p) => {
+                  const checked = groupPickerSelected.includes(p.id);
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() =>
+                        setGroupPickerSelected((prev) =>
+                          checked
+                            ? prev.filter((id) => id !== p.id)
+                            : [...prev, p.id],
+                        )
+                      }
+                      className={`flex items-center justify-between gap-2 rounded-lg px-3 py-2 border text-right transition-colors ${
+                        checked
+                          ? "bg-blue-50 border-blue-300"
+                          : "bg-white border-gray-100 hover:bg-gray-50"
+                      }`}
+                    >
+                      <div className="flex flex-col min-w-0">
+                        <span className="text-sm font-medium text-gray-800 truncate">
+                          {p.full_name}
+                        </span>
+                        <span className="text-xs text-gray-400 font-mono truncate">
+                          {p.email}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {p.sign && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">
+                            קבוצה {p.sign}
+                          </span>
+                        )}
+                        {checked && <Check className="w-4 h-4 text-blue-600" />}
+                      </div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setGroupPickerSymbol(null);
+                setGroupPickerSelected([]);
+                setGroupPickerSearch("");
+              }}
+            >
+              ביטול
+            </Button>
+            <Button
+              disabled={
+                groupPickerSelected.length === 0 ||
+                addUsersToGroupMutation.isPending
+              }
+              onClick={() =>
+                addUsersToGroupMutation.mutate({
+                  symbol: groupPickerSymbol,
+                  personIds: groupPickerSelected,
+                })
+              }
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {addUsersToGroupMutation.isPending
+                ? "מוסיף..."
+                : `הוסף (${groupPickerSelected.length})`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* --- 3E. DELETE GROUP MODAL --- */}
+      <Dialog
+        open={!!groupToDelete}
+        onOpenChange={(o) => {
+          if (!o) setGroupToDelete(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-[400px] text-right" dir="rtl">
+          <DialogHeader className="text-right">
+            <DialogTitle className="flex items-center gap-2 text-xl text-red-600">
+              <div className="bg-red-100 p-2 rounded-full">
+                <AlertTriangle className="w-5 h-5 text-red-600" />
+              </div>
+              הסרת קבוצה
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-gray-600">
+              להסיר את קבוצה <b>{groupToDelete}</b>? הסימן יימחק מכל חברי הקבוצה
+              {(() => {
+                const n = authorizedPeople.filter(
+                  (p) => p.sign === groupToDelete,
+                ).length;
+                return n > 0 ? ` (${n} משתמשים)` : "";
+              })()}
+              .
+            </p>
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setGroupToDelete(null)}>
+              ביטול
+            </Button>
+            <Button
+              disabled={removeGroupMutation.isPending}
+              onClick={() => removeGroupMutation.mutate(groupToDelete)}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {removeGroupMutation.isPending ? "מסיר..." : "הסר קבוצה"}
             </Button>
           </DialogFooter>
         </DialogContent>
