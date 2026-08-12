@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
 import { distributeShifts } from "../calendar/shiftDistributionAlgorithm";
 import { useHolidays } from "../calendar/useHolidays";
@@ -316,6 +316,74 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       e.target.value = "";
     }
   };
+
+  // --- SYSTEM / SUPPORT SETTINGS PERSISTENCE (AppSettings) ---
+  // The "הגדרות" and "תמיכה" tabs used to be local-state only — edits never
+  // left the component. Each tab is now persisted as ONE AppSettings row keyed
+  // by setting_key ('system' / 'support'), storing a JSON blob in `value`,
+  // sharing the same ['app-settings'] cache/entity as the logo above.
+  const upsertSetting = async (key, valueObj) => {
+    const existing = appSettings.find((s) => s.setting_key === key);
+    const value = JSON.stringify(valueObj);
+    if (existing) {
+      return base44.entities.AppSettings.update(existing.id, { value });
+    }
+    return base44.entities.AppSettings.create({ setting_key: key, value });
+  };
+
+  // Hydrate the tab state from saved rows once per modal open, WITHOUT
+  // clobbering in-progress edits (the ref guards against re-running on every
+  // background refetch of the shared cache).
+  const settingsHydratedRef = useRef(false);
+  useEffect(() => {
+    if (!isOpen) {
+      settingsHydratedRef.current = false;
+      return;
+    }
+    if (settingsHydratedRef.current || appSettings.length === 0) return;
+
+    const systemRow = appSettings.find((s) => s.setting_key === "system");
+    if (systemRow?.value) {
+      try {
+        const { systemStatus: savedStatus, ...rest } = JSON.parse(
+          systemRow.value,
+        );
+        setSystemSettings((prev) => ({ ...prev, ...rest }));
+        if (typeof savedStatus === "boolean") setSystemStatus(savedStatus);
+      } catch (error) {
+        console.error("Failed to parse saved system settings:", error);
+      }
+    }
+
+    const supportRow = appSettings.find((s) => s.setting_key === "support");
+    if (supportRow?.value) {
+      try {
+        setSupportSettings((prev) => ({ ...prev, ...JSON.parse(supportRow.value) }));
+      } catch (error) {
+        console.error("Failed to parse saved support settings:", error);
+      }
+    }
+
+    settingsHydratedRef.current = true;
+  }, [isOpen, appSettings]);
+
+  const saveSystemSettingsMutation = useMutation({
+    mutationFn: () => upsertSetting("system", { ...systemSettings, systemStatus }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["app-settings"] });
+      toast.success("ההגדרות נשמרו בהצלחה");
+    },
+    onError: () => toast.error("שגיאה בשמירת ההגדרות"),
+  });
+
+  const saveSupportSettingsMutation = useMutation({
+    mutationFn: () => upsertSetting("support", supportSettings),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["app-settings"] });
+      toast.success("הגדרות התמיכה נשמרו בהצלחה");
+    },
+    onError: () => toast.error("שגיאה בשמירת הגדרות התמיכה"),
+  });
 
   // Fetches all shifts (shares the ['shifts'] cache with the rest of the app),
   // but shiftDistributionAlgorithm only ever looks at the ones that fall
@@ -1615,6 +1683,21 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                   ))}
                 </div>
               </div>
+
+              <div className="flex justify-end pt-1 pb-2">
+                <Button
+                  onClick={() => saveSystemSettingsMutation.mutate()}
+                  disabled={saveSystemSettingsMutation.isPending}
+                  className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl gap-2 shadow-md shadow-blue-200 h-11 px-6"
+                >
+                  {saveSystemSettingsMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Check className="w-4 h-4" />
+                  )}
+                  <span>שמירת שינויים</span>
+                </Button>
+              </div>
             </div>
           )}
 
@@ -1690,6 +1773,21 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                     />
                   </div>
                 </div>
+              </div>
+
+              <div className="flex justify-end">
+                <Button
+                  onClick={() => saveSupportSettingsMutation.mutate()}
+                  disabled={saveSupportSettingsMutation.isPending}
+                  className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl gap-2 shadow-md shadow-blue-200 h-11 px-6"
+                >
+                  {saveSupportSettingsMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Check className="w-4 h-4" />
+                  )}
+                  <span>שמירת שינויים</span>
+                </Button>
               </div>
 
               <FaqManager />
