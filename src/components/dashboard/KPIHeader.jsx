@@ -10,12 +10,17 @@ import {
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { useThemePalette } from "@/hooks/useAppSettings";
 
 export default function KPIHeader({
   currentUser,
   onKPIClick,
   onStartSwitchFlow,
 }) {
+  // Admin-configurable KPI tile colors (ניהול מערכת ▸ ערכת נושא). Applied as
+  // inline styles below so a saved palette actually renders instead of the
+  // tiles always showing their hardcoded fallback colors.
+  const themePalette = useThemePalette();
   // Shared cache key with ShiftCalendar's swap-requests query, so KPI counts
   // refresh the moment a request is created/updated anywhere in the app
   // instead of only after a full remount.
@@ -173,6 +178,7 @@ export default function KPIHeader({
       bgColor: "bg-red-50",
       textColor: "text-red-600",
       borderColor: "border-red-200",
+      themeColor: themePalette.kpi.fullSwap,
     },
     {
       id: "partial_gaps",
@@ -184,6 +190,7 @@ export default function KPIHeader({
       bgColor: "bg-yellow-50",
       textColor: "text-yellow-600",
       borderColor: "border-yellow-200",
+      themeColor: themePalette.kpi.partialSwap,
     },
     {
       id: "approved",
@@ -195,6 +202,7 @@ export default function KPIHeader({
       bgColor: "bg-green-50",
       textColor: "text-green-600",
       borderColor: "border-green-200",
+      themeColor: themePalette.kpi.history,
     },
     {
       id: "my_shifts",
@@ -206,6 +214,7 @@ export default function KPIHeader({
       bgColor: "bg-blue-50",
       textColor: "text-blue-600",
       borderColor: "border-blue-200",
+      themeColor: themePalette.kpi.futureShifts,
     },
     {
       id: "switch_request",
@@ -225,20 +234,37 @@ export default function KPIHeader({
       className="grid grid-cols-5 gap-1 sm:gap-2 mb-3 md:mb-6"
       data-tour="kpi-band"
     >
-      {kpis.map((kpi, index) => (
+      {kpis.map((kpi, index) => {
+        // When a theme color is set, drive the tile from it via inline styles
+        // (which override the Tailwind fallback classes): a light tint for the
+        // card, a solid gradient for the icon chip, and the accent for the
+        // count. 8-digit hex appends an alpha channel to the base color.
+        const themed = kpi.themeColor;
+        const cardStyle = themed
+          ? { backgroundColor: `${themed}14`, borderColor: `${themed}55` }
+          : undefined;
+        const iconStyle = themed
+          ? {
+              backgroundImage: `linear-gradient(to bottom right, ${themed}, ${themed}cc)`,
+            }
+          : undefined;
+        const countStyle =
+          themed && !kpi.isAction ? { color: themed } : undefined;
+        return (
         <motion.div
           key={kpi.id}
           data-tour={`kpi-${kpi.id}`}
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: index * 0.05 }}
+          style={cardStyle}
           onClick={() =>
             kpi.isAction
               ? onStartSwitchFlow && onStartSwitchFlow()
               : onKPIClick && onKPIClick(kpi.id)
           }
           className={`
-            ${kpi.bgColor} border ${kpi.borderColor} 
+            ${kpi.bgColor} border ${kpi.borderColor}
             rounded-xl cursor-pointer hover:shadow-md transition-all
             flex flex-col items-center justify-center text-center
             p-2 md:p-4 md:flex-row md:gap-3 md:items-center md:text-right
@@ -246,6 +272,7 @@ export default function KPIHeader({
           `}
         >
           <div
+            style={iconStyle}
             className={`p-1.5 md:p-3 rounded-lg md:rounded-xl bg-gradient-to-br ${kpi.gradient} text-white shadow-sm mb-1 md:mb-0 shrink-0`}
           >
             <kpi.icon className="w-4 h-4 md:w-6 md:h-6" />
@@ -253,6 +280,7 @@ export default function KPIHeader({
 
           <div className="flex flex-col items-center md:items-start">
             <span
+              style={countStyle}
               className={`text-xl md:text-3xl font-extrabold leading-none mb-1 md:mb-0 ${kpi.isAction ? "invisible" : kpi.textColor}`}
             >
               {kpi.isAction ? "0" : kpi.count}
@@ -264,7 +292,8 @@ export default function KPIHeader({
             </p>
           </div>
         </motion.div>
-      ))}
+        );
+      })}
     </div>
   );
 }
