@@ -1101,7 +1101,7 @@ export default function ShiftDetailsModal({
                       className="min-w-[160px] flex-1 sm:flex-none h-12 bg-[#ec4899] hover:bg-[#db2777] focus-visible:ring focus-visible:ring-offset-2 focus-visible:ring-[#be185d] text-white rounded-xl shadow-md flex items-center justify-center gap-2"
                     >
                       <Gift className="w-5 h-5" />
-                      קח את המשמרת במתנה
+                      הצע לקחת את המשמרת במתנה
                     </Button>
                   )}
 
@@ -1179,9 +1179,9 @@ export default function ShiftDetailsModal({
             <DialogHeader>
               <DialogTitle>מתנה למשמרת</DialogTitle>
               <DialogDescription>
-                לקחת על עצמך את כל המשמרת של {ownerDisplayName} במתנה, ללא
-                תמורה? כל המשמרת תכוסה על ידך, ללא צורך בתמורה מ
-                {ownerDisplayName}.
+                לשלוח ל{ownerDisplayName} הצעה לקחת על עצמך את כל המשמרת במתנה,
+                ללא תמורה? ההצעה תופיע אצל {ownerDisplayName} לאישור — המשמרת
+                תעבור אליך רק לאחר שההצעה תאושר.
               </DialogDescription>
             </DialogHeader>
             <DialogFooter>
@@ -1193,7 +1193,7 @@ export default function ShiftDetailsModal({
                 className="bg-[#ec4899] hover:bg-[#db2777] text-white"
               >
                 <Gift className="w-4 h-4 ml-2" />
-                כן, תן במתנה
+                כן, שלח הצעה
               </Button>
             </DialogFooter>
           </DialogContent>
