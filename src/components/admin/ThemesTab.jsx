@@ -4,36 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-
-const DEFAULT_THEME_PALETTE = {
-  kpi: {
-    fullSwap: "#ef4444",
-    partialSwap: "#eab308",
-    history: "#22c55e",
-    futureShifts: "#3b82f6",
-  },
-  calendar: {
-    myShifts: "#3b82f6",
-    regularShift: "#9ca3af",
-    swapRequest: "#ef4444",
-    partialGap: "#eab308",
-    approvedSwap: "#22c55e",
-  },
-  buttons: {
-    volunteer: "#3b82f6",
-    swapDirect: "#6366f1",
-    whatsapp: "#25d366",
-    calendar: "#2563eb",
-    requestSwap: "#ef4444",
-    cancel: "#dc2626",
-    cancelRequest: "#dc2626",
-  },
-  hallOfFame: {
-    first: "#eab308",
-    second: "#9ca3af",
-    third: "#f97316",
-  },
-};
+import { DEFAULT_THEME_PALETTE } from "@/hooks/useAppSettings";
 
 export default function ThemesTab() {
   const queryClient = useQueryClient();
@@ -270,11 +241,11 @@ export default function ThemesTab() {
         </div>
       </div>
 
-      <div className="flex justify-end pb-2">
+      <div className="sticky bottom-0 left-0 z-30 -mx-1 flex justify-start px-1 pt-3 pb-2 bg-gradient-to-t from-[#F9FAFB] via-[#F9FAFB]/95 to-transparent">
         <Button
           onClick={() => saveThemeMutation.mutate()}
           disabled={saveThemeMutation.isPending}
-          className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl gap-2 shadow-md shadow-blue-200 h-11 px-6"
+          className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl gap-2 shadow-lg shadow-blue-300/60 h-11 px-6"
         >
           {saveThemeMutation.isPending ? (
             <Loader2 className="w-4 h-4 animate-spin" />
