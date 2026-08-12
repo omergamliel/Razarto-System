@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { DEFAULT_THEME_PALETTE } from "@/hooks/useAppSettings";
+import { DEFAULT_THEME_PALETTE } from "@/hooks/useAuthorizedPerson";
 
 export default function ThemesTab() {
   const queryClient = useQueryClient();
