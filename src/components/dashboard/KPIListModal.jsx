@@ -224,8 +224,12 @@ function buildDemoKpiData() {
     return d.toISOString().split("T")[0];
   };
 
-  // Full shift = start_time === end_time (see isFullShift). Timed shifts use a
-  // real window so partial-gap math produces visible covered/uncovered bands.
+  // Full shift = start_time === end_time (see isFullShift). These carry status
+  // "Active" so they only surface in the swap-requests view (which keys off the
+  // open SwapRequest, not the shift status) and are NOT swept into the
+  // partial-gaps list — partialGapItems includes every non-Active shift with an
+  // uncovered window, which would otherwise flood the "כיסוי חלקי" step with
+  // full-day gap rows and bury the partial-coverage sliders.
   const full = (id, userId, offset, name) => ({
     id,
     original_user_id: userId,
@@ -234,8 +238,10 @@ function buildDemoKpiData() {
     end_date: dayOffset(offset),
     start_time: "08:00",
     end_time: "08:00",
-    status: "Swap_Requested",
+    status: "Active",
   });
+  // Timed shifts keep a non-Active status and a real window so the partial-gap
+  // math produces the multi-user covered/uncovered bands the sliders visualise.
   const timed = (id, userId, offset, start, end, name) => ({
     id,
     original_user_id: userId,
