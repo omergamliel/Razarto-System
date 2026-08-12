@@ -85,6 +85,54 @@ const TYPE_STYLES = {
 
 const getStyle = (type) => TYPE_STYLES[type] || TYPE_STYLES.info;
 
+// Example notifications shown only while the guided walkthrough spotlights this
+// panel (razarto:tour-notif with demo:true). They cover every notification
+// type/color so the tour can explain them on a populated panel instead of the
+// account's real (often empty) feed. Read-only; the remove/clear buttons and
+// action buttons are hidden in demo mode so nothing is touched.
+const DEMO_MESSAGES = [
+  {
+    id: "demo-notif-h2h",
+    type: "swap_requested",
+    title: "בקשת החלפה ראש בראש חדשה",
+    body: "דני כהן הציע לך החלפה ראש בראש. אפשר לאשר או לדחות מתוך 'בקשות אליי'.",
+    actionLabel: "צפייה בבקשה",
+    actionTarget: "kpi:swap_requests:incoming",
+  },
+  {
+    id: "demo-notif-gift",
+    type: "gift",
+    title: "הוצעה לך מתנה 🎁",
+    body: "נועה פרידמן מציעה לקחת על עצמה את המשמרת שלך במתנה — אשרו כדי להשתחרר מהמשמרת.",
+    actionLabel: "צפייה בהצעה",
+    actionTarget: "kpi:swap_requests:incoming",
+  },
+  {
+    id: "demo-notif-partial",
+    type: "partial",
+    title: "הוצע כיסוי למשמרת שלך",
+    body: "מאיה לוי הציעה לכסות חלק מהשעות במשמרת שלך.",
+    actionLabel: "צפייה בבקשה",
+    actionTarget: "kpi:partial_gaps:mine",
+  },
+  {
+    id: "demo-notif-covered",
+    type: "covered",
+    title: "המשמרת שלך כוסתה",
+    body: "יוסי אברהם כיסה את המשמרת שלך — אין צורך להגיע.",
+    actionLabel: "צפייה בבקשה",
+    actionTarget: "kpi:swap_requests:mine",
+  },
+  {
+    id: "demo-notif-pending",
+    type: "info",
+    title: "הבקשה שלך עדיין ממתינה",
+    body: "בקשת ההחלפה שפתחת עדיין לא התקבלה על ידי אף אחד.",
+    actionLabel: "צפייה בבקשה",
+    actionTarget: "kpi:swap_requests:mine",
+  },
+];
+
 export default function NotificationSidebar() {
   // Populates messageStore by scanning current entity data on load/refetch —
   // this is the only thing in the app that ever calls addMessage().
@@ -92,14 +140,20 @@ export default function NotificationSidebar() {
 
   const [messages, setMessages] = useState(getMessages());
   const [isOpen, setIsOpen] = useState(false);
+  // Set by the walkthrough: render the demo notifications above instead of the
+  // real feed while the tour spotlights this panel.
+  const [tourDemo, setTourDemo] = useState(false);
 
   useEffect(() => subscribe(setMessages), []);
 
   // Let the guided walkthrough (AppTour in Home.jsx) open/close this panel so
   // it can spotlight it. UI-only — toggles the same isOpen state a click would,
-  // reads no data and writes nothing.
+  // reads no real data and writes nothing.
   useEffect(() => {
-    const handler = (e) => setIsOpen(!!e.detail?.open);
+    const handler = (e) => {
+      setIsOpen(!!e.detail?.open);
+      setTourDemo(!!e.detail?.demo);
+    };
     window.addEventListener("razarto:tour-notif", handler);
     return () => window.removeEventListener("razarto:tour-notif", handler);
   }, []);
@@ -107,7 +161,8 @@ export default function NotificationSidebar() {
   // Lock background scrolling while the sidebar panel is open.
   useScrollLock(isOpen);
 
-  const count = messages.length;
+  const displayMessages = tourDemo ? DEMO_MESSAGES : messages;
+  const count = displayMessages.length;
 
   return (
     <>
@@ -192,7 +247,7 @@ export default function NotificationSidebar() {
                     </p>
                   </div>
                 ) : (
-                  messages.map((msg) => {
+                  displayMessages.map((msg) => {
                     const style = getStyle(msg.type);
                     const Icon = style.icon;
                     return (
