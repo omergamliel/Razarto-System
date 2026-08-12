@@ -207,15 +207,15 @@ function PartialGapCoverageTrack({ item, authorizedUsers, requesterName }) {
 function buildDemoKpiData() {
   // Fully fictional identities — not the logged-in user, not real colleagues.
   const meId = 900000;
-  const meName = "משתמש לדוגמה";
-  const me = { serial_id: meId, full_name: meName, department: "מחלקה לדוגמה" };
+  const meName = "דוד לוי";
+  const me = { serial_id: meId, full_name: meName, department: "מחלקה א׳" };
 
   const users = [
     me,
-    { serial_id: 900001, full_name: "רון לדוגמה", department: "מחלקה א׳" },
-    { serial_id: 900002, full_name: "מאי לדוגמה", department: "מחלקה ב׳" },
-    { serial_id: 900003, full_name: "עידו לדוגמה", department: "מחלקה ג׳" },
-    { serial_id: 900004, full_name: "נגה לדוגמה", department: "מחלקה ד׳" },
+    { serial_id: 900001, full_name: "שמואל כהן", department: "מחלקה א׳" },
+    { serial_id: 900002, full_name: "יעל ישראלי", department: "מחלקה ב׳" },
+    { serial_id: 900003, full_name: "אבי פרץ", department: "מחלקה ג׳" },
+    { serial_id: 900004, full_name: "נועה ביטון", department: "מחלקה ד׳" },
   ];
 
   const dayOffset = (n) => {
@@ -249,16 +249,16 @@ function buildDemoKpiData() {
 
   const shifts = [
     // full-shift swap requests
-    full("demo-sh-ron", 900001, 2, "רון לדוגמה"),
-    full("demo-sh-mai", 900002, 4, "מאי לדוגמה"),
+    full("demo-sh-ron", 900001, 2, "שמואל כהן"),
+    full("demo-sh-mai", 900002, 4, "יעל ישראלי"),
     full("demo-sh-me-h2h", meId, 5, meName),
-    full("demo-sh-ido", 900003, 6, "עידו לדוגמה"),
+    full("demo-sh-ido", 900003, 6, "אבי פרץ"),
     full("demo-sh-me-gift", meId, 1, meName),
     full("demo-sh-me-mine", meId, 7, meName),
     // partial-gap shifts
     timed("demo-sh-me-partial", meId, 3, "08:00", "20:00", meName),
-    timed("demo-sh-mai-partial", 900002, 3, "08:00", "16:00", "מאי לדוגמה"),
-    timed("demo-sh-ido-partial", 900003, 4, "08:00", "18:00", "עידו לדוגמה"),
+    timed("demo-sh-mai-partial", 900002, 3, "08:00", "16:00", "יעל ישראלי"),
+    timed("demo-sh-ido-partial", 900003, 4, "08:00", "18:00", "אבי פרץ"),
     // history — closed swap, shift already reassigned to me
     {
       ...full("demo-sh-closed", meId, -3, meName),
@@ -285,7 +285,7 @@ function buildDemoKpiData() {
       status: "Open",
       ...reqDates(shiftById("demo-sh-ron")),
     },
-    // open — head-to-head addressed to me (Mai offers her shift for mine)
+    // open — head-to-head addressed to me (Yael offers her shift for mine)
     {
       id: "demo-req-h2h",
       request_type: "Head2Head",
@@ -305,7 +305,7 @@ function buildDemoKpiData() {
       status: "Open",
       ...reqDates(shiftById("demo-sh-ido")),
     },
-    // open — gift offered to me (Noga offers to take my shift for free)
+    // open — gift offered to me (Noa offers to take my shift for free)
     {
       id: "demo-req-gift",
       request_type: "Gift",
@@ -335,14 +335,14 @@ function buildDemoKpiData() {
       status: "Partially_Covered",
       ...reqDates(shiftById("demo-sh-me-partial")),
     },
-    // open — partial gap on someone else's shift, fully uncovered
+    // open — partial gap on someone else's shift, split between two coverers
     {
       id: "demo-req-partial-mai",
       request_type: "Partial",
       requesting_user_id: 900002,
       shift_ids: ["demo-sh-mai-partial"],
       offered_shift_ids: [],
-      status: "Open",
+      status: "Partially_Covered",
       ...reqDates(shiftById("demo-sh-mai-partial")),
     },
     // open — partial gap on Ido's shift that I'm partly covering
@@ -367,29 +367,31 @@ function buildDemoKpiData() {
     },
   ];
 
+  // Several fake users each take a slice of a partial shift, so the coverage
+  // sliders in "כיסוי חלקי" render multiple covered bands (each a different
+  // name) alongside the window that's still open. Coverage dates line up with
+  // each shift's own date/window so the segments land in the right places.
+  const cov = (id, shiftId, userId, offset, start, end) => ({
+    id,
+    shift_id: shiftId,
+    covering_user_id: userId,
+    status: "Approved",
+    cover_start_date: dayOffset(offset),
+    cover_start_time: start,
+    cover_end_date: dayOffset(offset),
+    cover_end_time: end,
+  });
+
   const coverages = [
-    // Ron covers the first half of my partial shift → leaves a 14:00–20:00 gap
-    {
-      id: "demo-cov-mine",
-      shift_id: "demo-sh-me-partial",
-      covering_user_id: 900001,
-      status: "Approved",
-      cover_start_date: dayOffset(3),
-      cover_start_time: "08:00",
-      cover_end_date: dayOffset(3),
-      cover_end_time: "14:00",
-    },
-    // I cover the first part of Ido's partial shift → shows under "מכסה"
-    {
-      id: "demo-cov-ido",
-      shift_id: "demo-sh-ido-partial",
-      covering_user_id: meId,
-      status: "Approved",
-      cover_start_date: dayOffset(4),
-      cover_start_time: "08:00",
-      cover_end_date: dayOffset(4),
-      cover_end_time: "12:00",
-    },
+    // My partial shift (08:00–20:00): Shmuel + Avi cover most; 17:00–20:00 open.
+    cov("demo-cov-mine-1", "demo-sh-me-partial", 900001, 3, "08:00", "13:00"),
+    cov("demo-cov-mine-2", "demo-sh-me-partial", 900003, 3, "13:00", "17:00"),
+    // Yael's partial shift (08:00–16:00): Noa + Shmuel cover part; 14:00–16:00 open.
+    cov("demo-cov-mai-1", "demo-sh-mai-partial", 900004, 3, "08:00", "11:00"),
+    cov("demo-cov-mai-2", "demo-sh-mai-partial", 900001, 3, "11:00", "14:00"),
+    // Avi's partial shift (08:00–18:00): I + Yael cover part; 15:00–18:00 open.
+    cov("demo-cov-ido-1", "demo-sh-ido-partial", meId, 4, "08:00", "12:00"),
+    cov("demo-cov-ido-2", "demo-sh-ido-partial", 900002, 4, "12:00", "15:00"),
   ];
 
   return { me, users, shifts, swapRequests, coverages };
