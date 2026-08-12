@@ -75,6 +75,10 @@ export default function ShiftCalendar() {
   // keep the old mounted instance and its local tab state.
   const [kpiInitialTab, setKpiInitialTab] = useState("all");
   const [kpiOpenSeq, setKpiOpenSeq] = useState(0);
+  // When opening KPIListModal to point at one specific request (e.g. from the
+  // "אני רוצה לעזור!" button on a full-coverage request), the id to scroll to
+  // and briefly highlight inside the list.
+  const [kpiFocusRequestId, setKpiFocusRequestId] = useState(null);
   // Set only by the guided walkthrough: when true, KPIListModal renders a set of
   // demo requests/shifts instead of real account data so the tour can show a
   // populated list in every tab. Read-only, never persisted.
@@ -1418,9 +1422,10 @@ export default function ShiftCalendar() {
 
     // Access rules for RR level
     if (isRR && !isAdmin) {
-      if (shift.status === "regular" && !isMyShift) {
-        return;
-      }
+      // NOTE: a plain "regular" shift that isn't mine is intentionally NOT
+      // blocked here — an RR user must be able to open it (read-only details,
+      // and to gift/offer where eligible). It falls through to the details
+      // modal below.
 
       if (isCoveredShift && !(isMyShift || isCoveringUser)) {
         return;
@@ -1442,6 +1447,18 @@ export default function ShiftCalendar() {
       // Swap requested, Pending, etc.
       setShowDetailsModal(true);
     }
+  };
+
+  // Open the requests menu (swap_requests / "all" tab) focused on one specific
+  // request — used by "אני רוצה לעזור!" on a full-coverage request, which
+  // routes the helper straight to the request the shift owner created.
+  const handleGoToRequest = (request) => {
+    closeAllModals();
+    setKpiFocusRequestId(request?.id || null);
+    setKpiListType("swap_requests");
+    setKpiInitialTab("all");
+    setKpiOpenSeq((n) => n + 1);
+    setShowKPIListModal(true);
   };
 
   const handleOfferCover = (shift) => {
@@ -1774,6 +1791,7 @@ export default function ShiftCalendar() {
           setSwapRequestInitialType("full");
           setShowSwapRequestModal(true);
         }}
+        onGoToRequest={handleGoToRequest}
         currentUser={authorizedPerson}
         isAdmin={isAdmin}
       />
@@ -1889,6 +1907,7 @@ export default function ShiftCalendar() {
         onClose={closeAllModals}
         type={kpiListType}
         initialTab={kpiInitialTab}
+        focusRequestId={kpiFocusRequestId}
         currentUser={authorizedPerson}
         onOfferCover={handleOfferCover}
         onRequestSwap={handleOpenSwapRequest}
