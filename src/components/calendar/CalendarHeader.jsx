@@ -154,7 +154,7 @@ export default function CalendarHeader({
                     />
                   ) : (
                     <span className="text-white font-bold text-[10px] md:text-xs">
-                      חמ"ל
+                      לוגו
                     </span>
                   )}
 
