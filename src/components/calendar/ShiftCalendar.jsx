@@ -75,6 +75,10 @@ export default function ShiftCalendar() {
   // keep the old mounted instance and its local tab state.
   const [kpiInitialTab, setKpiInitialTab] = useState("all");
   const [kpiOpenSeq, setKpiOpenSeq] = useState(0);
+  // Set only by the guided walkthrough: when true, KPIListModal renders a set of
+  // demo requests/shifts instead of real account data so the tour can show a
+  // populated list in every tab. Read-only, never persisted.
+  const [tourDemo, setTourDemo] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [lastUpdatedShift, setLastUpdatedShift] = useState(null);
 
@@ -145,11 +149,12 @@ export default function ShiftCalendar() {
   // the tour. `detail.open` is "kpi" | "switchflow" | null (null = close all).
   useEffect(() => {
     const handleTourControl = (e) => {
-      const { open, kpiType, kpiTab } = e.detail || {};
+      const { open, kpiType, kpiTab, demo } = e.detail || {};
       // Reset tour-driven surfaces first so each step is a clean, idempotent
       // request for exactly the state it wants.
       setShowKPIListModal(false);
       setSwitchFlow(null);
+      setTourDemo(!!demo);
       if (open === "kpi") {
         setKpiListType(kpiType || "swap_requests");
         setKpiInitialTab(kpiTab || "all");
@@ -1904,7 +1909,8 @@ export default function ShiftCalendar() {
         }}
         onAcceptGift={(item) => acceptGiftMutation.mutate(item)}
         onStartCounterOffer={(item) => handleStartCounterOffer(item)}
-        actionsDisabled={isViewOnly}
+        actionsDisabled={isViewOnly || tourDemo}
+        demoMode={tourDemo}
       />
     </div>
   );
