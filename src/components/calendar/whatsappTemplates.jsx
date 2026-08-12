@@ -445,9 +445,10 @@ export const buildHeadToHeadTemplate = ({
   return `היי *${targetUserName || ""}*! 👋🏼\nאני מעוניין להחליף איתך משמרת רז״רתו ראש בראש:\n\n🫡 הצעת החלפה:\n🫵🏼 המשמרת שלך: *${targetShiftOwner || ""}* ${targetShiftDate || ""}\n🤞🏼 המשמרת שלי: *${myShiftOwner || ""}* ${myShiftDate || ""}\n\n✅ לחץ כאן לאישור ההחלפה בתוך המערכת:\n${uniqueApprovalUrl || ""}`;
 };
 
-// A "gift" is a one-directional takeover: an RR user takes today's shift off
-// the person doing it, with nothing expected in return. This message lets the
-// giver tell the recipient the good news over WhatsApp.
+// A "gift" is a one-directional takeover: an RR user offers to take today's
+// shift off the person doing it, with nothing expected in return. The offer is
+// sent as a request the recipient accepts in-app; this message lets the giver
+// nudge them over WhatsApp to go approve it.
 export const buildGiftTemplate = ({
   recipientName,
   giverName,
@@ -462,5 +463,5 @@ export const buildGiftTemplate = ({
   const safeEnd = endDate
     ? format(new Date(endDate), "dd/MM/yyyy", { locale: he })
     : safeStart;
-  return `היי *${recipientName || ""}*! 🎁\nלקחתי לך את המשמרת במתנה — אין צורך להגיע 🙌\n\n📅 המשמרת: מ-${safeStart} בשעה ${startTime || ""} ועד ${safeEnd} בשעה ${endTime || ""} ⏰\n\nנהנה מהמתנה! ✌️${giverName ? `\n— ${giverName}` : ""}`;
+  return `היי *${recipientName || ""}*! 🎁\nרוצה לתת לך מתנה — לקחת על עצמי את המשמרת שלך, בלי תמורה 🙌\n\n📅 המשמרת: מ-${safeStart} בשעה ${startTime || ""} ועד ${safeEnd} בשעה ${endTime || ""} ⏰\n\nכל מה שצריך זה לאשר את ההצעה באפליקציה (בקשות אליי) ✅${giverName ? `\n— ${giverName}` : ""}`;
 };
