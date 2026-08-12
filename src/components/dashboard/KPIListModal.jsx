@@ -194,27 +194,28 @@ function PartialGapCoverageTrack({ item, authorizedUsers, requesterName }) {
 // Guided-tour demo data (see the demoMode usage below).
 //
 // Produces a small, internally-consistent world of shifts / swap requests /
-// coverages / users, anchored to the real current user and today's date, so
-// the walkthrough can spotlight every KPI list and tab with rows in a mix of
-// stages: open requests, an incoming head-to-head, an incoming gift, a
-// partially-covered gap, a fully-open gap, a shift I'm covering, and closed
-// history. Shapes mirror the base44 entities the enrichment code expects; it
-// is never persisted (demo mode disables the real queries entirely).
+// coverages / users, using entirely fictional people (including a fictional
+// "me") and today's date, so the walkthrough can spotlight every KPI list and
+// tab with rows in a mix of stages: open requests, an incoming head-to-head, an
+// incoming gift, a partially-covered gap, a fully-open gap, a shift I'm
+// covering, and closed history. It reads nothing from — and writes nothing to —
+// the real account: the modal's real queries are disabled in demo mode, and the
+// returned `me` replaces the real currentUser for all tab filtering while the
+// tour runs, so no real name or data ever appears. Shapes mirror the base44
+// entities the enrichment code expects; it is never persisted.
 // ---------------------------------------------------------------------------
-function buildDemoKpiData(currentUser) {
-  const meId = currentUser?.serial_id ?? 999000;
-  const meName = currentUser?.full_name || "אני";
+function buildDemoKpiData() {
+  // Fully fictional identities — not the logged-in user, not real colleagues.
+  const meId = 900000;
+  const meName = "משתמש לדוגמה";
+  const me = { serial_id: meId, full_name: meName, department: "מחלקה לדוגמה" };
 
   const users = [
-    {
-      serial_id: meId,
-      full_name: meName,
-      department: currentUser?.department || "המחלקה שלי",
-    },
-    { serial_id: 990001, full_name: "דני כהן", department: "חדר מיון" },
-    { serial_id: 990002, full_name: "מאיה לוי", department: "טיפול נמרץ" },
-    { serial_id: 990003, full_name: "יוסי אברהם", department: "כירורגיה" },
-    { serial_id: 990004, full_name: "נועה פרידמן", department: "פנימית" },
+    me,
+    { serial_id: 900001, full_name: "רון לדוגמה", department: "מחלקה א׳" },
+    { serial_id: 900002, full_name: "מאי לדוגמה", department: "מחלקה ב׳" },
+    { serial_id: 900003, full_name: "עידו לדוגמה", department: "מחלקה ג׳" },
+    { serial_id: 900004, full_name: "נגה לדוגמה", department: "מחלקה ד׳" },
   ];
 
   const dayOffset = (n) => {
@@ -248,16 +249,16 @@ function buildDemoKpiData(currentUser) {
 
   const shifts = [
     // full-shift swap requests
-    full("demo-sh-dani", 990001, 2, "דני כהן"),
-    full("demo-sh-maya", 990002, 4, "מאיה לוי"),
+    full("demo-sh-ron", 900001, 2, "רון לדוגמה"),
+    full("demo-sh-mai", 900002, 4, "מאי לדוגמה"),
     full("demo-sh-me-h2h", meId, 5, meName),
-    full("demo-sh-yossi", 990003, 6, "יוסי אברהם"),
+    full("demo-sh-ido", 900003, 6, "עידו לדוגמה"),
     full("demo-sh-me-gift", meId, 1, meName),
     full("demo-sh-me-mine", meId, 7, meName),
     // partial-gap shifts
     timed("demo-sh-me-partial", meId, 3, "08:00", "20:00", meName),
-    timed("demo-sh-maya-partial", 990002, 3, "08:00", "16:00", "מאיה לוי"),
-    timed("demo-sh-yossi-partial", 990003, 4, "08:00", "18:00", "יוסי אברהם"),
+    timed("demo-sh-mai-partial", 900002, 3, "08:00", "16:00", "מאי לדוגמה"),
+    timed("demo-sh-ido-partial", 900003, 4, "08:00", "18:00", "עידו לדוגמה"),
     // history — closed swap, shift already reassigned to me
     {
       ...full("demo-sh-closed", meId, -3, meName),
@@ -278,37 +279,37 @@ function buildDemoKpiData(currentUser) {
     {
       id: "demo-req-general",
       request_type: "General",
-      requesting_user_id: 990001,
-      shift_ids: ["demo-sh-dani"],
+      requesting_user_id: 900001,
+      shift_ids: ["demo-sh-ron"],
       offered_shift_ids: [],
       status: "Open",
-      ...reqDates(shiftById("demo-sh-dani")),
+      ...reqDates(shiftById("demo-sh-ron")),
     },
-    // open — head-to-head addressed to me (Maya offers her shift for mine)
+    // open — head-to-head addressed to me (Mai offers her shift for mine)
     {
       id: "demo-req-h2h",
       request_type: "Head2Head",
-      requesting_user_id: 990002,
-      shift_ids: ["demo-sh-maya"],
+      requesting_user_id: 900002,
+      shift_ids: ["demo-sh-mai"],
       offered_shift_ids: ["demo-sh-me-h2h"],
       status: "Open",
-      ...reqDates(shiftById("demo-sh-maya")),
+      ...reqDates(shiftById("demo-sh-mai")),
     },
     // open — plain full request by someone else
     {
       id: "demo-req-full",
       request_type: "Full",
-      requesting_user_id: 990003,
-      shift_ids: ["demo-sh-yossi"],
+      requesting_user_id: 900003,
+      shift_ids: ["demo-sh-ido"],
       offered_shift_ids: [],
       status: "Open",
-      ...reqDates(shiftById("demo-sh-yossi")),
+      ...reqDates(shiftById("demo-sh-ido")),
     },
-    // open — gift offered to me (Noa offers to take my shift for free)
+    // open — gift offered to me (Noga offers to take my shift for free)
     {
       id: "demo-req-gift",
       request_type: "Gift",
-      requesting_user_id: 990004,
+      requesting_user_id: 900004,
       shift_ids: ["demo-sh-me-gift"],
       offered_shift_ids: [],
       status: "Open",
@@ -336,29 +337,29 @@ function buildDemoKpiData(currentUser) {
     },
     // open — partial gap on someone else's shift, fully uncovered
     {
-      id: "demo-req-partial-maya",
+      id: "demo-req-partial-mai",
       request_type: "Partial",
-      requesting_user_id: 990002,
-      shift_ids: ["demo-sh-maya-partial"],
+      requesting_user_id: 900002,
+      shift_ids: ["demo-sh-mai-partial"],
       offered_shift_ids: [],
       status: "Open",
-      ...reqDates(shiftById("demo-sh-maya-partial")),
+      ...reqDates(shiftById("demo-sh-mai-partial")),
     },
-    // open — partial gap on Yossi's shift that I'm partly covering
+    // open — partial gap on Ido's shift that I'm partly covering
     {
-      id: "demo-req-partial-yossi",
+      id: "demo-req-partial-ido",
       request_type: "Partial",
-      requesting_user_id: 990003,
-      shift_ids: ["demo-sh-yossi-partial"],
+      requesting_user_id: 900003,
+      shift_ids: ["demo-sh-ido-partial"],
       offered_shift_ids: [],
       status: "Partially_Covered",
-      ...reqDates(shiftById("demo-sh-yossi-partial")),
+      ...reqDates(shiftById("demo-sh-ido-partial")),
     },
     // history — a closed swap I accepted
     {
       id: "demo-req-closed",
       request_type: "General",
-      requesting_user_id: 990001,
+      requesting_user_id: 900001,
       shift_ids: ["demo-sh-closed"],
       offered_shift_ids: [],
       status: "Closed",
@@ -367,21 +368,21 @@ function buildDemoKpiData(currentUser) {
   ];
 
   const coverages = [
-    // Dani covers the first half of my partial shift → leaves a 14:00–20:00 gap
+    // Ron covers the first half of my partial shift → leaves a 14:00–20:00 gap
     {
       id: "demo-cov-mine",
       shift_id: "demo-sh-me-partial",
-      covering_user_id: 990001,
+      covering_user_id: 900001,
       status: "Approved",
       cover_start_date: dayOffset(3),
       cover_start_time: "08:00",
       cover_end_date: dayOffset(3),
       cover_end_time: "14:00",
     },
-    // I cover the first part of Yossi's partial shift → shows under "מכסה"
+    // I cover the first part of Ido's partial shift → shows under "מכסה"
     {
-      id: "demo-cov-yossi",
-      shift_id: "demo-sh-yossi-partial",
+      id: "demo-cov-ido",
+      shift_id: "demo-sh-ido-partial",
       covering_user_id: meId,
       status: "Approved",
       cover_start_date: dayOffset(4),
@@ -391,7 +392,7 @@ function buildDemoKpiData(currentUser) {
     },
   ];
 
-  return { users, shifts, swapRequests, coverages };
+  return { me, users, shifts, swapRequests, coverages };
 }
 
 export default function KPIListModal({
@@ -399,7 +400,7 @@ export default function KPIListModal({
   onClose,
   type,
   initialTab = "all",
-  currentUser,
+  currentUser: currentUserProp,
   onOfferCover,
   onRequestSwap,
   actionsDisabled = false,
@@ -484,12 +485,17 @@ export default function KPIListModal({
   // empty) real data the account happens to have. This is purely local, read-
   // only synthetic data; no entity is ever queried or written in demo mode (the
   // real queries above are disabled), and the tour's click-blocker keeps the row
-  // action buttons inert. Built around the real currentUser so the "mine" /
-  // "incoming to me" tabs resolve correctly.
+  // action buttons inert. It uses entirely fictional people — including a
+  // fictional "me" (demoDataset.me) that replaces the real currentUser below —
+  // so no real identity or data appears anywhere during the tour.
   const demoDataset = useMemo(
-    () => (demoMode ? buildDemoKpiData(currentUser) : null),
-    [demoMode, currentUser],
+    () => (demoMode ? buildDemoKpiData() : null),
+    [demoMode],
   );
+  // In demo mode the fictional "me" also stands in for the current user, so the
+  // "mine" / "incoming to me" tab filters resolve against the demo world and no
+  // real identity is used anywhere in the tour.
+  const currentUser = demoDataset ? demoDataset.me : currentUserProp;
   const swapRequestsAll = demoDataset ? demoDataset.swapRequests : swapRequestsReal;
   const shiftsAll = demoDataset ? demoDataset.shifts : shiftsReal;
   const coveragesAll = demoDataset ? demoDataset.coverages : coveragesReal;
