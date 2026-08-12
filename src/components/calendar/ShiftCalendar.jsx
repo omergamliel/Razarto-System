@@ -944,28 +944,42 @@ export default function ShiftCalendar() {
     },
   });
 
-  // "Gift": an RR user takes today's shift off whoever is doing it, no strings
-  // attached. Modeled as a full-shift ShiftCoverage by the giver (the app's
-  // existing "someone covers this shift" mechanism) with a sentinel
-  // request_id of "GIFT" — no schema change, and the recipient's notification
-  // scanner keys on that sentinel to show the "you got a gift" popup (there's
-  // no push channel, so the signal has to live on a persisted entity).
+  // "Gift": an RR user offers to take today's shift off whoever is doing it,
+  // no strings attached. It is NOT applied immediately — it's sent as a
+  // SwapRequest (request_type "Gift") that the recipient must accept from
+  // their incoming-requests list, so they stay in control of their own shift.
+  // Modeled on the existing SwapRequest entity (no schema change): the gifted
+  // shift sits in shift_ids and requesting_user_id is the giver — on accept,
+  // acceptGiftMutation moves that shift to the giver. Because requesting_user_id
+  // (giver) != the shift's original_user_id (recipient), normalizeShiftContext
+  // never treats this as the shift's active_request, so the shift keeps
+  // rendering normally until the recipient accepts.
   const giftShiftMutation = useMutation({
     mutationFn: async (shift) => {
-      return base44.entities.ShiftCoverage.create({
-        request_id: "GIFT",
-        shift_id: shift.id,
-        covering_user_id: authorizedPerson.serial_id,
-        cover_start_date: shift.start_date,
-        cover_end_date: shift.end_date || shift.start_date,
-        cover_start_time: shift.start_time,
-        cover_end_time: shift.end_time || shift.start_time,
-        status: "Approved",
+      // Don't stack two open gift offers on the same shift.
+      const existingGift = swapRequests.find(
+        (sr) =>
+          sr.request_type === "Gift" &&
+          sr.status === "Open" &&
+          sr.shift_ids?.includes(shift.id),
+      );
+      if (existingGift) {
+        throw new Error("כבר קיימת הצעת מתנה פתוחה למשמרת זו");
+      }
+      return base44.entities.SwapRequest.create({
+        shift_ids: [shift.id],
+        offered_shift_ids: [],
+        requesting_user_id: authorizedPerson.serial_id,
+        request_type: "Gift",
+        req_start_date: shift.start_date,
+        req_end_date: shift.end_date || shift.start_date,
+        req_start_time: shift.start_time || "09:00",
+        req_end_time: shift.end_time || shift.start_time || "09:00",
+        status: "Open",
       });
     },
     onSuccess: (_data, shift) => {
-      queryClient.invalidateQueries(["shifts"]);
-      queryClient.invalidateQueries(["coverages"]);
+      queryClient.invalidateQueries(["swap-requests"]);
       const recipientName =
         allUsers.find(
           (u) => Number(u.serial_id) === Number(shift.original_user_id),
@@ -974,7 +988,7 @@ export default function ShiftCalendar() {
         "המשתמש";
       // The WhatsApp option lives on the giver's success toast (per request),
       // as an optional action rather than an automatic redirect.
-      toast.success(`המשמרת של ${recipientName} עברה אליך — מתנה נשלחה! 🎁`, {
+      toast.success(`הצעת המתנה נשלחה ל${recipientName} 🎁 — ממתינה לאישור`, {
         duration: 10000,
         action: {
           label: "שליחה בוואטסאפ",
@@ -998,6 +1012,52 @@ export default function ShiftCalendar() {
     onError: (error) => {
       console.error("❌ [ShiftCalendar] Gift shift failed:", error);
       toast.error(`שליחת המתנה נכשלה: ${error?.message || "שגיאה לא ידועה"}`);
+    },
+  });
+
+  // Recipient accepts a gift offer: the gifted shift(s) (shift_ids) move to the
+  // giver (requesting_user_id), the request closes, and any other open request
+  // still referencing those shifts is cancelled as no longer valid. Mirrors
+  // acceptHeadToHeadRequestMutation, but one-directional (nothing goes back).
+  const acceptGiftMutation = useMutation({
+    mutationFn: async (request) => {
+      const giftedShiftIds = request.shift_ids || [];
+      if (giftedShiftIds.length === 0) return;
+
+      await Promise.all(
+        giftedShiftIds.map((id) =>
+          base44.entities.Shift.update(id, {
+            original_user_id: request.requesting_user_id,
+            status: "Active",
+          }),
+        ),
+      );
+
+      await base44.entities.SwapRequest.update(request.id, {
+        status: "Closed",
+      });
+
+      const staleSiblings = swapRequests.filter(
+        (sr) =>
+          sr.id !== request.id &&
+          ["Open", "Partially_Covered"].includes(sr.status) &&
+          (sr.shift_ids?.some((id) => giftedShiftIds.includes(id)) ||
+            sr.offered_shift_ids?.some((id) => giftedShiftIds.includes(id))),
+      );
+      await Promise.all(
+        staleSiblings.map((sr) =>
+          base44.entities.SwapRequest.update(sr.id, { status: "Cancelled" }),
+        ),
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries(["shifts"]);
+      queryClient.invalidateQueries(["swap-requests"]);
+      toast.success("המתנה התקבלה — אין צורך להגיע למשמרת 🎁");
+    },
+    onError: (error) => {
+      console.error("❌ [ShiftCalendar] Accept gift failed:", error);
+      toast.error(`קבלת המתנה נכשלה: ${error?.message || "שגיאה לא ידועה"}`);
     },
   });
 
@@ -1842,6 +1902,7 @@ export default function ShiftCalendar() {
           }
           acceptGeneralRequestMutation.mutate(item);
         }}
+        onAcceptGift={(item) => acceptGiftMutation.mutate(item)}
         onStartCounterOffer={(item) => handleStartCounterOffer(item)}
         actionsDisabled={isViewOnly}
       />
