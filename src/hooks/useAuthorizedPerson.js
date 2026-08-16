@@ -49,8 +49,8 @@ export const DEFAULT_THEME_PALETTE = {
     swapRequest: "#ef4444",
     partialGap: "#eab308",
     approvedSwap: "#22c55e",
-    // Shift assigned to someone who is NOT the active member of a group. Not
-    // shown in the calendar legend, but editable here.
+    // Shift assigned to someone who is NOT the active member of a group.
+    // Applied to the cell and shown in the calendar legend for managers/admins.
     inactiveGroupShift: "#f97316",
   },
   buttons: {
