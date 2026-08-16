@@ -33,20 +33,41 @@ export default function CalendarGrid({
     queryFn: () => base44.entities.AuthorizedPerson.list(),
   });
 
+  // Group definitions (ShiftSegment): each row that is `active` names the one
+  // active member of a group by email. Distribution only ever assigns shifts to
+  // these active members, so a shift owned by anyone NOT in this set is flagged
+  // (rendered orange in ShiftCell) to surface an out-of-policy assignment.
+  const { data: shiftSegments = [] } = useQuery({
+    queryKey: ['shift-segments'],
+    queryFn: () => base44.entities.ShiftSegment.list(),
+  });
+
+  const activeMemberEmails = React.useMemo(() => {
+    const set = new Set();
+    shiftSegments.forEach((seg) => {
+      if (seg.active && seg.username) set.add(seg.username);
+    });
+    return set;
+  }, [shiftSegments]);
+
   // --- 2. Helper: Enrich Shift Data ---
   // מחבר בין המשמרת לבין פרטי המשתמש (שם, תפקיד)
   const getEnrichedShift = (shift) => {
     if (!shift) return null;
-    
+
     const originalUser = authorizedPeople.find(u => u.serial_id === shift.original_user_id);
-    
+
     return {
       ...shift,
       user_name: originalUser ? originalUser.full_name : 'לא משובץ',
       department: originalUser ? originalUser.department : '',
-      // Role name can be fetched if we had a RoleDefinition table, 
+      // Role name can be fetched if we had a RoleDefinition table,
       // but for now we assume original_user_id represents the "role/slot" owner.
-      role_name: originalUser ? originalUser.full_name : 'פנוי' 
+      role_name: originalUser ? originalUser.full_name : 'פנוי',
+      // True when this shift's assigned owner is NOT the active member of any
+      // group — an assignment that shouldn't normally happen via distribution.
+      assignedToInactiveMember:
+        !!originalUser && !activeMemberEmails.has(originalUser.email),
     };
   };
 
@@ -108,6 +129,10 @@ export default function CalendarGrid({
         <div className="flex items-center gap-2">
           <div className="w-4 h-4 rounded bg-gradient-to-br from-[#FFFDE7] to-[#FFF9C4] border border-[#FDD835]" />
           <span className="text-gray-600">כיסוי חלקי - פער</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-4 h-4 rounded bg-orange-50 border border-orange-400" />
+          <span className="text-gray-600">משובץ למי שאינו פעיל בקבוצה</span>
         </div>
         <div className="flex items-center gap-2">
           <div className="w-4 h-4 rounded bg-purple-100 border border-purple-300" />
