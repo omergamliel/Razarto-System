@@ -90,8 +90,9 @@ export default function ShiftCell({
     // Assigned to someone who is NOT the active member of a group — an
     // out-of-policy assignment (distribution only gives shifts to active
     // members). Colored via the admin-configurable inactiveGroupColor (applied
-    // inline below), ahead of the normal "mine"/regular colors.
-    if (shift.assignedToInactiveMember) {
+    // inline below), ahead of the normal "mine"/regular colors. Managers/admins
+    // only — regular users fall through to the usual "mine"/regular styling.
+    if (isAdmin && shift.assignedToInactiveMember) {
       return { inactive: true, icon: AlertCircle };
     }
 
