@@ -3,6 +3,15 @@ import { format, isToday, isSameMonth, startOfDay } from "date-fns";
 import { motion } from "framer-motion";
 import { Clock, CheckCircle2, AlertCircle, ArrowLeftRight } from "lucide-react";
 
+// #rrggbb -> rgba() with the given alpha, for a light tint of the configurable
+// "assigned to inactive member" color (used as the cell background).
+const hexToRgba = (hex, alpha) => {
+  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex || "");
+  if (!m) return hex;
+  const [r, g, b] = [m[1], m[2], m[3]].map((h) => parseInt(h, 16));
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+};
+
 export default function ShiftCell({
   date,
   shift,
@@ -13,6 +22,7 @@ export default function ShiftCell({
   isAdmin = false,
   holidayName,
   switchFlow = null,
+  inactiveGroupColor = "#f97316",
 }) {
   const handleClick = () => {
     onClick(date, shift);
@@ -79,14 +89,10 @@ export default function ShiftCell({
 
     // Assigned to someone who is NOT the active member of a group — an
     // out-of-policy assignment (distribution only gives shifts to active
-    // members). Flag it orange, ahead of the normal "mine"/regular colors.
+    // members). Colored via the admin-configurable inactiveGroupColor (applied
+    // inline below), ahead of the normal "mine"/regular colors.
     if (shift.assignedToInactiveMember) {
-      return {
-        bg: "bg-orange-50",
-        border: "border-orange-400",
-        badge: "bg-orange-500",
-        icon: AlertCircle,
-      };
+      return { inactive: true, icon: AlertCircle };
     }
 
     if (shift.isMine) {
@@ -107,10 +113,20 @@ export default function ShiftCell({
   };
 
   const styles = getStatusStyles();
+  const isInactiveStyle = !!styles.inactive && !isSwitchSelected;
   const nameTextClass = isSwitchSelected ? "text-white" : "text-gray-800";
   const bgBorderClass = isSwitchSelected
     ? "bg-blue-600 border-2 border-blue-700"
-    : `${styles.bg} ${styles.border ? `border-2 ${styles.border}` : "border border-gray-100"}`;
+    : isInactiveStyle
+      ? "border-2"
+      : `${styles.bg} ${styles.border ? `border-2 ${styles.border}` : "border border-gray-100"}`;
+  // Inline colors for the configurable "assigned to inactive member" state.
+  const inactiveInlineStyle = isInactiveStyle
+    ? {
+        backgroundColor: hexToRgba(inactiveGroupColor, 0.12),
+        borderColor: inactiveGroupColor,
+      }
+    : undefined;
 
   const nameLines = React.useMemo(() => {
     if (!shift) return [];
@@ -139,6 +155,7 @@ export default function ShiftCell({
       whileHover={{ scale: 1.02, y: -2 }}
       whileTap={{ scale: 0.98 }}
       onClick={handleClick}
+      style={inactiveInlineStyle}
       className={`
         relative cursor-pointer rounded-lg md:rounded-xl transition-all duration-200
         min-h-[85px] md:min-h-[110px] p-1 md:p-3
