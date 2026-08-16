@@ -458,6 +458,20 @@ function testShiftActionFlags() {
   assert(partialReq.canOfferCover, "an active partial request can be covered");
   assert(!partialReq.canHeadToHead, "head-to-head is not allowed against a partial request");
 
+  // A head-to-head request aimed at one specific person: an unrelated viewer
+  // must NOT be offered to help (it would route them into a request only the
+  // target can act on). Directedness never suppresses the partial path.
+  const directedFull = flags({
+    hasAnyRequest: true, hasActiveRequest: true, isFullRequest: true,
+    isWhiteShift: false, isDirectedRequest: true,
+  });
+  assert(!directedFull.canOfferCover, "a directed head-to-head request can't be helped by an unrelated viewer");
+  const directedPartial = flags({
+    hasAnyRequest: true, hasActiveRequest: true, isPartialRequest: true,
+    isWhiteShift: false, isPartialLike: true, isDirectedRequest: true,
+  });
+  assert(directedPartial.canOfferCover, "a partial request stays coverable even if flagged directed");
+
   // A helper who took a full-swap takeover can back out; a helper on a partial
   // pick cannot self-cancel (only the owner unwinds a partial).
   const helperFull = flags({ hasMyCoverageEntry: true, isPartialLike: false });
