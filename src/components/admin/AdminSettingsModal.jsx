@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
 import { distributeShifts } from "../calendar/shiftDistributionAlgorithm";
 import { useHolidays } from "../calendar/useHolidays";
@@ -259,6 +259,19 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     );
     return map;
   }, [authorizedPeople]);
+
+  // Whether a person is the *active* member of their group — i.e. their group's
+  // ShiftSegment row is marked active and its active-member email is theirs.
+  // Only the active member of each group is assigned shifts by distribution, so
+  // the users tab highlights their symbol to make that visible at a glance.
+  const isActiveGroupMember = useCallback(
+    (person) => {
+      if (!person?.sign) return false;
+      const seg = activeSegmentBySymbol.get(person.sign);
+      return Boolean(seg?.active) && seg?.username === person.email;
+    },
+    [activeSegmentBySymbol],
+  );
 
   // Candidates for the "add members to group" dialog: everyone not already in
   // the open group, filtered by the dialog's search box.
@@ -1153,7 +1166,16 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                               {person.sign && (
                                 <>
                                   {" • "}
-                                  <span className="text-gray-500 font-mono">
+                                  <span
+                                    className={
+                                      isActiveGroupMember(person)
+                                        ? "inline-flex items-center gap-0.5 px-1 rounded bg-amber-100 text-amber-800 font-mono font-bold"
+                                        : "text-gray-500 font-mono"
+                                    }
+                                  >
+                                    {isActiveGroupMember(person) && (
+                                      <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
+                                    )}
                                     {person.sign}
                                   </span>
                                 </>
@@ -1200,9 +1222,19 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                             </span>
                           </div>
 
-                          {/* Sign */}
+                          {/* Sign — highlighted (amber + star) when this user is
+                              the active member of their group. */}
                           <div className="hidden md:block col-span-1">
-                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-bold border shadow-sm bg-gray-50 text-gray-700 border-gray-200 font-mono">
+                            <span
+                              className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-bold border shadow-sm font-mono ${
+                                isActiveGroupMember(person)
+                                  ? "bg-amber-100 text-amber-800 border-amber-300"
+                                  : "bg-gray-50 text-gray-700 border-gray-200"
+                              }`}
+                            >
+                              {isActiveGroupMember(person) && (
+                                <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
+                              )}
                               {person.sign || "—"}
                             </span>
                           </div>
