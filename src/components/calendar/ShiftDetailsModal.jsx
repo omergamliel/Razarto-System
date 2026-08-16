@@ -48,7 +48,7 @@ import {
 } from "./whatsappTemplates";
 import { useHolidays } from "./useHolidays";
 import { useOverlappingLabels } from "./useOverlappingLabels";
-import { deriveShiftActionFlags } from "@/lib/interactionRules";
+import { deriveShiftActionFlags } from "@/lib/utils";
 import LoadingSkeleton from "../LoadingSkeleton";
 
 export default function ShiftDetailsModal({
@@ -486,7 +486,7 @@ export default function ShiftDetailsModal({
   const canTakeShifts = (currentUser?.role || "RR") !== "None";
 
   // Which action buttons this shift shows — the single, unit-tested source of
-  // truth (src/lib/interactionRules.js, deriveShiftActionFlags). The
+  // truth (src/lib/utils.js, deriveShiftActionFlags). The
   // intermediates above (ownership, request/coverage state, past/today, role,
   // myCoverageEntry) fully determine it, so the rules stay pure and testable
   // without any backend.
