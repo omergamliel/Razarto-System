@@ -7,18 +7,16 @@ import { base44 } from '@/api/base44Client';
 
 export default function HallOfFameModal({ isOpen, onClose }) {
 
-  // The leaderboard is built from real history, joining three sources:
-  //  - ShiftCoverage: every time someone covered a shift (a "swap"/החלפה).
-  //    covering_user_id names the helper; a coverage that was cancelled
-  //    (status !== "Approved") never happened, so it's skipped.
-  //  - SwapRequest of type "Gift" that closed: the giver (requesting_user_id)
-  //    took a shift off someone with nothing in return (a "gift"/מתנה).
-  //  - AuthorizedPerson: resolves serial_id → full_name for display.
-  const { data: allCoverages = [], isLoading: coveragesLoading } = useQuery({
-    queryKey: ['all-coverages-hof'],
-    queryFn: () => base44.entities.ShiftCoverage.list(),
-    enabled: isOpen
-  });
+  // The leaderboard is built entirely from the SwapRequest entity, joined with
+  // AuthorizedPerson to resolve serial_id → full_name. Every request that
+  // actually went through (status "Closed"/"Completed") is credited to the
+  // person who made it (requesting_user_id), split into two counters:
+  //  - gifts (מתנות): request_type "Gift" — they took a shift off someone with
+  //    nothing in return.
+  //  - swaps (החלפות): every other realised request type (Full / Partial /
+  //    Head2Head / General).
+  // Open/partly-covered/cancelled requests haven't been realised, so they're
+  // not counted.
   const { data: allRequests = [], isLoading: requestsLoading } = useQuery({
     queryKey: ['all-swap-requests-hof'],
     queryFn: () => base44.entities.SwapRequest.list(),
@@ -29,10 +27,10 @@ export default function HallOfFameModal({ isOpen, onClose }) {
     queryFn: () => base44.entities.AuthorizedPerson.list(),
     enabled: isOpen
   });
-  const isLoading = coveragesLoading || requestsLoading || peopleLoading;
+  const isLoading = requestsLoading || peopleLoading;
 
-  // Aggregate per person: a swap counter (coverages) and a gift counter
-  // (closed gift offers they made), then rank by total contribution.
+  // Aggregate per person: a swap counter and a gift counter, then rank by
+  // total contribution.
   const topContributors = React.useMemo(() => {
     const stats = new Map(); // serial_id (number) → { name, swaps, gifts }
 
@@ -52,17 +50,10 @@ export default function HallOfFameModal({ isOpen, onClose }) {
       stats.get(key)[field] += 1;
     };
 
-    allCoverages.forEach((c) => {
-      // A coverage with no explicit status is treated as approved (legacy rows);
-      // anything explicitly not "Approved" (e.g. Cancelled) is not a real swap.
-      if (c.status && c.status !== 'Approved') return;
-      bump(c.covering_user_id, 'swaps');
-    });
-
     allRequests.forEach((r) => {
-      if (r.request_type !== 'Gift') return;
+      // Only requests that were actually carried out count towards the board.
       if (!['Closed', 'Completed'].includes(r.status)) return;
-      bump(r.requesting_user_id, 'gifts');
+      bump(r.requesting_user_id, r.request_type === 'Gift' ? 'gifts' : 'swaps');
     });
 
     return Array.from(stats.values())
@@ -75,7 +66,7 @@ export default function HallOfFameModal({ isOpen, onClose }) {
         rank: index + 1,
         avatar: index === 0 ? '🏆' : index === 1 ? '🥈' : '🥉'
       }));
-  }, [allCoverages, allRequests, allPeople]);
+  }, [allRequests, allPeople]);
 
   if (!isOpen) return null;
 
