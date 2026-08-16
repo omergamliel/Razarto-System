@@ -11,7 +11,7 @@ import {
   deriveRequestItemButtons,
   filterRequestsForSwapTab,
   filterPartialGapsForTab,
-} from "@/lib/interactionRules";
+} from "@/lib/utils";
 import { assert, assertEqual } from "./assert";
 
 // No backend I/O in this file — every test here is a plain function call
