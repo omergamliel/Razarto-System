@@ -13,6 +13,7 @@ import ShiftCell from './ShiftCell';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { useHolidays } from './useHolidays';
+import { useThemePalette } from '@/hooks/useAuthorizedPerson';
 
 const HEBREW_DAYS = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'];
 const HEBREW_DAYS_FULL = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
@@ -49,6 +50,12 @@ export default function CalendarGrid({
     });
     return set;
   }, [shiftSegments]);
+
+  // Admin-configurable color (תצוגה קלנדרית tab) for a shift assigned to a
+  // non-active group member. Shown in the legend and applied to the cell for
+  // managers/admins only.
+  const palette = useThemePalette();
+  const inactiveGroupColor = palette.calendar.inactiveGroupShift;
 
   // --- 2. Helper: Enrich Shift Data ---
   // מחבר בין המשמרת לבין פרטי המשתמש (שם, תפקיד)
@@ -131,13 +138,21 @@ export default function CalendarGrid({
           <span className="text-gray-600">כיסוי חלקי - פער</span>
         </div>
         <div className="flex items-center gap-2">
-          <div className="w-4 h-4 rounded bg-orange-50 border border-orange-400" />
-          <span className="text-gray-600">משובץ למי שאינו פעיל בקבוצה</span>
-        </div>
-        <div className="flex items-center gap-2">
           <div className="w-4 h-4 rounded bg-purple-100 border border-purple-300" />
           <span className="text-gray-600">חג / מועד</span>
         </div>
+        {isAdmin && (
+          <div className="flex items-center gap-2">
+            <div
+              className="w-4 h-4 rounded border"
+              style={{
+                backgroundColor: `${inactiveGroupColor}22`,
+                borderColor: inactiveGroupColor,
+              }}
+            />
+            <span className="text-gray-600">משובץ למי שאינו פעיל בקבוצה</span>
+          </div>
+        )}
       </div>
 
       {/* Day Headers */}
@@ -175,6 +190,7 @@ export default function CalendarGrid({
               currentUserEmail={currentUserEmail}
               isAdmin={isAdmin}
               switchFlow={switchFlow}
+              inactiveGroupColor={inactiveGroupColor}
             />
           </motion.div>
         ))}
