@@ -50,9 +50,7 @@ import SwitchFlowBand from "./SwitchFlowBand";
 // queries are gated on !demoMode) and without showing any real shift. The
 // tour's full-screen click-blocker (z 100000) sits above these overlays, so
 // none of their action buttons can actually fire — the walkthrough stays
-// strictly read-only. Serial ids sit far outside the real id range, and every
-// date is "today" so the gift / head-to-head "starts today" rules light up.
-const TOUR_TODAY = format(new Date(), "yyyy-MM-dd");
+// strictly read-only. Serial ids sit far outside the real id range.
 const TOUR_DEMO_ME = {
   serial_id: 900000,
   full_name: "דוד לוי",
@@ -60,66 +58,74 @@ const TOUR_DEMO_ME = {
   role: "RR",
   permissions: "User",
 };
-// A plain white shift owned by someone ELSE, starting today → ShiftDetailsModal
-// shows "ראש בראש" + "הצע לקחת את המשמרת במתנה".
-const TOUR_DEMO_OTHER_SHIFT = {
-  id: "tour-other",
-  original_user_id: 900001,
-  original_user_name: "שמואל כהן",
-  user_name: "שמואל כהן",
-  role: "כונן",
-  department: "א",
-  start_date: TOUR_TODAY,
-  end_date: TOUR_TODAY,
-  start_time: "09:00",
-  end_time: "17:00",
-  status: "assigned",
-};
-// A plain white shift owned by the demo user → ShiftDetailsModal shows "בקשת
-// החלפה מלאה או חלקית"; also feeds ShiftActionModal and SwapRequestModal.
-const TOUR_DEMO_OWN_SHIFT = {
-  id: "tour-own",
-  original_user_id: TOUR_DEMO_ME.serial_id,
-  original_user_name: TOUR_DEMO_ME.full_name,
-  user_name: TOUR_DEMO_ME.full_name,
-  role: "כונן",
-  department: "א",
-  start_date: TOUR_TODAY,
-  end_date: TOUR_TODAY,
-  start_time: "09:00",
-  end_time: "17:00",
-  status: "assigned",
-};
-// A shift with one already-approved coverage window → feeds AcceptSwapModal so
-// its coverage slider and "אשר כיסוי" button render against real-looking data.
-const TOUR_DEMO_PARTIAL_COVERAGES = [
-  {
-    id: "tour-cov-1",
-    covering_user_id: 900004,
-    covering_name: "נועה ביטון",
-    covering_user_name: "נועה ביטון",
-    cover_start_date: TOUR_TODAY,
-    cover_start_time: "09:00",
-    cover_end_date: TOUR_TODAY,
-    cover_end_time: "12:00",
-    status: "Approved",
-  },
-];
-const TOUR_DEMO_PARTIAL_SHIFT = {
-  id: "tour-partial",
-  original_user_id: 900002,
-  original_user_name: "יעל ישראלי",
-  user_name: "יעל ישראלי",
-  role: "כונן",
-  department: "ב",
-  start_date: TOUR_TODAY,
-  end_date: TOUR_TODAY,
-  start_time: "09:00",
-  end_time: "17:00",
-  status: "partial",
-  coverageType: "partial",
-  coverages: TOUR_DEMO_PARTIAL_COVERAGES,
-};
+
+// Build the walkthrough's fictional shifts fresh every time a demo modal opens,
+// dated to *today*. A date frozen once at module load goes stale the moment the
+// session crosses midnight (or the bundle is reused across days): the demo shift
+// then reads as "past" / "not today", which hides the date-gated buttons — "הצע
+// מתנה" needs isTodayShift, and ראש בראש / כיסוי need a non-past shift — so the
+// step's spotlight target never mounts and the tour skips it with no tooltip.
+// Recomputing per open keeps every date-gated button present.
+function buildTourDemoShifts() {
+  const today = format(new Date(), "yyyy-MM-dd");
+  const base = {
+    role: "כונן",
+    start_date: today,
+    end_date: today,
+    start_time: "09:00",
+    end_time: "17:00",
+  };
+  return {
+    // A plain white shift owned by someone ELSE, starting today →
+    // ShiftDetailsModal shows "ראש בראש" + "הצע לקחת את המשמרת במתנה".
+    otherShift: {
+      ...base,
+      id: "tour-other",
+      original_user_id: 900001,
+      original_user_name: "שמואל כהן",
+      user_name: "שמואל כהן",
+      department: "א",
+      status: "assigned",
+    },
+    // A plain white shift owned by the demo user → ShiftDetailsModal shows "בקשת
+    // החלפה מלאה או חלקית"; also feeds ShiftActionModal and SwapRequestModal.
+    ownShift: {
+      ...base,
+      id: "tour-own",
+      original_user_id: TOUR_DEMO_ME.serial_id,
+      original_user_name: TOUR_DEMO_ME.full_name,
+      user_name: TOUR_DEMO_ME.full_name,
+      department: "א",
+      status: "assigned",
+    },
+    // A shift with one already-approved coverage window → feeds AcceptSwapModal
+    // so its coverage slider and "אשר כיסוי" button render against real-looking
+    // data.
+    partialShift: {
+      ...base,
+      id: "tour-partial",
+      original_user_id: 900002,
+      original_user_name: "יעל ישראלי",
+      user_name: "יעל ישראלי",
+      department: "ב",
+      status: "partial",
+      coverageType: "partial",
+      coverages: [
+        {
+          id: "tour-cov-1",
+          covering_user_id: 900004,
+          covering_name: "נועה ביטון",
+          covering_user_name: "נועה ביטון",
+          cover_start_date: today,
+          cover_start_time: "09:00",
+          cover_end_date: today,
+          cover_end_time: "12:00",
+          status: "Approved",
+        },
+      ],
+    },
+  };
+}
 
 export default function ShiftCalendar() {
   const queryClient = useQueryClient();
@@ -251,6 +257,9 @@ export default function ShiftCalendar() {
       setShowAcceptSwapModal(false);
       setSwitchFlow(null);
       setTourDemo(!!demo);
+      // Rebuilt each event so the demo shifts are always dated to today (see
+      // buildTourDemoShifts) — keeps date-gated buttons like "הצע מתנה" present.
+      const demoShifts = buildTourDemoShifts();
       switch (open) {
         case "kpi":
           setKpiListType(kpiType || "swap_requests");
@@ -262,24 +271,24 @@ export default function ShiftCalendar() {
           setSwitchFlow({ step: "own", ownShiftIds: [], targetShiftIds: [] });
           break;
         case "details-other":
-          setSelectedShift(TOUR_DEMO_OTHER_SHIFT);
+          setSelectedShift(demoShifts.otherShift);
           setShowDetailsModal(true);
           break;
         case "details-own":
-          setSelectedShift(TOUR_DEMO_OWN_SHIFT);
+          setSelectedShift(demoShifts.ownShift);
           setShowDetailsModal(true);
           break;
         case "action":
-          setSelectedShift(TOUR_DEMO_OWN_SHIFT);
+          setSelectedShift(demoShifts.ownShift);
           setShowActionModal(true);
           break;
         case "request":
-          setSelectedShift(TOUR_DEMO_OWN_SHIFT);
+          setSelectedShift(demoShifts.ownShift);
           setSwapRequestInitialType("full");
           setShowSwapRequestModal(true);
           break;
         case "accept":
-          setSelectedShift(TOUR_DEMO_PARTIAL_SHIFT);
+          setSelectedShift(demoShifts.partialShift);
           setShowAcceptSwapModal(true);
           break;
         default:
