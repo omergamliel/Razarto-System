@@ -39,7 +39,7 @@ import {
   deriveRequestItemFlags,
   filterRequestsForSwapTab,
   filterPartialGapsForTab,
-} from "@/lib/interactionRules";
+} from "@/lib/utils";
 import LoadingSkeleton from "../LoadingSkeleton";
 import {
   buildSwapTemplate,
@@ -1016,7 +1016,7 @@ export default function KPIListModal({
     type === "my_shifts" ? "text-[#0b3a5e]/80" : "text-white/90";
   const isFutureShiftsView = type === "my_shifts";
   // Tab membership for each KPI list — the same unit-tested rules the tests
-  // exercise (src/lib/interactionRules.js). Gift visibility (mine/incoming/all)
+  // exercise (src/lib/utils.js). Gift visibility (mine/incoming/all)
   // lives entirely inside filterRequestsForSwapTab.
   const filteredItems = useMemo(() => {
     if (type === "swap_requests") {
@@ -1142,7 +1142,7 @@ export default function KPIListModal({
               <div className="space-y-3">
                 {displayedItems.map((item, idx) => {
                   // Per-row action flags — the single, unit-tested source of
-                  // truth (src/lib/interactionRules.js, deriveRequestItemFlags):
+                  // truth (src/lib/utils.js, deriveRequestItemFlags):
                   // who owns this row, whether it's addressed to me, and which
                   // cancel/accept actions apply, given the current KPI `type`.
                   const {
