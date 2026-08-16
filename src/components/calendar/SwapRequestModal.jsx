@@ -292,7 +292,7 @@ export default function SwapRequestModal({
                 <div className="relative bg-white px-4 text-sm font-medium text-gray-500">יש לבחור את סוג ההחלפה</div>
             </div>
 
-            <RadioGroup value={swapType} onValueChange={setSwapType} className="grid grid-cols-2 gap-4">
+            <RadioGroup data-tour="tour-request-type" value={swapType} onValueChange={setSwapType} className="grid grid-cols-2 gap-4">
                 <label className={`relative flex flex-col items-center justify-center p-4 rounded-2xl border-2 cursor-pointer transition-all h-28 ${swapType === 'full' ? 'border-[#EF5350] bg-red-50 text-[#EF5350]' : 'border-gray-200 hover:border-gray-300 text-gray-600'}`}>
                     <RadioGroupItem value="full" className="sr-only" />
                     <Clock className="w-6 h-6 mb-2" />
@@ -469,6 +469,7 @@ export default function SwapRequestModal({
           <div className="p-6 pt-0 border-t border-gray-50 mt-auto bg-white space-y-3">
             <div className="flex gap-3 mt-4">
                 <Button
+                   data-tour="tour-request-submit"
                    type="submit"
                    onClick={handleSubmit}
                    disabled={isSubmitting}
