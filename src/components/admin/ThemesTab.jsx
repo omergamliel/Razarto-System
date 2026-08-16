@@ -124,6 +124,7 @@ export default function ThemesTab() {
             { key: "swapRequest", label: "בקשה להחלפה" },
             { key: "partialGap", label: "כיסוי חלקי – פער" },
             { key: "approvedSwap", label: "החלפה אושרה" },
+            { key: "inactiveGroupShift", label: "משובץ למי שאינו פעיל בקבוצה" },
           ].map((item) => (
             <div
               key={item.key}
