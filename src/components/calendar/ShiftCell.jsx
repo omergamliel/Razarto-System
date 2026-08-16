@@ -1,7 +1,7 @@
-import React from 'react';
-import { format, isToday, isSameMonth, startOfDay } from 'date-fns';
-import { motion } from 'framer-motion';
-import { Clock, CheckCircle2, AlertCircle, ArrowLeftRight } from 'lucide-react';
+import React from "react";
+import { format, isToday, isSameMonth, startOfDay } from "date-fns";
+import { motion } from "framer-motion";
+import { Clock, CheckCircle2, AlertCircle, ArrowLeftRight } from "lucide-react";
 
 export default function ShiftCell({
   date,
@@ -12,9 +12,8 @@ export default function ShiftCell({
   currentUserEmail,
   isAdmin = false,
   holidayName,
-  switchFlow = null
+  switchFlow = null,
 }) {
-
   const handleClick = () => {
     onClick(date, shift);
   };
@@ -23,76 +22,102 @@ export default function ShiftCell({
   const today = isToday(date);
 
   const isPastDate = startOfDay(date) < startOfDay(new Date());
-    // "Active"/"regular" both mean a plain, unswapped shift (see HeadToHeadSelectorModal's isWhiteShift check).
-  const isPlainShiftStatus = !!shift && ['active', 'regular'].includes(String(shift.status || 'Active').toLowerCase());
-  const isSwitchEligible = !!switchFlow && isPlainShiftStatus && !isPastDate && 
-    (switchFlow.step === 'own' ? shift.isMine : !shift.isMine);
-  const switchSelectedIds = switchFlow?.step === 'own' ? switchFlow.ownShiftIds : switchFlow?.targetShiftIds;
-  const isSwitchSelected = isSwitchEligible && switchSelectedIds?.includes(shift.id);
+  // "Active"/"regular" both mean a plain, unswapped shift (see HeadToHeadSelectorModal's isWhiteShift check).
+  const isPlainShiftStatus =
+    !!shift &&
+    ["active", "regular"].includes(
+      String(shift.status || "Active").toLowerCase(),
+    );
+  const isSwitchEligible =
+    !!switchFlow &&
+    isPlainShiftStatus &&
+    !isPastDate &&
+    (switchFlow.step === "own" ? shift.isMine : !shift.isMine);
+  const switchSelectedIds =
+    switchFlow?.step === "own"
+      ? switchFlow.ownShiftIds
+      : switchFlow?.targetShiftIds;
+  const isSwitchSelected =
+    isSwitchEligible && switchSelectedIds?.includes(shift.id);
   const isSwitchDimmed = !!switchFlow && !!shift && !isSwitchEligible;
 
   const getStatusStyles = () => {
     if (!shift) return {};
 
-    const status = shift.status || 'regular';
+    const status = shift.status || "regular";
     const coverageType = shift.coverageType || shift.swap_type;
 
-    if (status === 'requested' || status === 'Swap_Requested') {
+    if (status === "requested" || status === "Swap_Requested") {
       return {
-        bg: 'bg-red-50',
-        border: 'border-red-300',
-        badge: 'bg-red-500',
-        icon: ArrowLeftRight
+        bg: "bg-red-50",
+        border: "border-red-300",
+        badge: "bg-red-500",
+        icon: ArrowLeftRight,
       };
     }
 
-    if (status === 'partial' || (status === 'requested' && coverageType === 'partial')) {
+    if (
+      status === "partial" ||
+      (status === "requested" && coverageType === "partial")
+    ) {
       return {
-        bg: 'bg-yellow-50',
-        border: 'border-yellow-300',
-        badge: 'bg-yellow-500',
-        icon: AlertCircle
+        bg: "bg-yellow-50",
+        border: "border-yellow-300",
+        badge: "bg-yellow-500",
+        icon: AlertCircle,
       };
     }
 
-    if (status === 'covered') {
+    if (status === "covered") {
       return {
-        bg: 'bg-green-50',
-        border: 'border-green-300',
-        badge: 'bg-green-500',
-        icon: CheckCircle2
+        bg: "bg-green-50",
+        border: "border-green-300",
+        badge: "bg-green-500",
+        icon: CheckCircle2,
+      };
+    }
+
+    // Assigned to someone who is NOT the active member of a group — an
+    // out-of-policy assignment (distribution only gives shifts to active
+    // members). Flag it orange, ahead of the normal "mine"/regular colors.
+    if (shift.assignedToInactiveMember) {
+      return {
+        bg: "bg-orange-50",
+        border: "border-orange-400",
+        badge: "bg-orange-500",
+        icon: AlertCircle,
       };
     }
 
     if (shift.isMine) {
       return {
-        bg: 'bg-blue-50',
-        border: 'border-blue-300',
-        badge: 'bg-blue-500',
-        icon: Clock
+        bg: "bg-blue-50",
+        border: "border-blue-300",
+        badge: "bg-blue-500",
+        icon: Clock,
       };
     }
 
     return {
-      bg: 'bg-white',
-      border: 'border-gray-200',
-      badge: 'bg-gray-400',
-      icon: Clock
+      bg: "bg-white",
+      border: "border-gray-200",
+      badge: "bg-gray-400",
+      icon: Clock,
     };
   };
 
   const styles = getStatusStyles();
-  const nameTextClass = isSwitchSelected ? 'text-white' : 'text-gray-800';
+  const nameTextClass = isSwitchSelected ? "text-white" : "text-gray-800";
   const bgBorderClass = isSwitchSelected
-    ? 'bg-blue-600 border-2 border-blue-700'
-    : `${styles.bg} ${styles.border ? `border-2 ${styles.border}` : 'border border-gray-100'}`;
+    ? "bg-blue-600 border-2 border-blue-700"
+    : `${styles.bg} ${styles.border ? `border-2 ${styles.border}` : "border border-gray-100"}`;
 
   const nameLines = React.useMemo(() => {
     if (!shift) return [];
-    const fallbackOwner = shift.user_name || shift.role || 'לא ידוע';
+    const fallbackOwner = shift.user_name || shift.role || "לא ידוע";
     const coverageNames = (shift.coverages || [])
-      .filter(cov => cov.status !== 'Cancelled')
-      .map(cov => cov.covering_name || cov.covering_user_name)
+      .filter((cov) => cov.status !== "Cancelled")
+      .map((cov) => cov.covering_name || cov.covering_user_name)
       .filter(Boolean);
     const participants = shift.coverage_participants?.length
       ? shift.coverage_participants
@@ -118,20 +143,21 @@ export default function ShiftCell({
         relative cursor-pointer rounded-lg md:rounded-xl transition-all duration-200
         min-h-[85px] md:min-h-[110px] p-1 md:p-3
         ${bgBorderClass}
-        ${!isCurrentMonth ? 'opacity-40' : ''}
-        ${today ? 'ring-2 ring-[#64B5F6] ring-offset-2' : ''}
-        ${isSwitchDimmed ? 'opacity-30 grayscale pointer-events-none' : ''}
+        ${!isCurrentMonth ? "opacity-40" : ""}
+        ${today ? "ring-2 ring-[#64B5F6] ring-offset-2" : ""}
+        ${isSwitchDimmed ? "opacity-30 grayscale pointer-events-none" : ""}
         hover:shadow-lg
         group
       `}
     >
-
-      <div className={`
+      <div
+        className={`
         absolute top-1 right-1 md:top-2 md:right-2 w-6 h-6 md:w-8 md:h-8 rounded-lg flex items-center justify-center
-        ${today ? 'bg-[#64B5F6] text-white' : holidayName ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-600'}
+        ${today ? "bg-[#64B5F6] text-white" : holidayName ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-600"}
         font-semibold text-xs md:text-sm
-      `}>
-        {format(date, 'd')}
+      `}
+      >
+        {format(date, "d")}
       </div>
 
       {holidayName && (
@@ -154,17 +180,25 @@ export default function ShiftCell({
           <div className="space-y-0.5">
             <div className="md:hidden space-y-0.5">
               {mobileNames.map((name) => (
-                <p key={name} className={`text-center font-normal text-[10px] leading-tight break-words px-0.5 ${nameTextClass}`}>
+                <p
+                  key={name}
+                  className={`text-center font-normal text-[10px] leading-tight break-words px-0.5 ${nameTextClass}`}
+                >
                   {name}
                 </p>
               ))}
               {hiddenCount > 0 && (
-                <p className={`text-center text-[9px] font-medium ${isSwitchSelected ? 'text-blue-100' : 'text-gray-500'}`}>{`+${hiddenCount} נוספים`}</p>
+                <p
+                  className={`text-center text-[9px] font-medium ${isSwitchSelected ? "text-blue-100" : "text-gray-500"}`}
+                >{`+${hiddenCount} נוספים`}</p>
               )}
             </div>
             <div className="hidden md:block space-y-0.5">
               {nameLines.map((name) => (
-                <p key={name} className={`text-center font-semibold text-base break-words px-0.5 ${nameTextClass}`}>
+                <p
+                  key={name}
+                  className={`text-center font-semibold text-base break-words px-0.5 ${nameTextClass}`}
+                >
                   {name}
                 </p>
               ))}
