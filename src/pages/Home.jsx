@@ -39,7 +39,10 @@ const TOUR_NOTIF_EVENT = "razarto:tour-notif"; // → NotificationSidebar (panel
 
 // Optional per-step UI drivers, dispatched when a step is entered so the tour
 // can spotlight a real menu:
-//   control: { open: "kpi"|"switchflow"|null, kpiType?, kpiTab?, demo? }  (ShiftCalendar)
+//   control: { open, kpiType?, kpiTab?, demo? }  (ShiftCalendar) where `open` is
+//     "kpi" | "switchflow" | "action" | "request" | "details-other" |
+//     "details-own" | "accept" | null. The last four open a real creation modal
+//     fed with read-only demo data so the tour can spotlight its actual buttons.
 //   notif:   true                                                          (open the notifications panel)
 // A step without either implicitly closes every tour-opened surface.
 //
@@ -79,7 +82,47 @@ const TOUR_STEPS = [
     selector: "calendar-grid",
     process: "יצירת בקשה",
     title: "חלון הפעולות של משמרת",
-    body: "בחלון שנפתח בלחיצה על משמרת יש כפתור אדום אחד — 'בקשת החלפה מלאה/חלקית'. הוא נקודת הכניסה לכל התהליכים: החלפה ראש-בראש, בקשה כללית, כיסוי חלקי או מתנה. 'ביטול' סוגר בלי לשלוח.",
+    body: "בחלון שנפתח בלחיצה על משמרת יש כפתור אדום אחד — 'בקשת החלפה מלאה/חלקית'. הוא נקודת הכניסה לכל התהליכים: החלפה ראש-בראש, בקשה כללית, כיסוי חלקי או מתנה. 'ביטול' סוגר בלי לשלוח. נפתח אותו עכשיו ונעבור על כל כפתור.",
+  },
+  {
+    selector: "tour-action-request",
+    process: "יצירת בקשה",
+    title: "הכפתור שמתחיל הכל",
+    body: "זהו הכפתור האדום שבתוך חלון הפעולות, מודגש עכשיו. לחיצה עליו פותחת את טופס בקשת ההחלפה. (הצגה בלבד — הכפתור מודגם, לא מופעל.)",
+    control: { open: "action", demo: true },
+    radius: 14,
+  },
+  {
+    selector: "tour-request-type",
+    process: "יצירת בקשה",
+    title: "בחירת סוג ההחלפה",
+    body: "בטופס שנפתח בוחרים תחילה את הסוג: 'משמרת מלאה' — העברת כל שעות המשמרת, או 'החלפה חלקית' — רק חלק מהשעות. בבחירת 'חלקית' ייפתח בורר שעות לסימון החלון המבוקש.",
+    control: { open: "request", demo: true },
+    radius: 16,
+  },
+  {
+    selector: "tour-request-submit",
+    process: "יצירת בקשה",
+    title: "שליחת הבקשה",
+    body: "כפתור 'בקש החלפה' שולח אותה — הבקשה נפתחת לכולם כבקשה כללית ומופיעה ברשימת 'כל הבקשות', והבעלים מקבל תזכורת שהיא ממתינה. 'ביטול' סוגר בלי לשלוח. (הצגה בלבד.)",
+    control: { open: "request", demo: true },
+    radius: 14,
+  },
+  {
+    selector: "tour-h2h",
+    process: "ראש בראש",
+    title: "הצעת החלפה ישירה",
+    body: "כשפותחים משמרת של אדם אחר, הכפתור 'ראש בראש' (מודגש עכשיו) מציע לו החלפה ישירה — משמרת שלכם בתמורה לשלו. ההצעה נשלחת אליו ומחכה לאישורו תחת 'בקשות אליי'. (הצגה בלבד.)",
+    control: { open: "details-other", demo: true },
+    radius: 14,
+  },
+  {
+    selector: "tour-gift",
+    process: "מתנה",
+    title: "הצעת מתנה",
+    body: "באותה משמרת של אדם אחר שמתחילה היום, 'הצע לקחת את המשמרת במתנה' מציע לקחת אותה ממנו — בלי תמורה. הבעלים מקבל התראה ורק צריך לאשר כדי להשתחרר מהמשמרת. (הצגה בלבד.)",
+    control: { open: "details-other", demo: true },
+    radius: 14,
   },
   {
     selector: "kpi-band",
@@ -167,9 +210,17 @@ const TOUR_STEPS = [
     selector: "kpi-modal",
     process: "כיסוי חלקי",
     title: "כל הפערים — הצעת כיסוי",
-    body: "פערים שאפשר לכסות בהם שעות בודדות. הפס הצבעוני בכל שורה מראה מה כבר מכוסה (בשמות המכסים) ומה עדיין פנוי. הכפתור 'אחליף' פותח את מסך בחירת השעות לכיסוי. (דוגמאות להמחשה.)",
+    body: "פערים שאפשר לכסות בהם שעות בודדות. הפס הצבעוני בכל שורה מראה מה כבר מכוסה (בשמות המכסים) ומה עדיין פנוי. הכפתור 'אחליף' פותח את מסך בחירת השעות לכיסוי — נפתח אותו עכשיו. (דוגמאות להמחשה.)",
     control: { open: "kpi", kpiType: "partial_gaps", kpiTab: "all", demo: true },
     radius: 20,
+  },
+  {
+    selector: "tour-cover-confirm",
+    process: "כיסוי חלקי",
+    title: "אישור הכיסוי",
+    body: "מסך הכיסוי שנפתח בלחיצה על 'אחליף': בבורר מסמנים את חלון השעות שתכסו (מה שכבר מכוסה מוצג בפס), ולוחצים 'אשר כיסוי' כדי להתחייב לשעות שבחרתם. הבעלים יקבל הודעה שהפער כוסה. (הצגה בלבד.)",
+    control: { open: "accept", demo: true },
+    radius: 14,
   },
   {
     selector: "kpi-modal",
