@@ -461,6 +461,17 @@ export default function ShiftDetailsModal({
     ) ||
     (hasAnyRequest && !resolvedActiveRequest?.requesting_user_id && isOwnShift);
   const isWhiteShift = !hasAnyRequest;
+  // A head-to-head request is aimed at ONE specific person: it offers them
+  // particular shifts in return (offered_shift_ids), so only that target can
+  // act on it. An unrelated viewer must not be shown "אני רוצה לעזור!" — that
+  // would route them into a request they can't help with. Identified by the
+  // Head2Head type or, defensively, any non-empty offered-shifts list.
+  const offeredShiftIds =
+    resolvedActiveRequest?.offered_shift_ids ||
+    resolvedActiveRequest?.offered_shifts;
+  const isDirectedRequest =
+    resolvedActiveRequest?.request_type === "Head2Head" ||
+    (Array.isArray(offeredShiftIds) && offeredShiftIds.length > 0);
   const isCoveredOrClosed =
     isFullyCovered ||
     requestStatus === "Closed" ||
@@ -518,6 +529,7 @@ export default function ShiftDetailsModal({
     isTodayShift,
     canTakeShifts,
     hasMyCoverageEntry: Boolean(myCoverageEntry),
+    isDirectedRequest,
   });
 
   const handleGiftConfirm = () => {
