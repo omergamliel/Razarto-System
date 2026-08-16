@@ -48,6 +48,11 @@ export function deriveShiftActionFlags({
   // Boolean(myCoverageEntry): the viewer has an approved coverage window on
   // this shift (they joined a partial swap as a helper).
   hasMyCoverageEntry,
+  // A head-to-head request the owner aimed at ONE specific other person (it
+  // offers that person specific shifts in return). Only that target can act on
+  // it, so an unrelated viewer must not be offered to help. Partial requests
+  // are never directed, so this never suppresses the partial-coverage path.
+  isDirectedRequest,
 }) {
   // A helper who committed to a partial gap can no longer self-cancel (only the
   // owner undoes the whole request); backing out of a full-swap takeover is ok.
@@ -56,7 +61,15 @@ export function deriveShiftActionFlags({
   // The owner can always undo their own request, even once fully covered —
   // this reclaims the shift, so it must NOT be blocked by isCoveredOrClosed.
   const canCancelOwnSwap = isOwnShift && hasAnyRequest;
-  const canOfferCover = hasActiveRequest && !isOwnShift && !isCoveredOrClosed;
+  // Offer-to-help is available on an active request that isn't mine and isn't
+  // already covered — but NOT on a head-to-head aimed at one specific person
+  // (an unrelated viewer can't help with that). A partial request is always
+  // open to helpers, so it stays coverable even if flagged directed.
+  const canOfferCover =
+    hasActiveRequest &&
+    !isOwnShift &&
+    !isCoveredOrClosed &&
+    (!isDirectedRequest || isPartialRequest);
   const canHeadToHead =
     !isOwnShift &&
     !isCoveredOrClosed &&
