@@ -1424,14 +1424,55 @@ export default function KPIListModal({
                               </div>
                             )}
 
-                          {type === "approved" && item.original_shift && (
-                            <div className="mt-2 space-y-1.5">
-                              <SwapTransition
-                                item={item}
-                                authorizedUsers={authorizedUsers}
-                              />
-                            </div>
-                          )}
+                          {/* A gift is a one-directional transfer (the shift
+                              moves to the taker, nothing comes back), so it gets
+                              its own card instead of the before→after swap arrows
+                              — which would read nonsensically as "X → X". */}
+                          {type === "approved" &&
+                            item.request_type === "Gift" && (
+                              <div className="mt-2">
+                                <div className="rounded-xl border border-pink-200 bg-gradient-to-br from-pink-50 to-rose-50 p-3">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    <Gift className="w-4 h-4 text-pink-600 shrink-0" />
+                                    <span className="text-sm font-bold text-pink-700">
+                                      משמרת שהתקבלה במתנה
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <span className="text-sm font-semibold px-2.5 py-1 rounded-lg border text-pink-800 bg-white border-pink-200">
+                                      {item.user_name}
+                                    </span>
+                                    <span className="text-xs text-gray-500">
+                                      לקח/ה את המשמרת ללא תמורה
+                                    </span>
+                                  </div>
+                                  {startDate && (
+                                    <div
+                                      className="mt-2 flex items-center gap-1 text-xs text-gray-500"
+                                      dir="ltr"
+                                    >
+                                      <Calendar className="w-3.5 h-3.5" />
+                                      {format(new Date(startDate), "dd/MM/yyyy")}{" "}
+                                      · {startTime}
+                                      {endTime && endTime !== startTime
+                                        ? `-${endTime}`
+                                        : ""}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+
+                          {type === "approved" &&
+                            item.request_type !== "Gift" &&
+                            item.original_shift && (
+                              <div className="mt-2 space-y-1.5">
+                                <SwapTransition
+                                  item={item}
+                                  authorizedUsers={authorizedUsers}
+                                />
+                              </div>
+                            )}
                         </div>
 
                         <div className="flex flex-col gap-2 flex-shrink-0 items-end">
