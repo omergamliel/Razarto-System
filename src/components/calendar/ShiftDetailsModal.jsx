@@ -67,6 +67,11 @@ export default function ShiftDetailsModal({
   onGoToRequest,
   currentUser,
   isAdmin,
+  // Guided walkthrough: render a passed-in demo shift as a clean "white" shift
+  // (its real per-shift queries are disabled so nothing is fetched) purely so
+  // the tour can spotlight the action buttons. Read-only; the tour's click
+  // blocker sits above this modal so none of the buttons can actually fire.
+  demoMode = false,
 }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showCancelRequestConfirm, setShowCancelRequestConfirm] =
@@ -99,7 +104,7 @@ export default function ShiftDetailsModal({
       );
       return match || null;
     },
-    enabled: !!shift?.id && isOpen,
+    enabled: !!shift?.id && isOpen && !demoMode,
   });
 
   // --- Fetch Coverages (by shift to respect coverage ownership) ---
@@ -109,7 +114,7 @@ export default function ShiftDetailsModal({
       if (!shift?.id) return [];
       return await base44.entities.ShiftCoverage.filter({ shift_id: shift.id });
     },
-    enabled: !!shift?.id && isOpen,
+    enabled: !!shift?.id && isOpen && !demoMode,
   });
 
   const { data: authorizedUsers = [] } = useQuery({
@@ -1084,6 +1089,7 @@ export default function ShiftDetailsModal({
 
                   {canHeadToHead && (
                     <Button
+                      data-tour="tour-h2h"
                       onClick={() => {
                         onClose();
                         onHeadToHead?.(shift);
@@ -1101,6 +1107,7 @@ export default function ShiftDetailsModal({
 
                   {canGift && (
                     <Button
+                      data-tour="tour-gift"
                       onClick={() => setShowGiftConfirm(true)}
                       className="min-w-[160px] flex-1 sm:flex-none h-12 bg-[#ec4899] hover:bg-[#db2777] focus-visible:ring focus-visible:ring-offset-2 focus-visible:ring-[#be185d] text-white rounded-xl shadow-md flex items-center justify-center gap-2"
                     >
