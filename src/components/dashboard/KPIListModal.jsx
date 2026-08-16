@@ -34,6 +34,12 @@ import { format, differenceInMinutes, addDays, parseISO } from "date-fns";
 import { he } from "date-fns/locale";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import {
+  isOpenStatus,
+  deriveRequestItemFlags,
+  filterRequestsForSwapTab,
+  filterPartialGapsForTab,
+} from "@/lib/interactionRules";
 import LoadingSkeleton from "../LoadingSkeleton";
 import {
   buildSwapTemplate,
@@ -134,8 +140,6 @@ const getDisplayDay = (dateStr) => {
   if (isNaN(parsed)) return "";
   return format(parsed, "EEEE", { locale: he });
 };
-
-const isOpenStatus = (status) => ["Open", "Partially_Covered"].includes(status);
 
 // Same coverage-slider used in the history view (SwapTransition), reused here
 // so an in-progress partial gap shows the same visual breakdown before it's
@@ -1011,54 +1015,18 @@ export default function KPIListModal({
   const secondaryHeaderText =
     type === "my_shifts" ? "text-[#0b3a5e]/80" : "text-white/90";
   const isFutureShiftsView = type === "my_shifts";
+  // Tab membership for each KPI list — the same unit-tested rules the tests
+  // exercise (src/lib/interactionRules.js). Gift visibility (mine/incoming/all)
+  // lives entirely inside filterRequestsForSwapTab.
   const filteredItems = useMemo(() => {
     if (type === "swap_requests") {
-      if (swapTab === "mine")
-        return sortedData.filter(
-          (item) => item.requesting_user_id === currentUser?.serial_id,
-        );
-      if (swapTab === "incoming") {
-        // Requests addressed to me specifically: a Head2Head where one of the
-        // offered/target shifts is mine, or a Gift offer to take one of my
-        // shifts (its gifted shift's owner is me).
-        return sortedData.filter(
-          (item) =>
-            item.requesting_user_id !== currentUser?.serial_id &&
-            (item.offered_shifts?.some(
-              (s) => s.original_user_id === currentUser?.serial_id,
-            ) ||
-              (item.request_type === "Gift" &&
-                item.original_user_id === currentUser?.serial_id)),
-        );
-      }
-      // "all" — hide targeted Gift offers between OTHER people (they're
-      // private to the giver and recipient), but still surface gifts I'm part
-      // of (as giver or as the shift's owner/recipient) so a gift I just sent
-      // actually shows up in the requests menu.
-      return sortedData.filter(
-        (item) =>
-          item.request_type !== "Gift" ||
-          item.requesting_user_id === currentUser?.serial_id ||
-          Number(item.original_user_id) === Number(currentUser?.serial_id),
-      );
+      return filterRequestsForSwapTab(sortedData, { swapTab, currentUser });
     }
-
-    if (type === "partial_gaps" && partialGapsTab === "mine") {
-      // Shifts the user owns — covering someone else's gap belongs under the
-      // separate "covering" tab instead.
-      return sortedData.filter(
-        (item) => item.original_user_id === currentUser?.serial_id,
-      );
+    if (type === "partial_gaps") {
+      return filterPartialGapsForTab(sortedData, { partialGapsTab, currentUser });
     }
-
-    if (type === "partial_gaps" && partialGapsTab === "covering") {
-      return sortedData.filter((item) =>
-        item.covering_user_ids?.includes(currentUser?.serial_id),
-      );
-    }
-
     return sortedData;
-  }, [currentUser?.serial_id, partialGapsTab, sortedData, swapTab, type]);
+  }, [currentUser, partialGapsTab, sortedData, swapTab, type]);
 
   const displayedItems = filteredItems.slice(0, visibleCount);
   const hasMore = filteredItems.length > visibleCount;
@@ -1173,72 +1141,23 @@ export default function KPIListModal({
             ) : (
               <div className="space-y-3">
                 {displayedItems.map((item, idx) => {
-                  const isMyRequest =
-                    item.requesting_user_id === currentUser?.serial_id;
-                  const isPartial =
-                    (item.request_type || "").toLowerCase() === "partial";
-                  // Head2Head request where one of the offered/target shifts belongs to me —
-                  // i.e. someone is proposing to trade with me specifically, and I can accept/decline it.
-                  const isIncomingHeadToHead =
-                    item.request_type === "Head2Head" &&
-                    !isMyRequest &&
-                    item.offered_shifts?.some(
-                      (s) => s.original_user_id === currentUser?.serial_id,
-                    );
-                  // Gift offer addressed to me: someone offered to take one of
-                  // my shifts as a gift. I accept (take the relief) or decline.
-                  const isIncomingGift =
-                    item.request_type === "Gift" &&
-                    !isMyRequest &&
-                    item.original_user_id === currentUser?.serial_id;
-                  // Whether the viewer owns this partial-gap shift, or
-                  // joined it as a covering user — each gets a different
-                  // cancel action (give up the whole request vs. just their
-                  // own claimed window). Compared via Number() because
-                  // original_user_id can come from the raw Shift record
-                  // (occasionally stored as a string) while
-                  // currentUser.serial_id is numeric.
+                  // Per-row action flags — the single, unit-tested source of
+                  // truth (src/lib/interactionRules.js, deriveRequestItemFlags):
+                  // who owns this row, whether it's addressed to me, and which
+                  // cancel/accept actions apply, given the current KPI `type`.
+                  const {
+                    isMyRequest,
+                    isIncomingHeadToHead,
+                    isIncomingGift,
+                    isPartialGapLike,
+                    isPartialGapOwner,
+                    hasBackingRequest,
+                    isGeneralRequestForOthers,
+                    isGeneralRequestMine,
+                  } = deriveRequestItemFlags(item, { currentUser, type });
+                  // Still used directly by the coverage-list render below
+                  // (matching a covering user to the current viewer).
                   const currentUserIdNum = Number(currentUser?.serial_id);
-                  // The info blocks (who's covering so far / what's still
-                  // uncovered) are useful anywhere a partial-gap item shows
-                  // up, including in-progress partials surfaced under the
-                  // "approved" KPI.
-                  const isPartialGapLike =
-                    type === "partial_gaps" || item.is_partial_in_progress;
-                  // Actions (cancel my request / cancel my coverage / offer
-                  // to cover) are read-only history once an item is in the
-                  // "approved" list — even an in-progress partial there is
-                  // being shown for its record, not to be acted on, so this
-                  // is intentionally NOT the same as isPartialGapLike above.
-                  const isPartialGapActionable = type === "partial_gaps";
-                  // Gated on requesting_user_id (whoever actually created the
-                  // SwapRequest), not original_user_id (the shift's owner) —
-                  // those can differ (e.g. an admin filing the request on the
-                  // owner's behalf), and cancelling only makes sense for
-                  // whoever actually filed it.
-                  // Covering users can't self-cancel a partial pick — only
-                  // the owner can undo the whole request (matches
-                  // ShiftDetailsModal's canCancelCoverage/!isPartialLike
-                  // rule).
-                  const isPartialGapOwner =
-                    isPartialGapActionable &&
-                    Number(item.requesting_user_id) === currentUserIdNum;
-                  // Real backing SwapRequest entities carry a status field;
-                  // the synthetic partial-gap fallback item (built when there's
-                  // no live request, just leftover coverage rows) doesn't.
-                  const hasBackingRequest = Boolean(item.status);
-                  // General/open swap request (request_type 'General') created
-                  // via the switch flow's "send as general request" skip path —
-                  // open to everyone: any other user can take the offered shifts
-                  // outright ("accept without terms") or reply with a head-to-
-                  // head counter-offer; the owner can cancel it.
-                  const isGeneralRequestOpen =
-                    item.request_type === "General" &&
-                    isOpenStatus(item.status);
-                  const isGeneralRequestForOthers =
-                    isGeneralRequestOpen && !isMyRequest;
-                  const isGeneralRequestMine =
-                    isGeneralRequestOpen && isMyRequest;
 
                   const startDate =
                     item.start_date || item.shift_date || item.req_start_date;
