@@ -1,48 +1,81 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Trophy, Medal, TrendingUp } from 'lucide-react';
+import { X, Trophy, Medal, ArrowLeftRight, Gift } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 
 export default function HallOfFameModal({ isOpen, onClose }) {
-  
-  // 1. שליפת כל הכיסויים מהדאטה-בייס
-  const { data: allCoverages = [], isLoading } = useQuery({
+
+  // The leaderboard is built from real history, joining three sources:
+  //  - ShiftCoverage: every time someone covered a shift (a "swap"/החלפה).
+  //    covering_user_id names the helper; a coverage that was cancelled
+  //    (status !== "Approved") never happened, so it's skipped.
+  //  - SwapRequest of type "Gift" that closed: the giver (requesting_user_id)
+  //    took a shift off someone with nothing in return (a "gift"/מתנה).
+  //  - AuthorizedPerson: resolves serial_id → full_name for display.
+  const { data: allCoverages = [], isLoading: coveragesLoading } = useQuery({
     queryKey: ['all-coverages-hof'],
     queryFn: () => base44.entities.ShiftCoverage.list(),
     enabled: isOpen
   });
+  const { data: allRequests = [], isLoading: requestsLoading } = useQuery({
+    queryKey: ['all-swap-requests-hof'],
+    queryFn: () => base44.entities.SwapRequest.list(),
+    enabled: isOpen
+  });
+  const { data: allPeople = [], isLoading: peopleLoading } = useQuery({
+    queryKey: ['all-people-hof'],
+    queryFn: () => base44.entities.AuthorizedPerson.list(),
+    enabled: isOpen
+  });
+  const isLoading = coveragesLoading || requestsLoading || peopleLoading;
 
-  // 2. עיבוד הנתונים לדירוג
-  const topSwappers = React.useMemo(() => {
-    if (!allCoverages || allCoverages.length === 0) return [];
+  // Aggregate per person: a swap counter (coverages) and a gift counter
+  // (closed gift offers they made), then rank by total contribution.
+  const topContributors = React.useMemo(() => {
+    const stats = new Map(); // serial_id (number) → { name, swaps, gifts }
 
-    const stats = {};
-
-    allCoverages.forEach(coverage => {
-      const email = coverage.covering_email;
-      if (!email) return;
-
-      if (!stats[email]) {
-        stats[email] = {
-          name: coverage.covering_role || 'משתמש לא ידוע', 
+    const bump = (serialId, field) => {
+      if (serialId == null) return;
+      const key = Number(serialId);
+      if (Number.isNaN(key)) return;
+      if (!stats.has(key)) {
+        const person = allPeople.find((p) => Number(p.serial_id) === key);
+        stats.set(key, {
+          serial_id: key,
+          name: person?.full_name || 'משתמש לא ידוע',
           swaps: 0,
-          email: email
-        };
+          gifts: 0,
+        });
       }
-      stats[email].swaps += 1;
+      stats.get(key)[field] += 1;
+    };
+
+    allCoverages.forEach((c) => {
+      // A coverage with no explicit status is treated as approved (legacy rows);
+      // anything explicitly not "Approved" (e.g. Cancelled) is not a real swap.
+      if (c.status && c.status !== 'Approved') return;
+      bump(c.covering_user_id, 'swaps');
     });
 
-    return Object.values(stats)
-      .sort((a, b) => b.swaps - a.swaps)
+    allRequests.forEach((r) => {
+      if (r.request_type !== 'Gift') return;
+      if (!['Closed', 'Completed'].includes(r.status)) return;
+      bump(r.requesting_user_id, 'gifts');
+    });
+
+    return Array.from(stats.values())
+      .map((u) => ({ ...u, total: u.swaps + u.gifts }))
+      .filter((u) => u.total > 0)
+      .sort((a, b) => b.total - a.total || b.swaps - a.swaps)
       .slice(0, 3)
       .map((user, index) => ({
         ...user,
         rank: index + 1,
         avatar: index === 0 ? '🏆' : index === 1 ? '🥈' : '🥉'
       }));
-  }, [allCoverages]);
+  }, [allCoverages, allRequests, allPeople]);
 
   if (!isOpen) return null;
 
@@ -94,7 +127,7 @@ export default function HallOfFameModal({ isOpen, onClose }) {
               </div>
               <div>
                 <h2 className="text-2xl md:text-3xl font-bold mb-0.5">היכל התהילה</h2>
-                <p className="text-white/90 text-xs md:text-sm">המחליפים המובילים בכל הזמנים</p>
+                <p className="text-white/90 text-xs md:text-sm">התורמים המובילים בכל הזמנים</p>
               </div>
             </div>
           </div>
@@ -104,20 +137,20 @@ export default function HallOfFameModal({ isOpen, onClose }) {
             
             {isLoading ? (
                 <div className="text-center py-10 text-gray-500">טוען נתונים...</div>
-            ) : topSwappers.length === 0 ? (
+            ) : topContributors.length === 0 ? (
                 <div className="text-center py-10 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
-                    <p className="text-gray-500 text-lg font-medium">טרם בוצעו החלפות במערכת</p>
-                    <p className="text-gray-400 text-sm">היה הראשון להחליף והופיע כאן! 🥇</p>
+                    <p className="text-gray-500 text-lg font-medium">טרם בוצעו החלפות או מתנות במערכת</p>
+                    <p className="text-gray-400 text-sm">היה הראשון לעזור והופיע כאן! 🥇</p>
                 </div>
             ) : (
                 <div className="space-y-3 md:space-y-4 mb-6">
-                {topSwappers.map((swapper, index) => {
+                {topContributors.map((swapper, index) => {
                     const badge = getRankBadge(swapper.rank);
                     const BadgeIcon = badge.icon;
                     
                     return (
                     <motion.div
-                        key={swapper.email}
+                        key={swapper.serial_id}
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ delay: index * 0.1 }}
@@ -142,10 +175,16 @@ export default function HallOfFameModal({ isOpen, onClose }) {
                                 <h3 className="text-lg md:text-xl font-bold text-gray-800 mb-1 truncate">
                                     {swapper.name}
                                 </h3>
-                                
-                                <div className="flex items-center gap-1 md:gap-2 text-sm">
-                                    <TrendingUp className="w-4 h-4 text-green-600 shrink-0" />
-                                    <span className="font-semibold text-gray-700">{swapper.swaps} החלפות</span>
+
+                                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
+                                    <span className="flex items-center gap-1">
+                                        <ArrowLeftRight className="w-4 h-4 text-green-600 shrink-0" />
+                                        <span className="font-semibold text-gray-700">{swapper.swaps} החלפות</span>
+                                    </span>
+                                    <span className="flex items-center gap-1">
+                                        <Gift className="w-4 h-4 text-pink-500 shrink-0" />
+                                        <span className="font-semibold text-gray-700">{swapper.gifts} מתנות</span>
+                                    </span>
                                 </div>
                             </div>
 
