@@ -42,6 +42,85 @@ import SwitchFlowBand from "./SwitchFlowBand";
 // 2) normalizeShiftContext + resolveSwapType/requestWindow standardize swap payloads for UI and WhatsApp deep links.
 // 3) Deep links now hydrate the same shape before rendering modals to avoid race conditions.
 
+// --- Guided-walkthrough demo data ---------------------------------------
+// The tour (AppTour in Home.jsx) opens the REAL creation modals so it can
+// spotlight their actual buttons — nothing is described only in copy. These
+// fictional shifts/coverages feed those modals while `tourDemo` is on, so the
+// modals render fully populated without ever touching the backend (their data
+// queries are gated on !demoMode) and without showing any real shift. The
+// tour's full-screen click-blocker (z 100000) sits above these overlays, so
+// none of their action buttons can actually fire — the walkthrough stays
+// strictly read-only. Serial ids sit far outside the real id range, and every
+// date is "today" so the gift / head-to-head "starts today" rules light up.
+const TOUR_TODAY = format(new Date(), "yyyy-MM-dd");
+const TOUR_DEMO_ME = {
+  serial_id: 900000,
+  full_name: "דוד לוי",
+  email: "demo.me@razarto.tour",
+  role: "RR",
+  permissions: "User",
+};
+// A plain white shift owned by someone ELSE, starting today → ShiftDetailsModal
+// shows "ראש בראש" + "הצע לקחת את המשמרת במתנה".
+const TOUR_DEMO_OTHER_SHIFT = {
+  id: "tour-other",
+  original_user_id: 900001,
+  original_user_name: "שמואל כהן",
+  user_name: "שמואל כהן",
+  role: "כונן",
+  department: "א",
+  start_date: TOUR_TODAY,
+  end_date: TOUR_TODAY,
+  start_time: "09:00",
+  end_time: "17:00",
+  status: "assigned",
+};
+// A plain white shift owned by the demo user → ShiftDetailsModal shows "בקשת
+// החלפה מלאה או חלקית"; also feeds ShiftActionModal and SwapRequestModal.
+const TOUR_DEMO_OWN_SHIFT = {
+  id: "tour-own",
+  original_user_id: TOUR_DEMO_ME.serial_id,
+  original_user_name: TOUR_DEMO_ME.full_name,
+  user_name: TOUR_DEMO_ME.full_name,
+  role: "כונן",
+  department: "א",
+  start_date: TOUR_TODAY,
+  end_date: TOUR_TODAY,
+  start_time: "09:00",
+  end_time: "17:00",
+  status: "assigned",
+};
+// A shift with one already-approved coverage window → feeds AcceptSwapModal so
+// its coverage slider and "אשר כיסוי" button render against real-looking data.
+const TOUR_DEMO_PARTIAL_COVERAGES = [
+  {
+    id: "tour-cov-1",
+    covering_user_id: 900004,
+    covering_name: "נועה ביטון",
+    covering_user_name: "נועה ביטון",
+    cover_start_date: TOUR_TODAY,
+    cover_start_time: "09:00",
+    cover_end_date: TOUR_TODAY,
+    cover_end_time: "12:00",
+    status: "Approved",
+  },
+];
+const TOUR_DEMO_PARTIAL_SHIFT = {
+  id: "tour-partial",
+  original_user_id: 900002,
+  original_user_name: "יעל ישראלי",
+  user_name: "יעל ישראלי",
+  role: "כונן",
+  department: "ב",
+  start_date: TOUR_TODAY,
+  end_date: TOUR_TODAY,
+  start_time: "09:00",
+  end_time: "17:00",
+  status: "partial",
+  coverageType: "partial",
+  coverages: TOUR_DEMO_PARTIAL_COVERAGES,
+};
+
 export default function ShiftCalendar() {
   const queryClient = useQueryClient();
 
@@ -145,27 +224,66 @@ export default function ShiftCalendar() {
       window.removeEventListener("razarto:sidebar-action", handleSidebarAction);
   }, []);
 
-  // Lets the guided walkthrough (AppTour in Home.jsx) open the real menus so it
-  // can spotlight them — the KPI list on a given tab, or the switch-flow band.
-  // This only toggles UI state; it never creates/updates/deletes any entity,
-  // and the tour renders a full-screen click-blocker above these overlays so
-  // their own action buttons (accept/cancel/confirm) can't be triggered during
-  // the tour. `detail.open` is "kpi" | "switchflow" | null (null = close all).
+  // Lets the guided walkthrough (AppTour in Home.jsx) open the real menus and
+  // creation modals so it can spotlight their actual buttons. This only toggles
+  // UI state and feeds demo shifts (TOUR_DEMO_*) when `demo` is set; it never
+  // creates/updates/deletes any entity, the demo modals' data queries are gated
+  // on !demoMode, and the tour renders a full-screen click-blocker above every
+  // overlay so no action button (request/accept/gift/head-to-head/confirm) can
+  // fire during the tour. `detail.open` selects the surface to show:
+  //   "kpi"           → the KPI request list on a given tab
+  //   "switchflow"    → the multi-shift switch band
+  //   "details-other" → ShiftDetailsModal on someone else's shift (h2h + gift)
+  //   "details-own"   → ShiftDetailsModal on the viewer's own shift (request)
+  //   "action"        → ShiftActionModal (admin quick actions)
+  //   "request"       → SwapRequestModal (full/partial request form)
+  //   "accept"        → AcceptSwapModal (join a partial gap)
+  //   null            → close everything.
   useEffect(() => {
     const handleTourControl = (e) => {
       const { open, kpiType, kpiTab, demo } = e.detail || {};
-      // Reset tour-driven surfaces first so each step is a clean, idempotent
-      // request for exactly the state it wants.
+      // Reset every tour-driven surface first so each step is a clean,
+      // idempotent request for exactly the state it wants.
       setShowKPIListModal(false);
+      setShowDetailsModal(false);
+      setShowActionModal(false);
+      setShowSwapRequestModal(false);
+      setShowAcceptSwapModal(false);
       setSwitchFlow(null);
       setTourDemo(!!demo);
-      if (open === "kpi") {
-        setKpiListType(kpiType || "swap_requests");
-        setKpiInitialTab(kpiTab || "all");
-        setKpiOpenSeq((n) => n + 1);
-        setShowKPIListModal(true);
-      } else if (open === "switchflow") {
-        setSwitchFlow({ step: "own", ownShiftIds: [], targetShiftIds: [] });
+      switch (open) {
+        case "kpi":
+          setKpiListType(kpiType || "swap_requests");
+          setKpiInitialTab(kpiTab || "all");
+          setKpiOpenSeq((n) => n + 1);
+          setShowKPIListModal(true);
+          break;
+        case "switchflow":
+          setSwitchFlow({ step: "own", ownShiftIds: [], targetShiftIds: [] });
+          break;
+        case "details-other":
+          setSelectedShift(TOUR_DEMO_OTHER_SHIFT);
+          setShowDetailsModal(true);
+          break;
+        case "details-own":
+          setSelectedShift(TOUR_DEMO_OWN_SHIFT);
+          setShowDetailsModal(true);
+          break;
+        case "action":
+          setSelectedShift(TOUR_DEMO_OWN_SHIFT);
+          setShowActionModal(true);
+          break;
+        case "request":
+          setSelectedShift(TOUR_DEMO_OWN_SHIFT);
+          setSwapRequestInitialType("full");
+          setShowSwapRequestModal(true);
+          break;
+        case "accept":
+          setSelectedShift(TOUR_DEMO_PARTIAL_SHIFT);
+          setShowAcceptSwapModal(true);
+          break;
+        default:
+          break;
       }
     };
     window.addEventListener("razarto:tour-control", handleTourControl);
@@ -1792,7 +1910,8 @@ export default function ShiftCalendar() {
           setShowSwapRequestModal(true);
         }}
         onGoToRequest={handleGoToRequest}
-        currentUser={authorizedPerson}
+        currentUser={tourDemo ? TOUR_DEMO_ME : authorizedPerson}
+        demoMode={tourDemo}
         isAdmin={isAdmin}
       />
 
@@ -1803,7 +1922,9 @@ export default function ShiftCalendar() {
         existingCoverages={
           selectedShift?.shiftCoverages || selectedShift?.coverages || []
         }
-        currentUserId={authorizedPerson?.serial_id}
+        currentUserId={
+          tourDemo ? TOUR_DEMO_ME.serial_id : authorizedPerson?.serial_id
+        }
         onAccept={(segmentData) => {
           if (!canTakeShifts) {
             showRoleError();
