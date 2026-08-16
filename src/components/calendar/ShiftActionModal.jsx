@@ -134,6 +134,7 @@ export default function ShiftActionModal({
                 {/* Buttons */}
                 <div className="flex flex-col gap-3 pt-2">
                    <Button
+                      data-tour="tour-action-request"
                       onClick={() => onRequestSwap('full')}
                       className="w-full h-12 bg-[#EF5350] hover:bg-[#E53935] text-white rounded-xl shadow-lg shadow-red-500/20 text-base font-bold"
                     >
