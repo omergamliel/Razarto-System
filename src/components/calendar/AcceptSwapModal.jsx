@@ -759,6 +759,7 @@ export default function AcceptSwapModal({
             )}
 
             <Button
+              data-tour="tour-cover-confirm"
               type="submit"
               disabled={isAccepting}
               className="w-full bg-gradient-to-r from-[#64B5F6] to-[#42A5F5] hover:from-[#42A5F5] hover:to-[#2196F3] text-white py-6 rounded-xl text-lg font-medium shadow-lg mt-2"
