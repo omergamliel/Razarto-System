@@ -48,7 +48,6 @@ import {
 } from "./whatsappTemplates";
 import { useHolidays } from "./useHolidays";
 import { useOverlappingLabels } from "./useOverlappingLabels";
-import { deriveShiftActionFlags } from "@/lib/interactionRules";
 import LoadingSkeleton from "../LoadingSkeleton";
 
 export default function ShiftDetailsModal({
@@ -478,42 +477,54 @@ export default function ShiftDetailsModal({
       ) || null,
     [coverages, currentUser?.serial_id],
   );
-  // "Gift" keys off the date that STARTS today — an overnight shift that began
-  // yesterday still "covers" today (it ends ~09:00 the next morning) but
-  // belongs to yesterday and must not be giftable.
+  // Once someone has committed to helping with a partial gap, they can no
+  // longer back out via self-service (only the shift owner can undo the
+  // whole request via "ביטול בקשת החלפה") — backing out of a full swap
+  // takeover is still allowed.
+  const canCancelCoverage =
+    Boolean(myCoverageEntry) && !isPastShift && !isPartialLike;
+  // The owner can undo their own swap/partial-coverage request even after it
+  // was fully accepted by one or more helpers — cancelling reclaims the
+  // whole shift back as a normal full shift for them, voiding whatever
+  // coverage was granted. Unlike canOfferCover/canHeadToHead this must NOT
+  // be blocked by isCoveredOrClosed, since "already fully covered" is
+  // precisely the state this needs to be able to undo.
+  const canCancelOwnSwap = isOwnShift && hasAnyRequest;
+
+  const canOfferCover = hasActiveRequest && !isOwnShift && !isCoveredOrClosed;
+  const canHeadToHead =
+    !isOwnShift &&
+    !isCoveredOrClosed &&
+    !isPartialRequest &&
+    !isPastShift &&
+    (isWhiteShift || isFullRequest);
+  // Missing !isPastShift here let an owner request a swap on their own
+  // already-past shift via this modal, even though the ShiftActionModal
+  // route (opened directly from the calendar cell) already correctly
+  // blocks that — this closes that side door. Gated on !hasAnyRequest (not
+  // just !hasActiveRequest) so a request that's already Closed (e.g. a
+  // partial gap that got fully covered) still blocks creating a redundant
+  // new one — undoing it goes through "ביטול בקשת החלפה" instead.
+  const canRequestSwap = isOwnShift && !hasAnyRequest && !isPastShift;
+  const canWhatsappShare = hasActiveRequest && isRequestOwner;
+  const canAddToCalendarOrEmail = isOwnShift;
+
+  // "Gift" today's shift: an RR user (role !== 'None') can take a plain,
+  // unswapped shift that's live today off whoever is doing it, no strings
+  // attached. Gated to the shift that STARTS today — an overnight shift that
+  // began yesterday still "covers" today (it ends ~09:00 the next morning),
+  // but it belongs to yesterday and must not be giftable, so we key off the
+  // start date only. Also gated to white shifts so it never collides with an
+  // in-progress swap/coverage flow.
   const todayStr = format(new Date(), "yyyy-MM-dd");
   const isTodayShift = shiftStartDate === todayStr;
   const canTakeShifts = (currentUser?.role || "RR") !== "None";
-
-  // Which action buttons this shift shows — the single, unit-tested source of
-  // truth (src/lib/interactionRules.js, deriveShiftActionFlags). The
-  // intermediates above (ownership, request/coverage state, past/today, role,
-  // myCoverageEntry) fully determine it, so the rules stay pure and testable
-  // without any backend.
-  const {
-    canCancelCoverage,
-    canCancelOwnSwap,
-    canOfferCover,
-    canHeadToHead,
-    canRequestSwap,
-    canWhatsappShare,
-    canAddToCalendarOrEmail,
-    canGift,
-  } = deriveShiftActionFlags({
-    isOwnShift,
-    hasAnyRequest,
-    hasActiveRequest,
-    isCoveredOrClosed,
-    isPartialRequest,
-    isFullRequest,
-    isWhiteShift,
-    isRequestOwner,
-    isPastShift,
-    isPartialLike,
-    isTodayShift,
-    canTakeShifts,
-    hasMyCoverageEntry: Boolean(myCoverageEntry),
-  });
+  const canGift =
+    canTakeShifts &&
+    !isOwnShift &&
+    isTodayShift &&
+    isWhiteShift &&
+    !isCoveredOrClosed;
 
   const handleGiftConfirm = () => {
     onGift?.(shift);
