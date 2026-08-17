@@ -107,9 +107,10 @@ export default function HallOfFameModal({ isOpen, onClose }) {
             <button
               onClick={onClose}
               aria-label="סגור"
-              className="absolute top-4 left-4 p-2 rounded-full hover:bg-white/20 transition-colors z-10"
+              className="absolute top-4 left-4 rounded-sm opacity-70 transition-opacity hover:opacity-100 hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 z-10"
             >
-              <X className="w-5 h-5" />
+              <X className="h-4 w-4" />
+              <span className="sr-only">Close</span>
             </button>
             
             <div className="flex items-center gap-3 relative z-10">
