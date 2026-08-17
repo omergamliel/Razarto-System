@@ -107,7 +107,7 @@ export default function HallOfFameModal({ isOpen, onClose }) {
             <button
               onClick={onClose}
               aria-label="סגור"
-              className="absolute top-4 left-4 flex items-center justify-center w-9 h-9 rounded-full hover:bg-white/20 transition-colors z-10"
+              className="absolute top-4 left-4 p-2 rounded-full hover:bg-white/20 transition-colors z-10"
             >
               <X className="w-5 h-5" />
             </button>
@@ -195,4 +195,3 @@ export default function HallOfFameModal({ isOpen, onClose }) {
     </AnimatePresence>
   );
 }
-
