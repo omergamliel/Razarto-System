@@ -4,6 +4,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { toast } from "sonner";
@@ -15,6 +23,8 @@ export default function FaqManager() {
   const queryClient = useQueryClient();
   const [expandedIds, setExpandedIds] = useState(new Set());
   const [drafts, setDrafts] = useState({});
+  // FAQ item pending a delete confirmation, or null.
+  const [faqToDelete, setFaqToDelete] = useState(null);
 
   const { data: faqItems = [], isLoading } = useQuery({
     queryKey: ["faq-items"],
@@ -44,6 +54,7 @@ export default function FaqManager() {
     onSuccess: () => {
       invalidate();
       toast.success("השאלה נמחקה");
+      setFaqToDelete(null);
     },
     onError: () => toast.error("שגיאה במחיקת שאלה"),
   });
@@ -164,7 +175,7 @@ export default function FaqManager() {
                         )}
                       </button>
                       <button
-                        onClick={() => deleteMutation.mutate(item.id)}
+                        onClick={() => setFaqToDelete(item)}
                         className="p-2 rounded-lg hover:bg-red-50 text-red-600"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -205,6 +216,36 @@ export default function FaqManager() {
           ))
         )}
       </div>
+
+      {/* Delete FAQ confirmation */}
+      <Dialog
+        open={!!faqToDelete}
+        onOpenChange={(o) => {
+          if (!o) setFaqToDelete(null);
+        }}
+      >
+        <DialogContent className="text-right" dir="rtl">
+          <DialogHeader className="text-right">
+            <DialogTitle>מחיקת שאלה</DialogTitle>
+            <DialogDescription>
+              למחוק את השאלה <b>{faqToDelete?.question}</b>? הפעולה לא ניתנת
+              לביטול.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setFaqToDelete(null)}>
+              ביטול
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={deleteMutation.isPending}
+              onClick={() => deleteMutation.mutate(faqToDelete.id)}
+            >
+              {deleteMutation.isPending ? "מוחק..." : "מחק"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
