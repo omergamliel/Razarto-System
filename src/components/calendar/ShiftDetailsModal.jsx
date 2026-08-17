@@ -1284,8 +1284,11 @@ export default function ShiftDetailsModal({
 
         {/* Reassign Modal */}
         <Dialog open={showReassignModal} onOpenChange={setShowReassignModal}>
-          <DialogContent className="sm:max-w-lg">
-            <div className="rounded-2xl overflow-hidden shadow-lg">
+          <DialogContent
+            dir="rtl"
+            className="sm:max-w-lg p-0 bg-transparent border-none shadow-none"
+          >
+            <div className="rounded-2xl overflow-hidden shadow-lg bg-white">
               <div className="bg-gradient-to-r from-[#64B5F6] to-[#42A5F5] p-4 text-white flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <div className="p-2 bg-white/20 rounded-xl">
