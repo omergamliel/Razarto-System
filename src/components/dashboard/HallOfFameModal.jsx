@@ -1,7 +1,6 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Trophy, Medal, ArrowLeftRight, Gift } from 'lucide-react';
-import { Button } from "@/components/ui/button";
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 
@@ -107,7 +106,8 @@ export default function HallOfFameModal({ isOpen, onClose }) {
             
             <button
               onClick={onClose}
-              className="absolute top-4 left-4 p-2 rounded-full hover:bg-white/20 transition-colors z-10"
+              aria-label="סגור"
+              className="absolute top-4 left-4 flex items-center justify-center w-9 h-9 rounded-full hover:bg-white/20 transition-colors z-10"
             >
               <X className="w-5 h-5" />
             </button>
@@ -189,15 +189,6 @@ export default function HallOfFameModal({ isOpen, onClose }) {
                 })}
                 </div>
             )}
-
-            {/* Footer Button (Inside scrollable area, at bottom) */}
-            <Button
-              onClick={onClose}
-              variant="outline"
-              className="mx-auto mt-2 flex w-full max-w-[180px] items-center justify-center rounded-xl border-2 px-4 py-3 text-base font-semibold"
-            >
-              סגור
-            </Button>
           </div>
         </motion.div>
       </div>
