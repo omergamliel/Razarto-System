@@ -76,6 +76,8 @@ export default function ShiftDetailsModal({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showCancelRequestConfirm, setShowCancelRequestConfirm] =
     useState(false);
+  const [showCancelCoverageConfirm, setShowCancelCoverageConfirm] =
+    useState(false);
   const [showGiftConfirm, setShowGiftConfirm] = useState(false);
   const [showReassignModal, setShowReassignModal] = useState(false);
   const [selectedDepartment, setSelectedDepartment] = useState("");
@@ -251,6 +253,11 @@ export default function ShiftDetailsModal({
   const handleCancelRequestConfirm = () => {
     onCancelRequest?.(shift);
     setShowCancelRequestConfirm(false);
+  };
+
+  const handleCancelCoverageConfirm = () => {
+    onCancelCoverage?.(shift);
+    setShowCancelCoverageConfirm(false);
   };
 
   const shiftStartDate = shiftWindow?.startDate || shift?.start_date || date;
@@ -1090,7 +1097,7 @@ export default function ShiftDetailsModal({
 
                   {canCancelCoverage && (
                     <Button
-                      onClick={() => onCancelCoverage?.(shift)}
+                      onClick={() => setShowCancelCoverageConfirm(true)}
                       variant="outline"
                       className="min-w-[160px] flex-1 sm:flex-none h-12 rounded-xl border-2 border-orange-300 text-orange-600 hover:bg-orange-50"
                     >
@@ -1191,6 +1198,36 @@ export default function ShiftDetailsModal({
                 onClick={handleCancelRequestConfirm}
               >
                 כן, בטל בקשה
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Cancel Coverage (participation) Confirmation */}
+        <Dialog
+          open={showCancelCoverageConfirm}
+          onOpenChange={setShowCancelCoverageConfirm}
+        >
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>ביטול השתתפות במשמרת</DialogTitle>
+              <DialogDescription>
+                לבטל את ההשתתפות שלך במשמרת זו? הכיסוי שהתחייבת אליו יוסר. הפעולה
+                לא ניתנת לביטול.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setShowCancelCoverageConfirm(false)}
+              >
+                ביטול
+              </Button>
+              <Button
+                variant="destructive"
+                onClick={handleCancelCoverageConfirm}
+              >
+                כן, בטל השתתפות
               </Button>
             </DialogFooter>
           </DialogContent>
