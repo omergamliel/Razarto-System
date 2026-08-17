@@ -10,6 +10,7 @@ import {
   MoreVertical,
   Edit2,
   Trash2,
+  ArrowLeftRight,
   Shield,
   UserX,
   UserPlus,
@@ -95,6 +96,91 @@ function DateInputIL({ value, onChange, className = "" }) {
   );
 }
 
+// A user picker like the "החלפת משתמש למשמרת" dropdown, but with type-to-filter:
+// the trigger doubles as a search box (filters by name/email), and clicking a
+// row selects that user (value = serial_id). `excludeId` hides one user (so the
+// "from"/"to" pair can't pick the same person).
+function UserComboBox({
+  value,
+  onChange,
+  users,
+  placeholder = "בחר משתמש",
+  excludeId,
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    const onDocClick = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  const selected = users.find((u) => Number(u.serial_id) === Number(value));
+  const term = query.trim().toLowerCase();
+  const filtered = users.filter(
+    (u) =>
+      Number(u.serial_id) !== Number(excludeId) &&
+      (term === "" ||
+        u.full_name?.toLowerCase().includes(term) ||
+        u.email?.toLowerCase().includes(term)),
+  );
+
+  return (
+    <div className="relative" ref={wrapRef} dir="rtl">
+      <Input
+        value={open ? query : selected?.full_name || ""}
+        placeholder={placeholder}
+        onFocus={() => {
+          setOpen(true);
+          setQuery("");
+        }}
+        onChange={(e) => {
+          setQuery(e.target.value);
+          setOpen(true);
+        }}
+        className="rounded-xl"
+      />
+      {open && (
+        <div className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-gray-200 bg-white shadow-lg">
+          {filtered.length === 0 ? (
+            <p className="px-3 py-2 text-center text-sm text-gray-400">
+              לא נמצאו משתמשים
+            </p>
+          ) : (
+            filtered.map((u) => (
+              <button
+                key={u.serial_id}
+                type="button"
+                onClick={() => {
+                  onChange(u.serial_id);
+                  setOpen(false);
+                  setQuery("");
+                }}
+                className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-right text-sm hover:bg-gray-50 ${
+                  Number(u.serial_id) === Number(value) ? "bg-blue-50" : ""
+                }`}
+              >
+                <span className="truncate text-gray-800">{u.full_name}</span>
+                {u.department && (
+                  <span className="shrink-0 text-xs text-gray-400">
+                    {u.department}
+                  </span>
+                )}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminSettingsModal({ isOpen, onClose }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedDepartments, setSelectedDepartments] = useState([]);
@@ -175,6 +261,17 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   });
   const [deleteShiftsError, setDeleteShiftsError] = useState("");
   const [isDeleteShiftsConfirmOpen, setIsDeleteShiftsConfirmOpen] =
+    useState(false);
+
+  // --- Replace one user's shifts with another user's, in a date range ---
+  const [replaceShiftsForm, setReplaceShiftsForm] = useState({
+    startDate: "",
+    endDate: "",
+    fromUserId: "",
+    toUserId: "",
+  });
+  const [replaceShiftsError, setReplaceShiftsError] = useState("");
+  const [isReplaceShiftsConfirmOpen, setIsReplaceShiftsConfirmOpen] =
     useState(false);
 
   // --- System test suite (src/lib/testing) ---
@@ -776,6 +873,80 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
 
   const handleConfirmDeleteShiftsRange = () => {
     deleteShiftsRangeMutation.mutate(shiftsInDeleteRange.map((s) => s.id));
+  };
+
+  // 6. Replace one user's shifts with another's, within a date range — every
+  // shift assigned to `fromUserId` whose start_date falls inside [startDate,
+  // endDate] is reassigned to `toUserId` (leaves everyone else's shifts alone).
+  const shiftsInReplaceRange = useMemo(() => {
+    const { startDate, endDate, fromUserId } = replaceShiftsForm;
+    if (!startDate || !endDate || !fromUserId) return [];
+    return allShiftsForDistribution.filter(
+      (s) =>
+        Number(s.original_user_id) === Number(fromUserId) &&
+        s.start_date >= startDate &&
+        s.start_date <= endDate,
+    );
+  }, [allShiftsForDistribution, replaceShiftsForm]);
+
+  const replaceShiftsMutation = useMutation({
+    mutationFn: async ({ shiftIds, toUserId }) => {
+      await Promise.all(
+        shiftIds.map((id) =>
+          base44.entities.Shift.update(id, {
+            original_user_id: Number(toUserId),
+          }),
+        ),
+      );
+      return shiftIds.length;
+    },
+    onSuccess: (count) => {
+      queryClient.invalidateQueries(["shifts"]);
+      toast.success(`הוחלפו ${count} משמרות בהצלחה`);
+      setIsReplaceShiftsConfirmOpen(false);
+      setReplaceShiftsForm({
+        startDate: "",
+        endDate: "",
+        fromUserId: "",
+        toUserId: "",
+      });
+    },
+    onError: (error) => {
+      toast.error(error?.message || "החלפת המשמרות נכשלה. נסו שוב.");
+    },
+  });
+
+  const handleRequestReplaceShifts = () => {
+    const { startDate, endDate, fromUserId, toUserId } = replaceShiftsForm;
+    if (!fromUserId || !toUserId) {
+      setReplaceShiftsError("נא לבחור משתמש מוחלף ומשתמש מחליף");
+      return;
+    }
+    if (Number(fromUserId) === Number(toUserId)) {
+      setReplaceShiftsError("יש לבחור שני משתמשים שונים");
+      return;
+    }
+    if (!startDate || !endDate) {
+      setReplaceShiftsError("נא לבחור תאריך התחלה וסיום");
+      return;
+    }
+    if (new Date(endDate) < new Date(startDate)) {
+      setReplaceShiftsError("תאריך הסיום חייב להיות אחרי תאריך ההתחלה");
+      return;
+    }
+    if (shiftsInReplaceRange.length === 0) {
+      setReplaceShiftsError("לא נמצאו משמרות למשתמש המוחלף בטווח שנבחר");
+      return;
+    }
+    setReplaceShiftsError("");
+    setIsReplaceShiftsConfirmOpen(true);
+  };
+
+  const handleConfirmReplaceShifts = () => {
+    replaceShiftsMutation.mutate({
+      shiftIds: shiftsInReplaceRange.map((s) => s.id),
+      toUserId: replaceShiftsForm.toUserId,
+    });
   };
 
   // Runs the full test suite (src/lib/testing): pure-logic tests first (no
@@ -1972,6 +2143,102 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                 </Button>
               </div>
 
+              <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">
+                      החלפת משמרות בין משתמשים
+                    </p>
+                    <p className="text-xs text-gray-500 max-w-xl">
+                      מעביר את כל המשמרות של המשתמש המוחלף אל המשתמש המחליף, בטווח
+                      התאריכים שנבחר (כולל שני התאריכים). משמרות של משתמשים אחרים
+                      לא מושפעות.
+                    </p>
+                  </div>
+                  <ArrowLeftRight className="w-5 h-5 text-blue-500 shrink-0" />
+                </div>
+
+                <div
+                  className="grid grid-cols-1 md:grid-cols-2 gap-3"
+                  dir="rtl"
+                >
+                  <div className="grid gap-1">
+                    <Label className="text-sm text-gray-700">
+                      משתמש מוחלף (מעביר את משמרותיו)
+                    </Label>
+                    <UserComboBox
+                      users={authorizedPeople}
+                      value={replaceShiftsForm.fromUserId}
+                      excludeId={replaceShiftsForm.toUserId}
+                      placeholder="בחר משתמש מוחלף"
+                      onChange={(id) =>
+                        setReplaceShiftsForm((prev) => ({
+                          ...prev,
+                          fromUserId: id,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="grid gap-1">
+                    <Label className="text-sm text-gray-700">
+                      משתמש מחליף (מקבל את המשמרות)
+                    </Label>
+                    <UserComboBox
+                      users={authorizedPeople}
+                      value={replaceShiftsForm.toUserId}
+                      excludeId={replaceShiftsForm.fromUserId}
+                      placeholder="בחר משתמש מחליף"
+                      onChange={(id) =>
+                        setReplaceShiftsForm((prev) => ({
+                          ...prev,
+                          toUserId: id,
+                        }))
+                      }
+                    />
+                  </div>
+                  <div className="grid gap-1">
+                    <Label className="text-sm text-gray-700">תאריך התחלה</Label>
+                    <DateInputIL
+                      value={replaceShiftsForm.startDate}
+                      onChange={(iso) =>
+                        setReplaceShiftsForm((prev) => ({
+                          ...prev,
+                          startDate: iso,
+                        }))
+                      }
+                      className="rounded-xl"
+                    />
+                  </div>
+                  <div className="grid gap-1">
+                    <Label className="text-sm text-gray-700">תאריך סיום</Label>
+                    <DateInputIL
+                      value={replaceShiftsForm.endDate}
+                      onChange={(iso) =>
+                        setReplaceShiftsForm((prev) => ({
+                          ...prev,
+                          endDate: iso,
+                        }))
+                      }
+                      className="rounded-xl"
+                    />
+                  </div>
+                </div>
+
+                {replaceShiftsError && (
+                  <p className="mt-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-center">
+                    {replaceShiftsError}
+                  </p>
+                )}
+
+                <Button
+                  onClick={handleRequestReplaceShifts}
+                  disabled={replaceShiftsMutation.isPending}
+                  className="w-full md:w-auto mt-4 h-11 rounded-xl bg-blue-600 hover:bg-blue-700 text-white gap-2"
+                >
+                  <ArrowLeftRight className="w-4 h-4" /> החלף משמרות
+                </Button>
+              </div>
+
               {distributionResult && (
                 <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-4">
                   <div className="flex items-center gap-2 text-emerald-700">
@@ -2969,6 +3236,79 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
               variant="outline"
               onClick={() => setIsDeleteShiftsConfirmOpen(false)}
               disabled={deleteShiftsRangeMutation.isPending}
+              className="flex-1"
+            >
+              לא, ביטול
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* --- REPLACE SHIFTS BETWEEN USERS CONFIRMATION --- */}
+      <Dialog
+        open={isReplaceShiftsConfirmOpen}
+        onOpenChange={setIsReplaceShiftsConfirmOpen}
+      >
+        <DialogContent className="sm:max-w-[420px] text-right" dir="rtl">
+          <DialogHeader className="text-right">
+            <DialogTitle className="flex items-center gap-2 text-xl text-blue-600">
+              <div className="bg-blue-100 p-2 rounded-full">
+                <ArrowLeftRight className="w-5 h-5 text-blue-600" />
+              </div>
+              החלפת משמרות בין משתמשים
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="py-4">
+            <p className="text-gray-600">
+              להעביר{" "}
+              <b>{shiftsInReplaceRange.length} משמרות</b> מ־
+              <b>
+                {
+                  authorizedPeople.find(
+                    (p) =>
+                      Number(p.serial_id) ===
+                      Number(replaceShiftsForm.fromUserId),
+                  )?.full_name
+                }
+              </b>{" "}
+              אל{" "}
+              <b>
+                {
+                  authorizedPeople.find(
+                    (p) =>
+                      Number(p.serial_id) ===
+                      Number(replaceShiftsForm.toUserId),
+                  )?.full_name
+                }
+              </b>{" "}
+              בטווח{" "}
+              <span dir="ltr">
+                {replaceShiftsForm.startDate &&
+                  format(
+                    new Date(replaceShiftsForm.startDate),
+                    "dd/MM/yyyy",
+                  )}{" "}
+                -{" "}
+                {replaceShiftsForm.endDate &&
+                  format(new Date(replaceShiftsForm.endDate), "dd/MM/yyyy")}
+              </span>
+              ?
+            </p>
+          </div>
+
+          <DialogFooter className="flex gap-2 w-full">
+            <Button
+              onClick={handleConfirmReplaceShifts}
+              disabled={replaceShiftsMutation.isPending}
+              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {replaceShiftsMutation.isPending ? "מחליף..." : "כן, החלף"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setIsReplaceShiftsConfirmOpen(false)}
+              disabled={replaceShiftsMutation.isPending}
               className="flex-1"
             >
               לא, ביטול
