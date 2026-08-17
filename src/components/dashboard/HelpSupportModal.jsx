@@ -5,18 +5,54 @@ import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 
+// Shown when no admin has populated the FaqItem entity yet, so the help
+// center is never empty out of the box.
+const DEFAULT_FAQS = [
+  {
+    question: 'איך פותחים בקשת כיסוי חדשה?',
+    answer: 'לחצו על המשמרת הרצויה בלוח, בחרו "בקש החלפה" ומלאו את שעות הכיסוי הנדרשות. המשמרת תסומן אוטומטית כדרושה כיסוי והצוות יקבל התראה.'
+  },
+  {
+    question: 'איך מאשרים הצעת כיסוי שהתקבלה?',
+    answer: 'כנסו למשמרת המסומנת, בדקו את פרטי ההצעה ולחצו על "אשר כיסוי". המערכת תעדכן את לוח המשמרות ותשלח התראה למאשר ולמציע.'
+  },
+  {
+    question: 'איך מסננים משמרות לפי מחלקה ותפקיד?',
+    answer: 'בחלק העליון של לוח השנה יש מסננים למחלקה ולתפקיד. בחרו את הערכים הרצויים כדי לראות רק משמרות רלוונטיות אליכם ולקבל רשימה ממוקדת.'
+  },
+  {
+    question: 'איך מתאימים תפקידים או שעות אחרי יצירת משמרת?',
+    answer: 'מנהלים יכולים לפתוח את המשמרת הרצויה, לבחור "ערוך משמרת" ולעדכן מחלקה, תפקיד או שעות. השינויים מתעדכנים לכל הצוות בזמן אמת.'
+  },
+  {
+    question: 'מה המשמעות של הצבעים בלוח?',
+    answer: 'כחול = המשמרת שלך, אדום = דרוש כיסוי מלא, צהוב = דרוש כיסוי חלקי, ירוק = כיסוי שאושר, אפור = משמרות של אחרים. פס כתום מסמן את היום הנוכחי.'
+  },
+  {
+    question: 'איך מפעילים התראות וואטסאפ לעדכונים?',
+    answer: 'אחרי פתיחת בקשה או אישור כיסוי, לחצו על כפתור השיתוף בוואטסאפ כדי לשלוח עדכון מיידי לצוות. ניתן להעתיק את הקישור או לשלוח ישירות לקבוצת היחידה.'
+  },
+  {
+    question: 'איך רואים ביצועים וסטטוס כיסוי?',
+    answer: 'בלוח הבקרה (KPI Dashboard) מוצג מספר הבקשות הפתוחות, פערי הכיסוי והאישורים האחרונים. לחיצה על מדד פותחת את המשמרות הרלוונטיות לפעולה מהירה.'
+  }
+];
+
 export default function HelpSupportModal({ isOpen, onClose }) {
   const [expandedIndex, setExpandedIndex] = useState(null);
   const [infoMessage, setInfoMessage] = useState('');
   const [showVideo, setShowVideo] = useState(false);
 
   // FAQ items are managed by admins via AdminSettingsModal and stored in the
-  // FaqItem entity — this modal just reads them, sorted by `order`.
-  const { data: faqItems = [] } = useQuery({
+  // FaqItem entity — this modal just reads them, sorted by `order`. When the
+  // entity is still empty (no admin has added any), fall back to the built-in
+  // defaults so the section is never blank.
+  const { data: entityFaqs = [] } = useQuery({
     queryKey: ["faq-items"],
     queryFn: () => base44.entities.FaqItem.list("order"),
     enabled: isOpen,
   });
+  const faqItems = entityFaqs.length ? entityFaqs : DEFAULT_FAQS;
 
   if (!isOpen) return null;
 
