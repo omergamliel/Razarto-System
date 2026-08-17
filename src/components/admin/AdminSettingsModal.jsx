@@ -153,6 +153,8 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   // Add-group input, and the group pending a delete confirmation.
   const [newGroupSymbol, setNewGroupSymbol] = useState("");
   const [groupToDelete, setGroupToDelete] = useState(null);
+  // Member pending a "remove from group" confirmation: { person, symbol } | null.
+  const [memberToRemove, setMemberToRemove] = useState(null);
 
   // Archive Logic States
   const [isArchiveMode, setIsArchiveMode] = useState(false);
@@ -1520,9 +1522,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                                       title="הסר מהקבוצה"
                                       className="h-7 w-7 text-gray-300 hover:text-red-500"
                                       onClick={() =>
-                                        removeFromGroupMutation.mutate({
-                                          person: m,
-                                        })
+                                        setMemberToRemove({ person: m, symbol })
                                       }
                                     >
                                       <UserMinus className="w-4 h-4" />
@@ -2790,6 +2790,48 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
               className="bg-red-600 hover:bg-red-700 text-white"
             >
               {removeGroupMutation.isPending ? "מסיר..." : "הסר קבוצה"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* --- 3F. REMOVE MEMBER FROM GROUP MODAL --- */}
+      <Dialog
+        open={!!memberToRemove}
+        onOpenChange={(o) => {
+          if (!o) setMemberToRemove(null);
+        }}
+      >
+        <DialogContent className="sm:max-w-[400px] text-right" dir="rtl">
+          <DialogHeader className="text-right">
+            <DialogTitle className="flex items-center gap-2 text-xl text-red-600">
+              <div className="bg-red-100 p-2 rounded-full">
+                <AlertTriangle className="w-5 h-5 text-red-600" />
+              </div>
+              הסרת חבר מקבוצה
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-gray-600">
+              להסיר את <b>{memberToRemove?.person?.full_name}</b> מקבוצה{" "}
+              <b>{memberToRemove?.symbol}</b>? הסימן שלו יימחק.
+            </p>
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="outline" onClick={() => setMemberToRemove(null)}>
+              ביטול
+            </Button>
+            <Button
+              disabled={removeFromGroupMutation.isPending}
+              onClick={() =>
+                removeFromGroupMutation.mutate(
+                  { person: memberToRemove.person },
+                  { onSuccess: () => setMemberToRemove(null) },
+                )
+              }
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {removeFromGroupMutation.isPending ? "מסיר..." : "הסר מהקבוצה"}
             </Button>
           </DialogFooter>
         </DialogContent>
