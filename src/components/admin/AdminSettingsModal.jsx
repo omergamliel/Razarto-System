@@ -744,7 +744,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   });
 
   // 3c. Groups — add one or more users to a group by setting their `sign` to
-  // the group symbol (same effect as "עריכת סימן", in bulk).
+  // the group symbol (same effect as "עריכת קבוצה", in bulk).
   const addUsersToGroupMutation = useMutation({
     mutationFn: async ({ symbol, personIds }) => {
       await Promise.all(
@@ -1355,7 +1355,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                   <div className="col-span-2">אימייל</div>
                   <div className="col-span-2">הרשאות</div>
                   <div className="col-span-1">תפקיד</div>
-                  <div className="col-span-1">סימן</div>
+                  <div className="col-span-1">קבוצה</div>
                   <div className="col-span-1 text-center">קישוריות</div>
                   <div className="col-span-1 text-center">פעולות</div>
                 </div>
@@ -1547,7 +1547,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                                   }}
                                   className="flex items-center justify-end gap-2 cursor-pointer text-gray-700"
                                 >
-                                  <span>עריכת סימן</span>
+                                  <span>עריכת קבוצה</span>
                                   <Tag className="w-4 h-4" />
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
@@ -1596,7 +1596,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                   </p>
                   <p className="text-xs text-gray-500 mt-1 leading-relaxed">
                     הקבוצות דינמיות — ניתן להוסיף ולהסיר קבוצות. כל משתמש משויך
-                    לקבוצה (השדה "סימן"), ובכל קבוצה ניתן לסמן משתמש אחד בלבד
+                    לקבוצה (השדה "קבוצה"), ובכל קבוצה ניתן לסמן משתמש אחד בלבד
                     כ<b>פעיל</b> (או אף אחד) — מערכת חלוקת המשמרות תשבץ משמרות אך
                     ורק למשתמשים הפעילים.
                   </p>
@@ -2968,16 +2968,16 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
               <div className="bg-gray-100 p-2 rounded-full">
                 <Tag className="w-5 h-5 text-gray-600" />
               </div>
-              עריכת סימן
+              עריכת קבוצה
             </DialogTitle>
             <DialogDescription className="text-right">
-              עדכן את הסימן עבור <b>{signUser?.full_name}</b>.
+              עדכן את הקבוצה עבור <b>{signUser?.full_name}</b>.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
               <Label htmlFor="sign_value" className="text-right">
-                קבוצה (סימן)
+                קבוצה
               </Label>
               <Select
                 value={signValue || undefined}
@@ -3013,7 +3013,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
               disabled={isSubmitting}
               className="bg-gray-700 hover:bg-gray-800 text-white"
             >
-              {isSubmitting ? "שומר..." : "שמור סימן"}
+              {isSubmitting ? "שומר..." : "שמור קבוצה"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -3039,7 +3039,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
               הוספת משתמשים לקבוצה {groupPickerSymbol}
             </DialogTitle>
             <DialogDescription className="text-right">
-              הסימן של המשתמשים שייבחרו ישתנה ל-<b>{groupPickerSymbol}</b>.
+              הקבוצה של המשתמשים שייבחרו תשתנה ל-<b>{groupPickerSymbol}</b>.
             </DialogDescription>
           </DialogHeader>
           <div className="py-2">
@@ -3149,7 +3149,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
           </DialogHeader>
           <div className="py-4">
             <p className="text-gray-600">
-              להסיר את קבוצה <b>{groupToDelete}</b>? הסימן יימחק מכל חברי הקבוצה
+              להסיר את קבוצה <b>{groupToDelete}</b>? שיוך הקבוצה יימחק מכל חברי הקבוצה
               {(() => {
                 const n = authorizedPeople.filter(
                   (p) => p.sign === groupToDelete,
@@ -3193,7 +3193,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
           <div className="py-4">
             <p className="text-gray-600">
               להסיר את <b>{memberToRemove?.person?.full_name}</b> מקבוצה{" "}
-              <b>{memberToRemove?.symbol}</b>? הסימן שלו יימחק.
+              <b>{memberToRemove?.symbol}</b>? שיוך הקבוצה שלו יימחק.
             </p>
           </div>
           <DialogFooter className="flex-col sm:flex-row gap-2">
