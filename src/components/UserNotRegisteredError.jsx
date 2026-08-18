@@ -3,7 +3,11 @@ import { motion } from 'framer-motion';
 import { ShieldAlert, RefreshCw, MessageCircle, Lock, AlertTriangle } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 
-const UserNotRegisteredError = ({ onRefresh }) => {
+const UserNotRegisteredError = ({
+  onRefresh,
+  title = "הגישה נדחתה",
+  message = "המשתמש שלך אינו מופיע ברשימת המורשים לכניסה למערכת. ייתכן שטרם הוגדרת על ידי מנהל המערכת.",
+}) => {
   
   const handleContactSupport = () => {
     const phoneNumber = "972546881831";
@@ -51,9 +55,9 @@ const UserNotRegisteredError = ({ onRefresh }) => {
 
         {/* Main Text */}
         <h1 className="text-2xl md:text-3xl font-bold text-gray-900 mb-3">
-          הגישה נדחתה
+          {title}
         </h1>
-        
+
         <div className="bg-orange-50 border border-orange-100 rounded-xl p-4 mb-6 text-right">
           <div className="flex gap-3">
             <AlertTriangle className="w-5 h-5 text-orange-500 shrink-0 mt-0.5" />
@@ -62,7 +66,7 @@ const UserNotRegisteredError = ({ onRefresh }) => {
                 לא זוהו הרשאות מתאימות
               </p>
               <p className="text-sm text-gray-600 leading-relaxed">
-                המשתמש שלך אינו מופיע ברשימת המורשים לכניסה למערכת. ייתכן שטרם הוגדרת על ידי מנהל המערכת.
+                {message}
               </p>
             </div>
           </div>
