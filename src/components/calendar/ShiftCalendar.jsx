@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { format } from "date-fns";
@@ -381,12 +381,36 @@ export default function ShiftCalendar() {
     enabled: !!userEmail,
   });
 
-  // AuthorizedPerson.role is separate from permissions — 'None' means this
-  // person may not take shifts in any way (offer to cover, accept a
-  // general/head-to-head request, propose/approve a head-to-head swap, or
-  // pick target shifts in the switch flow), even though they can still
-  // freely give their OWN shifts away.
-  const canTakeShifts = (authorizedPerson?.role || "RR") !== "None";
+  // Group "active member" records (ShiftSegment): one row per group symbol,
+  // holding that group's active member (username = their email) and an active
+  // flag. Only the active member of a group interacts with shifts — the same
+  // signal shift distribution uses to pick who gets assigned. Any authorized
+  // user may read these (see ShiftSegment RLS).
+  const { data: shiftSegments = [] } = useQuery({
+    queryKey: ["shift-segments"],
+    queryFn: () => base44.entities.ShiftSegment.list(),
+    enabled: !!authorizedPerson,
+  });
+
+  const activeMemberEmails = useMemo(
+    () =>
+      new Set(
+        shiftSegments
+          .filter((seg) => seg.active && seg.username)
+          .map((seg) => seg.username.toLowerCase()),
+      ),
+    [shiftSegments],
+  );
+
+  // A user may take/interact with shifts (offer to cover, accept a
+  // general/head-to-head request, propose/approve a head-to-head swap, or pick
+  // target shifts in the switch flow) only while they are the active member of
+  // their group — they can still freely give their OWN shifts away regardless.
+  // This ties shift interaction to active-group standing, the same pool shift
+  // distribution assigns to.
+  const canTakeShifts = activeMemberEmails.has(
+    (authorizedPerson?.email || "").toLowerCase(),
+  );
 
   // --- DEBUG: only logs for Admin, silent for everyone else ---
   const isAdminUser = authorizedPerson?.permissions === "Admin";
@@ -1529,7 +1553,6 @@ export default function ShiftCalendar() {
 
     // Permissions & ownership
     const permissionLevel = authorizedPerson.permissions;
-    const isViewOnly = permissionLevel === "View";
     const isRR = permissionLevel === "RR";
     const isMyShift =
       shift.original_user_id === authorizedPerson.serial_id ||
@@ -1541,11 +1564,6 @@ export default function ShiftCalendar() {
     const isCoveringUser = (shift.coverages || []).some(
       (cov) => cov.covering_user_id === authorizedPerson.serial_id,
     );
-
-    // View-only users cannot open shifts at all
-    if (isViewOnly) {
-      return;
-    }
 
     // Access rules for RR level
     if (isRR && !isAdmin) {
@@ -1650,6 +1668,18 @@ export default function ShiftCalendar() {
     return <UserNotRegisteredError onRefresh={refreshAuthCheck} />;
   }
 
+  // 2b. Access Blocked ('None' permission — also catches any not-yet-migrated
+  // legacy 'View' rows, since that permission no longer exists going forward).
+  if (["None", "View"].includes(authorizedPerson.permissions)) {
+    return (
+      <UserNotRegisteredError
+        onRefresh={refreshAuthCheck}
+        title="הגישה חסומה"
+        message="למשתמש שלך אין הרשאת כניסה למערכת. פנה למנהל המערכת לקבלת הרשאה מתאימה."
+      />
+    );
+  }
+
   // 3. First Time Onboarding (User authorized but not linked)
   if (!authorizedPerson.linked_user_id) {
     return (
@@ -1665,7 +1695,6 @@ export default function ShiftCalendar() {
   // 4. Main App (User authorized and linked)
   const permissionLevel = authorizedPerson.permissions;
   const isAdmin = permissionLevel === "Admin" || permissionLevel === "Manager";
-  const isViewOnly = permissionLevel === "View";
   const isLoadingApp = isUserLoading || isAuthCheckLoading || isShiftsLoading;
 
   if (isLoadingApp) {
@@ -1920,6 +1949,7 @@ export default function ShiftCalendar() {
         }}
         onGoToRequest={handleGoToRequest}
         currentUser={tourDemo ? TOUR_DEMO_ME : authorizedPerson}
+        canTakeShifts={tourDemo ? true : canTakeShifts}
         demoMode={tourDemo}
         isAdmin={isAdmin}
       />
@@ -2058,7 +2088,7 @@ export default function ShiftCalendar() {
         }}
         onAcceptGift={(item) => acceptGiftMutation.mutate(item)}
         onStartCounterOffer={(item) => handleStartCounterOffer(item)}
-        actionsDisabled={isViewOnly || tourDemo}
+        actionsDisabled={tourDemo}
         demoMode={tourDemo}
       />
     </div>
