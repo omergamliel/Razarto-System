@@ -66,6 +66,7 @@ export default function ShiftDetailsModal({
   onRequestSwap,
   onGoToRequest,
   currentUser,
+  canTakeShifts: canTakeShiftsProp,
   isAdmin,
   // Guided walkthrough: render a passed-in demo shift as a clean "white" shift
   // (its real per-shift queries are disabled so nothing is fetched) purely so
@@ -124,6 +125,25 @@ export default function ShiftDetailsModal({
     queryFn: () => base44.entities.AuthorizedPerson.list(),
     enabled: showReassignModal,
   });
+
+  // Group "active member" records — a manager may hand a shift only to the
+  // active member of a group (active ShiftSegment whose username matches their
+  // email), the same pool shift distribution assigns to.
+  const { data: reassignSegments = [] } = useQuery({
+    queryKey: ["shift-segments"],
+    queryFn: () => base44.entities.ShiftSegment.list(),
+    enabled: showReassignModal,
+  });
+
+  const activeReassignEmails = useMemo(
+    () =>
+      new Set(
+        reassignSegments
+          .filter((seg) => seg.active && seg.username)
+          .map((seg) => seg.username.toLowerCase()),
+      ),
+    [reassignSegments],
+  );
 
   const reassignMutation = useMutation({
     mutationFn: async (newUserId) => {
@@ -211,11 +231,18 @@ export default function ShiftDetailsModal({
   const requestWindow = coverageSummary.requestWindow;
   const shiftWindow = coverageSummary.shiftWindow;
 
-  // Only users with an active role ('RR') can be assigned shifts — users
-  // with role 'None' are excluded from the reassign dropdown.
+  // Only the active member of a group can be handed a shift — they must be an
+  // active ShiftSegment member (activeReassignEmails) with role 'RR'. Users in
+  // no group, non-active members, or role 'None' are excluded from the
+  // reassign dropdown, matching who shift distribution assigns to.
   const rrUsers = useMemo(
-    () => authorizedUsers.filter((u) => u.role === "RR"),
-    [authorizedUsers],
+    () =>
+      authorizedUsers.filter(
+        (u) =>
+          u.role === "RR" &&
+          activeReassignEmails.has((u.email || "").toLowerCase()),
+      ),
+    [authorizedUsers, activeReassignEmails],
   );
 
   const departments = useMemo(() => {
@@ -506,7 +533,14 @@ export default function ShiftDetailsModal({
   // belongs to yesterday and must not be giftable.
   const todayStr = format(new Date(), "yyyy-MM-dd");
   const isTodayShift = shiftStartDate === todayStr;
-  const canTakeShifts = (currentUser?.role || "RR") !== "None";
+  // Shift interaction is gated on being the active member of one's group
+  // (computed by the parent ShiftCalendar from ShiftSegment data and passed
+  // in). Falls back to the older role-based rule only if no prop is provided
+  // (e.g. isolated/unit-test rendering), preserving backward compatibility.
+  const canTakeShifts =
+    canTakeShiftsProp !== undefined
+      ? canTakeShiftsProp
+      : (currentUser?.role || "RR") !== "None";
 
   // Which action buttons this shift shows — the single, unit-tested source of
   // truth (src/lib/utils.js, deriveShiftActionFlags). The
