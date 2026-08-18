@@ -26,12 +26,12 @@
     "permissions": {
       "type": "string",
       "enum": [
-        "View",
+        "None",
         "RR",
         "Manager",
         "Admin"
       ],
-      "description": "\u05e8\u05de\u05ea \u05d4\u05d4\u05e8\u05e9\u05d0\u05d5\u05ea"
+      "description": "\u05e8\u05de\u05ea \u05d4\u05d4\u05e8\u05e9\u05d0\u05d5\u05ea \u2014 'None' \u05d0\u05d9\u05e0\u05d5 \u05de\u05d0\u05e4\u05e9\u05e8 \u05db\u05e0\u05d9\u05e1\u05d4 \u05dc\u05de\u05e2\u05e8\u05db\u05ea"
     },
     "role": {
       "type": "string",
