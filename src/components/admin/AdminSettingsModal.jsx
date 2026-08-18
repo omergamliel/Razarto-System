@@ -5,6 +5,7 @@ import { useHolidays } from "../calendar/useHolidays";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
+  Menu,
   Search,
   Filter,
   MoreVertical,
@@ -37,6 +38,7 @@ import {
   Users,
   Star,
   UserMinus,
+  Ban,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -186,6 +188,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   const [selectedDepartments, setSelectedDepartments] = useState([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [activeTab, setActiveTab] = useState("users");
+  const [isNavOpen, setIsNavOpen] = useState(false);
   const [systemStatus, setSystemStatus] = useState(true);
   const [systemSettings, setSystemSettings] = useState({
     // הטקסטים בפועל שמוצגים תחת הלוגו ב-CalendarHeader.jsx
@@ -218,7 +221,9 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     full_name: "",
     department: "",
     email: "",
-    permissions: "View",
+    permissions: "RR",
+    role: "RR",
+    sign: "",
   });
   const [editingUser, setEditingUser] = useState(null);
   const [permissionUser, setPermissionUser] = useState(null);
@@ -288,8 +293,8 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     switch (perm) {
       case "RR":
         return { bg: "#fde4cf", text: "#5d3a1a", border: "#e8cdb3" };
-      case "View":
-        return { bg: "#f1c0e8", text: "#682a5c", border: "#dcb0d4" };
+      case "None":
+        return { bg: "#fecaca", text: "#7f1d1d", border: "#fca5a5" };
       case "Manager":
         return { bg: "#dfe7fd", text: "#1e40af", border: "#bfdbfe" }; // Updated Color
       case "Admin":
@@ -313,6 +318,34 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     queryFn: () => base44.entities.AuthorizedPerson.list(),
     enabled: isOpen,
   });
+
+  // One-time legacy data migration: the "View" permission was replaced by
+  // "None". Any rows still stored as "View" are bulk-updated to "None" the
+  // first time an admin (the only role that can update AuthorizedPerson) opens
+  // this modal. Idempotent — once migrated no rows match, so it never runs
+  // again; the guard ref just avoids re-firing while the update is in flight.
+  const legacyPermMigrationRan = useRef(false);
+  useEffect(() => {
+    if (!isOpen || legacyPermMigrationRan.current) return;
+    const legacy = authorizedPeople.filter((p) => p.permissions === "View");
+    if (legacy.length === 0) return;
+    legacyPermMigrationRan.current = true;
+    (async () => {
+      try {
+        await Promise.all(
+          legacy.map((p) =>
+            base44.entities.AuthorizedPerson.update(p.id, {
+              permissions: "None",
+            }),
+          ),
+        );
+        queryClient.invalidateQueries(["authorized-people"]);
+      } catch (e) {
+        legacyPermMigrationRan.current = false; // allow retry on next open
+        console.error("Legacy 'View' → 'None' migration failed:", e);
+      }
+    })();
+  }, [isOpen, authorizedPeople, queryClient]);
 
   // Group "active member" records (repurposed ShiftSegment entity): one row per
   // group symbol that currently has an active member — { symbol, username
@@ -539,8 +572,6 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         role: "RR",
         ...userData,
         serial_id: maxId + 1,
-        // No group ("sign") on creation — a new user is assigned to one of the
-        // 24 groups later from the "ניהול קבוצות" tab (or "עריכת סימן").
       });
 
       // Also provision the person as a platform User so they can actually
@@ -569,7 +600,9 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         full_name: "",
         department: "",
         email: "",
-        permissions: "View",
+        permissions: "RR",
+        role: "RR",
+        sign: "",
       }); // Reset form
     },
     onError: () => toast.error("שגיאה בהוספת המשתמש."),
@@ -753,7 +786,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   });
 
   // 4. Fair shift distribution — only RR and Manager permission holders are
-  // in the rotation pool (Admins/View users are excluded from being
+  // in the rotation pool (Admins/None users are excluded from being
   // auto-assigned shifts by this algorithm).
   const runDistributionMutation = useMutation({
     mutationFn: async ({ startDate, endDate }) => {
@@ -989,7 +1022,10 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       return toast.error("נא למלא את כל שדות החובה");
     setIsSubmitting(true);
     try {
-      await addUserMutation.mutateAsync(newUser);
+      await addUserMutation.mutateAsync({
+        ...newUser,
+        sign: newUser.sign || null,
+      });
     } finally {
       setIsSubmitting(false);
     }
@@ -1075,7 +1111,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
 
   // Filter Logic
   const getFilteredPeople = () => {
-    return authorizedPeople.filter((person) => {
+    const people = authorizedPeople.filter((person) => {
       const searchMatch =
         person.full_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         person.email?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -1083,6 +1119,13 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         selectedDepartments.length === 0 ||
         selectedDepartments.includes(person.department);
       return searchMatch && deptMatch;
+    });
+    // Active group members (isActiveGroupMember) stay on top; everyone else
+    // sinks to the bottom, preserving their existing relative order.
+    return [...people].sort((a, b) => {
+      const aActive = isActiveGroupMember(a) ? 0 : 1;
+      const bActive = isActiveGroupMember(b) ? 0 : 1;
+      return aActive - bActive;
     });
   };
 
@@ -1162,15 +1205,17 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       >
         {/* Header */}
         <div className="bg-white px-4 py-3 md:px-6 md:py-4 border-b border-gray-100 flex items-center justify-between shrink-0">
-          <div className="flex flex-col gap-2">
-            <div>
-              <p className="text-[11px] uppercase tracking-[0.2em] text-blue-600 font-semibold">
-                system console
-              </p>
-              <h2 className="text-xl md:text-2xl font-bold text-gray-800">
-                ניהול מערכת
-              </h2>
-            </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIsNavOpen(true)}
+              className="p-2 rounded-full hover:bg-gray-100 transition-colors"
+              aria-label="פתח תפריט ניווט"
+            >
+              <Menu className="w-6 h-6 text-gray-600" />
+            </button>
+            <h2 className="text-xl md:text-2xl font-bold text-gray-800">
+              ניהול מערכת
+            </h2>
           </div>
           <button
             onClick={onClose}
@@ -1180,48 +1225,70 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
           </button>
         </div>
 
+        {/* Nav Sidebar (hamburger-triggered, replaces the old tab row) */}
+        <AnimatePresence>
+          {isNavOpen && (
+            <>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setIsNavOpen(false)}
+                className="absolute inset-0 bg-black/40 z-[60]"
+              />
+              <motion.div
+                initial={{ x: "100%" }}
+                animate={{ x: 0 }}
+                exit={{ x: "100%" }}
+                transition={{ type: "tween", duration: 0.25 }}
+                dir="rtl"
+                className="absolute top-0 right-0 h-full w-72 max-w-[80%] bg-white z-[70] shadow-2xl flex flex-col"
+              >
+                <div className="p-4 border-b border-gray-100 flex items-center justify-between shrink-0">
+                  <span className="font-bold text-gray-800">בחר מודול לניהול</span>
+                  <button
+                    onClick={() => setIsNavOpen(false)}
+                    className="p-1.5 rounded-full hover:bg-gray-100 transition-colors"
+                  >
+                    <X className="w-5 h-5 text-gray-400" />
+                  </button>
+                </div>
+                <div className="flex-1 overflow-y-auto p-2">
+                  {tabs.map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => {
+                        setActiveTab(tab.id);
+                        setIsNavOpen(false);
+                      }}
+                      className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-semibold text-right transition-all
+                        ${
+                          activeTab === tab.id
+                            ? "bg-blue-50 text-blue-700"
+                            : "text-gray-600 hover:bg-gray-50"
+                        }
+                      `}
+                    >
+                      {tab.Icon ? (
+                        <tab.Icon className="w-5 h-5 shrink-0" />
+                      ) : (
+                        <img
+                          src={tab.icon}
+                          alt={tab.label}
+                          className="w-5 h-5 shrink-0"
+                        />
+                      )}
+                      <span>{tab.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+
         {/* Content */}
         <div className="flex-1 min-h-0 overflow-hidden bg-[#F9FAFB] p-3 md:p-5 flex flex-col gap-3 md:gap-4">
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 shrink-0 flex flex-col p-3">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-2">
-                <span className="px-3 py-1 text-[11px] rounded-full bg-blue-50 text-blue-700 font-semibold border border-blue-100">
-                  פאנל מודולארי
-                </span>
-                <span className="text-gray-400 text-xs hidden md:inline">
-                  בחר את המודול לניהול
-                </span>
-              </div>
-            </div>
-
-            <div className="mt-3 flex flex-wrap gap-2 py-2" dir="rtl">
-              {tabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center gap-2 px-3 md:px-4 py-2 rounded-xl border transition-all shrink-0 text-sm font-semibold
-                    ${
-                      activeTab === tab.id
-                        ? "border-blue-500 bg-blue-50 text-blue-700 shadow-md shadow-blue-100"
-                        : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
-                    }
-                  `}
-                >
-                  {tab.Icon ? (
-                    <tab.Icon className="w-4 h-4 md:w-5 md:h-5" />
-                  ) : (
-                    <img
-                      src={tab.icon}
-                      alt={tab.label}
-                      className="w-4 h-4 md:w-5 md:h-5"
-                    />
-                  )}
-                  <span>{tab.label}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
           {activeTab === "users" && (
             <div className="flex-1 min-h-0 flex flex-col gap-4 md:gap-6">
               {/* Toolbar */}
@@ -1378,7 +1445,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                                 borderColor: permStyle.border,
                               }}
                             >
-                              {person.permissions || "View"}
+                              {person.permissions || "None"}
                             </span>
                           </div>
 
@@ -1452,7 +1519,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                                   onClick={() => {
                                     setPermissionUser(person);
                                     setSelectedPermission(
-                                      person.permissions || "View",
+                                      person.permissions || "None",
                                     );
                                     setIsPermissionsOpen(true);
                                   }}
@@ -2431,7 +2498,11 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
 
       {/* --- 1. ADD USER MODAL (Multi-Step) --- */}
       <Dialog open={isAddUserOpen} onOpenChange={handleCloseAddUser}>
-        <DialogContent className="sm:max-w-[425px] text-right" dir="rtl">
+        <DialogContent
+          className="sm:max-w-[425px] text-right"
+          dir="rtl"
+          closePosition="left-4 top-4"
+        >
           {addUserStep === "form" ? (
             <>
               <DialogHeader className="text-right">
@@ -2511,9 +2582,54 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                       <SelectValue placeholder="בחר הרשאה" />
                     </SelectTrigger>
                     <SelectContent dir="rtl">
-                      <SelectItem value="View">צפייה בלבד (View)</SelectItem>
+                      <SelectItem value="None">ללא גישה (None)</SelectItem>
                       <SelectItem value="RR">משתמש רגיל (RR)</SelectItem>
                       <SelectItem value="Manager">מנהל (Manager)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="new_user_group" className="text-right">
+                    קבוצה
+                  </Label>
+                  <Select
+                    value={newUser.sign || "none"}
+                    onValueChange={(val) =>
+                      setNewUser({
+                        ...newUser,
+                        sign: val === "none" ? "" : val,
+                      })
+                    }
+                  >
+                    <SelectTrigger className="w-full text-right" dir="rtl">
+                      <SelectValue placeholder="בחר קבוצה" />
+                    </SelectTrigger>
+                    <SelectContent dir="rtl">
+                      <SelectItem value="none">ללא קבוצה</SelectItem>
+                      {groupSymbols.map((symbol) => (
+                        <SelectItem key={symbol} value={symbol}>
+                          {symbol}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="new_user_role" className="text-right">
+                    תפקיד
+                  </Label>
+                  <Select
+                    value={newUser.role}
+                    onValueChange={(val) =>
+                      setNewUser({ ...newUser, role: val })
+                    }
+                  >
+                    <SelectTrigger className="w-full text-right" dir="rtl">
+                      <SelectValue placeholder="בחר תפקיד" />
+                    </SelectTrigger>
+                    <SelectContent dir="rtl">
+                      <SelectItem value="RR">RR — ניתן לקחת משמרות</SelectItem>
+                      <SelectItem value="None">None — לא ניתן לקחת משמרות</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -2677,26 +2793,22 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
           </DialogHeader>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 py-4">
-            {/* View Option */}
+            {/* None Option */}
             <div
-              onClick={() => setSelectedPermission("View")}
+              onClick={() => setSelectedPermission("None")}
               className={`cursor-pointer rounded-xl border-2 p-4 transition-all relative overflow-hidden group
-                ${selectedPermission === "View" ? "border-purple-500 bg-purple-50" : "border-gray-200 hover:border-purple-200 hover:bg-gray-50"}
+                ${selectedPermission === "None" ? "border-red-500 bg-red-50" : "border-gray-200 hover:border-red-200 hover:bg-gray-50"}
               `}
             >
               <div className="flex flex-col items-center text-center gap-3">
-                <img
-                  src="https://cdn-icons-png.flaticon.com/128/2235/2235419.png"
-                  alt="View"
-                  className="w-12 h-12"
-                />
-                <h3 className="font-bold text-gray-800">צפייה בלבד (View)</h3>
+                <Ban className="w-12 h-12 text-red-400" />
+                <h3 className="font-bold text-gray-800">ללא גישה (None)</h3>
                 <p className="text-xs text-gray-500 leading-tight">
-                  מאפשר צפייה במערכת בלבד ללא ביצוע פעולות
+                  אינו מאפשר כניסה למערכת כלל
                 </p>
               </div>
-              {selectedPermission === "View" && (
-                <div className="absolute top-2 right-2 text-purple-600">
+              {selectedPermission === "None" && (
+                <div className="absolute top-2 right-2 text-red-600">
                   <Check className="w-5 h-5" />
                 </div>
               )}
