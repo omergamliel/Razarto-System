@@ -12,9 +12,9 @@ import {
   ArrowRight,
   Clock,
   AlertCircle,
+  CalendarPlus,
   ArrowLeftRight,
   ChevronDown,
-  Send,
   MessageCircle,
   XCircle,
   CheckCircle2,
@@ -900,6 +900,36 @@ export default function KPIListModal({
     return items;
   }, [baseData, type]);
 
+  const handleAddToCalendar = (item) => {
+    if (actionsDisabled) return;
+
+    const title = "משמרת רז״ר תורן";
+    const description = "משמרת נעימה 💪🏼";
+
+    const startDateStr = item.start_date || item.shift_date;
+    const endDateStr = item.end_date || startDateStr;
+    const startTime = item.start_time || item.req_start_time || "09:00";
+    const endTime = item.end_time || item.req_end_time || startTime;
+
+    const startDateTime = new Date(`${startDateStr}T${startTime}`);
+    const endDateTime = new Date(`${endDateStr}T${endTime}`);
+
+    const formatForCalendar = (dateObj, fallbackDateStr) => {
+      if (dateObj && !isNaN(dateObj))
+        return format(dateObj, "yyyyMMdd'T'HHmmss");
+      return fallbackDateStr ? fallbackDateStr.replace(/-/g, "") : "";
+    };
+
+    const startFormatted = formatForCalendar(startDateTime, startDateStr);
+    const endFormatted = formatForCalendar(
+      endDateTime,
+      endDateStr || startDateStr,
+    );
+
+    const gCalUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&details=${encodeURIComponent(description)}&dates=${startFormatted}/${endFormatted}`;
+    window.open(gCalUrl, "_blank");
+  };
+
   const handleRequestSwap = (item) => {
     if (actionsDisabled) return;
     onClose();
@@ -1591,15 +1621,18 @@ export default function KPIListModal({
 
                           {(item.is_shift_object || isMyRequest) && (
                             <div className="flex flex-col gap-2 items-end">
-                              {isFutureShiftsView && item.is_shift_object && (
+                              {/* "שמור ביומן" is only meaningful in the
+                                  future-shifts (my_shifts) view, so hide it
+                                  everywhere else. */}
+                              {isFutureShiftsView && (
                                 <Button
-                                  onClick={() => handleReshareWhatsapp(item)}
+                                  onClick={() => handleAddToCalendar(item)}
                                   size="icon"
+                                  variant="default"
                                   disabled={actionsDisabled}
-                                  className={`rounded-full w-10 h-10 bg-[#25D366] hover:bg-[#128C7E] text-white shadow-sm ${actionsDisabled ? "opacity-60 cursor-not-allowed" : ""}`}
-                                  title="שיתוף הבקשה מחדש בוואטסאפ"
+                                  className={`rounded-full w-10 h-10 bg-[#a9def9] text-[#0b3a5e] hover:bg-[#8cd3f6] transition-colors shadow-sm ${actionsDisabled ? "opacity-60 cursor-not-allowed" : ""}`}
                                 >
-                                  <Send className="w-5 h-5" />
+                                  <CalendarPlus className="w-5 h-5" />
                                 </Button>
                               )}
                               {item.is_shift_object && (
