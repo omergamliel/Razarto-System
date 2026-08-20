@@ -171,10 +171,10 @@ export default function NotificationSidebar() {
         onClick={() => setIsOpen((o) => !o)}
         aria-label={isOpen ? "סגירת הודעות" : "פתיחת הודעות"}
         data-tour="notif-button"
-        className="fixed bottom-5 right-5 z-40 flex items-center justify-center h-24 w-24 rounded-full bg-black hover:bg-gray-800 shadow-lg transition-colors"
+        className="fixed bottom-5 right-5 z-40 flex items-center justify-center h-[4.5rem] w-[4.5rem] rounded-full bg-black hover:bg-gray-800 shadow-lg transition-colors"
         dir="rtl"
       >
-        <MessageSquare className="w-12 h-12 text-white" />
+        <MessageSquare className="w-9 h-9 text-white" />
         {count > 0 && (
           <span className="absolute top-1 left-1 min-w-[1.75rem] h-7 px-1.5 flex items-center justify-center rounded-full bg-blue-500 border-2 border-black text-white text-sm font-bold leading-none">
             {count > 99 ? "99+" : count}
@@ -206,20 +206,22 @@ export default function NotificationSidebar() {
             >
               {/* Header */}
               <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 bg-gray-50">
-                <div className="flex items-center gap-2">
-                  <Bell className="w-5 h-5 text-gray-700" />
-                  <h2 className="text-base font-bold text-gray-800">הודעות</h2>
+                <div className="flex items-center gap-2 min-w-0">
+                  <Bell className="w-5 h-5 text-gray-700 shrink-0" />
+                  <h2 className="text-base font-bold text-gray-800 truncate">
+                    הודעות
+                  </h2>
                   {count > 0 && (
-                    <span className="text-xs font-medium text-gray-500">
+                    <span className="text-xs font-medium text-gray-500 shrink-0">
                       ({count})
                     </span>
                   )}
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1 shrink-0">
                   {count > 0 && (
                     <button
                       onClick={clearAll}
-                      className="text-xs text-gray-500 hover:text-red-600 px-2 py-1 rounded-md hover:bg-red-50 transition-colors"
+                      className="shrink-0 whitespace-nowrap text-xs text-gray-500 hover:text-red-600 px-2 py-1 rounded-md hover:bg-red-50 transition-colors"
                     >
                       נקה הכל
                     </button>
@@ -227,7 +229,7 @@ export default function NotificationSidebar() {
                   <button
                     onClick={() => setIsOpen(false)}
                     aria-label="סגירה"
-                    className="p-1.5 rounded-lg text-gray-500 hover:bg-gray-200 transition-colors"
+                    className="shrink-0 flex items-center justify-center w-10 h-10 rounded-lg text-gray-500 hover:bg-gray-200 transition-colors"
                   >
                     <X className="w-5 h-5" />
                   </button>
