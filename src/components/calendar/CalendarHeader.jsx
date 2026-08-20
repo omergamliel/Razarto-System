@@ -214,9 +214,7 @@ export default function CalendarHeader({
                 className="group relative p-2 rounded-xl hover:bg-gray-100 transition-all duration-200"
                 title="טבלת צדק"
               >
-                <div className="w-6 h-6 md:w-7 md:h-7 rounded-full bg-gradient-to-br from-[#5C6BC0] to-[#3F51B5] flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <Scale className="w-3.5 h-3.5 md:w-4 md:h-4 text-white" />
-                </div>
+                <Scale className="w-6 h-6 md:w-7 md:h-7 text-[#3F51B5] group-hover:scale-110 transition-transform" />
               </button>
 
               {/* 2. תמיכה ועזרה */}
@@ -226,9 +224,7 @@ export default function CalendarHeader({
                 className="group relative p-2 rounded-xl hover:bg-gray-100 transition-all duration-200"
                 title="תמיכה ועזרה"
               >
-                <div className="w-6 h-6 md:w-7 md:h-7 rounded-full bg-gradient-to-br from-[#26A69A] to-[#00897B] flex items-center justify-center group-hover:scale-110 transition-transform">
-                  <HelpCircle className="w-3.5 h-3.5 md:w-4 md:h-4 text-white" />
-                </div>
+                <HelpCircle className="w-6 h-6 md:w-7 md:h-7 text-[#00897B] group-hover:scale-110 transition-transform" />
               </button>
 
               {/* 3. לוח ניהול (רק למנהלים) */}
