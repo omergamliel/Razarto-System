@@ -171,12 +171,12 @@ export default function NotificationSidebar() {
         onClick={() => setIsOpen((o) => !o)}
         aria-label={isOpen ? "סגירת הודעות" : "פתיחת הודעות"}
         data-tour="notif-button"
-        className="fixed bottom-5 right-5 z-40 flex items-center justify-center h-[3.375rem] w-[3.375rem] rounded-full bg-black hover:bg-gray-800 shadow-lg transition-colors"
+        className="fixed bottom-5 right-5 z-40 flex items-center justify-center h-[4.3875rem] w-[4.3875rem] rounded-full bg-black hover:bg-gray-800 shadow-lg transition-colors"
         dir="rtl"
       >
-        <MessageSquare className="w-7 h-7 text-white" />
+        <MessageSquare className="w-9 h-9 text-white" />
         {count > 0 && (
-          <span className="absolute top-0.5 left-0.5 min-w-[1.375rem] h-[1.375rem] px-1 flex items-center justify-center rounded-full bg-blue-500 border-2 border-black text-white text-xs font-bold leading-none">
+          <span className="absolute top-1 left-1 min-w-[1.75rem] h-7 px-1.5 flex items-center justify-center rounded-full bg-blue-500 border-2 border-black text-white text-sm font-bold leading-none">
             {count > 99 ? "99+" : count}
           </span>
         )}
