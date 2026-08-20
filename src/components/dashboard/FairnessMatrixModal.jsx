@@ -4,8 +4,13 @@ import { X, Scale } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
-import { format, startOfMonth, endOfMonth, parseISO } from "date-fns";
-import { he } from "date-fns/locale";
+import {
+  format,
+  startOfMonth,
+  endOfMonth,
+  startOfYear,
+  endOfYear,
+} from "date-fns";
 
 const DEPARTMENT_LABELS = {
   א: "מחלקה א",
@@ -21,7 +26,7 @@ export default function FairnessMatrixModal({ isOpen, onClose, currentUser }) {
   const [endDate, setEndDate] = useState(
     format(endOfMonth(today), "yyyy-MM-dd"),
   );
-  const [tab, setTab] = useState("users"); // "users" | "departments"
+  const [tab, setTab] = useState("groups"); // "groups" | "users" — groups is the default
 
   const { data: shifts = [], isLoading: isShiftsLoading } = useQuery({
     queryKey: ["shifts"],
@@ -35,11 +40,19 @@ export default function FairnessMatrixModal({ isOpen, onClose, currentUser }) {
     enabled: isOpen,
   });
 
+  // Group definitions / active-member records — used to group the fairness view
+  // by קבוצה and to surface each group's active member first.
+  const { data: shiftSegments = [] } = useQuery({
+    queryKey: ["shift-segments"],
+    queryFn: () => base44.entities.ShiftSegment.list(),
+    enabled: isOpen,
+  });
+
   const isLoading = isShiftsLoading || isPeopleLoading;
 
   const stats = useMemo(() => {
     if (!shifts.length || !people.length) {
-      return { users: [], departments: [], maxCount: 0 };
+      return { users: [], groups: [], maxCount: 0 };
     }
 
     // Only users with the active 'RR' role are counted (AuthorizedPerson.role,
@@ -53,26 +66,37 @@ export default function FairnessMatrixModal({ isOpen, onClose, currentUser }) {
     });
     const rrSerialIds = new Set(rrPeople.map((p) => p.serial_id));
 
+    // A group's active member (active ShiftSegment whose username matches their
+    // email) is listed first for that group.
+    const activeEmails = new Set(
+      shiftSegments
+        .filter((seg) => seg.active && seg.username)
+        .map((seg) => seg.username.toLowerCase()),
+    );
+
+    // The rota has exactly one shift per calendar day, so a day must be counted
+    // once. Guard against duplicate Shift rows for the same date (which would
+    // otherwise inflate the total, e.g. 32 in a 31-day month) by keeping only
+    // the first shift seen per date within the range.
     const inRange = shifts.filter((s) => {
       const d = s.start_date;
       return d && d >= startDate && d <= endDate;
     });
+    const seenDates = new Set();
+    const dedupedInRange = inRange.filter((s) => {
+      if (seenDates.has(s.start_date)) return false;
+      seenDates.add(s.start_date);
+      return true;
+    });
 
     const userCounts = new Map(); // serial_id -> count
-    const deptCounts = new Map(); // department -> count
 
-    inRange.forEach((s) => {
+    dedupedInRange.forEach((s) => {
       const owner = s.original_user_id;
       if (owner == null) return;
       // Skip shifts owned by people who aren't RR.
       if (!rrSerialIds.has(owner)) return;
       userCounts.set(owner, (userCounts.get(owner) || 0) + 1);
-
-      const person = personBySerial.get(owner);
-      const dept = person?.department;
-      if (dept) {
-        deptCounts.set(dept, (deptCounts.get(dept) || 0) + 1);
-      }
     });
 
     const users = rrPeople
@@ -89,28 +113,67 @@ export default function FairnessMatrixModal({ isOpen, onClose, currentUser }) {
         return b.count - a.count || a.name.localeCompare(b.name, "he");
       });
 
-    const myDepartment = currentUser?.department;
-    const departments = Array.from(deptCounts.entries())
-      .map(([dept, count]) => ({
-        dept,
-        label: DEPARTMENT_LABELS[dept] || `מחלקה ${dept}`,
-        count,
-        isMine: myDepartment && dept === myDepartment,
-      }))
-      .sort((a, b) => b.count - a.count);
+    // Group the same RR people by their קבוצה (`sign`). Each group's shift
+    // count is the sum of its members' counts, and its member list is ordered
+    // active-member-first so the person currently taking shifts shows up first.
+    const groupsMap = new Map(); // symbol -> { members: [], count }
+    rrPeople.forEach((p) => {
+      if (!p.sign) return;
+      if (!groupsMap.has(p.sign)) {
+        groupsMap.set(p.sign, { members: [], count: 0 });
+      }
+      const g = groupsMap.get(p.sign);
+      g.members.push(p);
+      g.count += userCounts.get(p.serial_id) || 0;
+    });
+
+    const mySign = currentUser?.sign;
+    const groups = Array.from(groupsMap.entries())
+      .map(([symbol, g]) => {
+        const members = g.members
+          .map((m) => ({
+            id: m.id,
+            name: m.full_name || "לא ידוע",
+            isActive: activeEmails.has((m.email || "").toLowerCase()),
+          }))
+          .sort((a, b) => {
+            // Active member first, then by name.
+            if (a.isActive !== b.isActive) return a.isActive ? -1 : 1;
+            return a.name.localeCompare(b.name, "he");
+          });
+        return {
+          symbol,
+          label: `קבוצה ${symbol}`,
+          members,
+          hasActive: members.some((m) => m.isActive),
+          count: g.count,
+          isMine: mySign && symbol === mySign,
+        };
+      })
+      .sort((a, b) => b.count - a.count || a.symbol.localeCompare(b.symbol, "he"));
 
     const maxCount = Math.max(
       ...users.map((u) => u.count),
-      ...departments.map((d) => d.count),
+      ...groups.map((g) => g.count),
       1,
     );
 
-    return { users, departments, maxCount };
-  }, [shifts, people, startDate, endDate]);
+    return { users, groups, maxCount };
+  }, [shifts, people, shiftSegments, startDate, endDate, currentUser]);
 
   const setRangeToCurrentMonth = () => {
     setStartDate(format(startOfMonth(today), "yyyy-MM-dd"));
     setEndDate(format(endOfMonth(today), "yyyy-MM-dd"));
+  };
+
+  const setRangeToCurrentYear = () => {
+    setStartDate(format(startOfYear(today), "yyyy-MM-dd"));
+    setEndDate(format(endOfYear(today), "yyyy-MM-dd"));
+  };
+
+  const setRangeToYearUntilToday = () => {
+    setStartDate(format(startOfYear(today), "yyyy-MM-dd"));
+    setEndDate(format(today, "yyyy-MM-dd"));
   };
 
   if (!isOpen) return null;
@@ -155,7 +218,7 @@ export default function FairnessMatrixModal({ isOpen, onClose, currentUser }) {
                   טבלת צדק
                 </h2>
                 <p className="text-white/90 text-xs md:text-sm">
-                  כמות משמרות לכל משתמש ומחלקה בטווח שנבחר
+                  כמות משמרות לכל משתמש וקבוצה בטווח שנבחר
                 </p>
               </div>
             </div>
@@ -184,14 +247,32 @@ export default function FairnessMatrixModal({ isOpen, onClose, currentUser }) {
                   dir="ltr"
                 />
               </div>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={setRangeToCurrentMonth}
-                className="rounded-xl h-9"
-              >
-                החודש הנוכחי
-              </Button>
+              <div className="flex items-end gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={setRangeToCurrentYear}
+                  className="rounded-xl h-9"
+                >
+                  השנה
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={setRangeToCurrentMonth}
+                  className="rounded-xl h-9"
+                >
+                  החודש
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={setRangeToYearUntilToday}
+                  className="rounded-xl h-9"
+                >
+                  עד עכשיו
+                </Button>
+              </div>
               <div className="text-xs text-gray-500 mr-auto self-end pb-2">
                 סה"כ משמרות בטווח:{" "}
                 <span className="font-bold text-gray-800">{totalInRange}</span>
@@ -199,6 +280,16 @@ export default function FairnessMatrixModal({ isOpen, onClose, currentUser }) {
             </div>
 
             <div className="flex items-center bg-gray-100 rounded-xl p-1">
+              <button
+                onClick={() => setTab("groups")}
+                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  tab === "groups"
+                    ? "bg-white text-gray-800 shadow-sm"
+                    : "text-gray-500 hover:text-gray-700"
+                }`}
+              >
+                לפי קבוצה
+              </button>
               <button
                 onClick={() => setTab("users")}
                 className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
@@ -208,16 +299,6 @@ export default function FairnessMatrixModal({ isOpen, onClose, currentUser }) {
                 }`}
               >
                 לפי משתמש
-              </button>
-              <button
-                onClick={() => setTab("departments")}
-                className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  tab === "departments"
-                    ? "bg-white text-gray-800 shadow-sm"
-                    : "text-gray-500 hover:text-gray-700"
-                }`}
-              >
-                לפי מחלקה
               </button>
             </div>
           </div>
@@ -274,43 +355,53 @@ export default function FairnessMatrixModal({ isOpen, onClose, currentUser }) {
                   ))}
                 </div>
               )
-            ) : stats.departments.length === 0 ? (
+            ) : stats.groups.length === 0 ? (
               <div className="text-center py-10 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
                 <p className="text-gray-500 font-medium">
-                  אין משמרות בטווח שנבחר
+                  אין קבוצות עם משמרות בטווח שנבחר
                 </p>
               </div>
             ) : (
-              <div className="space-y-2">
-                {stats.departments.map((d, idx) => (
+              <div className="space-y-1.5">
+                {stats.groups.map((g) => (
                   <div
-                    key={d.dept}
-                    className={`flex items-center gap-3 rounded-xl p-3 border transition-colors ${
-                      d.isMine
-                        ? "bg-indigo-50 border-indigo-300 ring-1 ring-indigo-200"
+                    key={g.symbol}
+                    className={`rounded-xl px-3 py-2 border transition-colors ${
+                      g.isMine
+                        ? "bg-blue-50 border-blue-300 ring-1 ring-blue-200"
                         : "bg-gray-50 border-gray-100"
                     }`}
                   >
-                    <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-100 to-purple-100 text-indigo-600 flex items-center justify-center text-xs font-bold shrink-0">
-                      {idx + 1}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-baseline gap-2 min-w-0">
+                        <span className="font-semibold text-gray-800 text-sm shrink-0">
+                          {g.label}
+                        </span>
+                        {g.members.length > 0 && (
+                          <span className="text-[11px] text-gray-400 flex items-center gap-1 min-w-0">
+                            {g.hasActive && (
+                              <span
+                                className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0"
+                                title="המשתמש הפעיל (ראשון ברשימה)"
+                              />
+                            )}
+                            <span className="truncate">
+                              {g.members.map((m) => m.name).join(" · ")}
+                            </span>
+                          </span>
+                        )}
+                      </div>
+                      <span className="text-sm font-bold text-gray-700 shrink-0">
+                        {g.count}
+                      </span>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="font-semibold text-gray-800 text-sm truncate">
-                          {d.label}
-                        </span>
-                        <span className="text-sm font-bold text-gray-700 shrink-0">
-                          {d.count}
-                        </span>
-                      </div>
-                      <div className="mt-1 h-2 rounded-full bg-gray-200 overflow-hidden">
-                        <div
-                          className="h-full bg-gradient-to-l from-indigo-400 to-purple-500 rounded-full transition-all"
-                          style={{
-                            width: `${(d.count / stats.maxCount) * 100}%`,
-                          }}
-                        />
-                      </div>
+                    <div className="mt-1 h-2 rounded-full bg-gray-200 overflow-hidden">
+                      <div
+                        className="h-full bg-gradient-to-l from-blue-400 to-indigo-500 rounded-full transition-all"
+                        style={{
+                          width: `${(g.count / stats.maxCount) * 100}%`,
+                        }}
+                      />
                     </div>
                   </div>
                 ))}
