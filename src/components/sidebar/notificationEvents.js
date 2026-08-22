@@ -39,18 +39,15 @@ export function computeNotificationEvents({
   const shiftById = new Map(shifts.map((s) => [s.id, s]));
 
   // Ownership is read from the base "assignment" ShiftCoverage row (the
-  // ownership ledger), falling back to the legacy shift.original_user_id while
-  // that column still exists (Phase 3 dual-read). Built once as a map to keep
-  // the per-shift lookups cheap.
+  // ownership ledger). Shift.original_user_id was removed in Phase 4, so there
+  // is no fallback. Built once as a map to keep the per-shift lookups cheap.
   const assignmentOwnerByShift = new Map(
     coverages
       .filter((c) => c.type === "assignment")
       .map((c) => [c.shift_id, c.covering_user_id]),
   );
   const ownerOf = (shift) =>
-    shift
-      ? (assignmentOwnerByShift.get(shift.id) ?? shift.original_user_id)
-      : undefined;
+    shift ? assignmentOwnerByShift.get(shift.id) : undefined;
 
   const events = [];
 
