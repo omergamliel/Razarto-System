@@ -5,6 +5,7 @@ import {
   createAssignmentForShift,
   resolveOwnerId,
   syncAssignmentOwner,
+  WHATSAPP_TEMPLATES,
 } from "../calendar/whatsappTemplates";
 import { useHolidays } from "../calendar/useHolidays";
 import { motion, AnimatePresence } from "framer-motion";
@@ -45,6 +46,8 @@ import {
   Star,
   UserMinus,
   Ban,
+  MessageSquare,
+  RotateCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -253,6 +256,17 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     permissionsPhone: "+972 54-688-1831",
     issuesPhone: "+972 53-622-1840",
   });
+  // Admin-editable WhatsApp message templates (one string per request type),
+  // seeded from the built-in defaults and hydrated from the AppSettings row
+  // setting_key:"whatsapp_templates" on open. See the "הודעות וואטסאפ" tab.
+  const [whatsappTemplates, setWhatsappTemplatesState] = useState(() =>
+    Object.fromEntries(
+      Object.entries(WHATSAPP_TEMPLATES).map(([key, def]) => [
+        key,
+        def.default,
+      ]),
+    ),
+  );
   // --- MODAL STATES ---
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [addUserStep, setAddUserStep] = useState("form"); // 'form' or 'success'
@@ -565,6 +579,26 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       }
     }
 
+    const whatsappRow = appSettings.find(
+      (s) => s.setting_key === "whatsapp_templates",
+    );
+    if (whatsappRow?.value) {
+      try {
+        const saved = JSON.parse(whatsappRow.value);
+        // Only keep known template keys; a missing key keeps its default so a
+        // newly added template type still shows its built-in text.
+        setWhatsappTemplatesState((prev) => {
+          const next = { ...prev };
+          Object.keys(WHATSAPP_TEMPLATES).forEach((key) => {
+            if (typeof saved?.[key] === "string") next[key] = saved[key];
+          });
+          return next;
+        });
+      } catch (error) {
+        console.error("Failed to parse saved WhatsApp templates:", error);
+      }
+    }
+
     settingsHydratedRef.current = true;
   }, [isOpen, appSettings]);
 
@@ -594,6 +628,20 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       toast.success("הגדרות התמיכה נשמרו בהצלחה");
     },
     onError: () => toast.error("שגיאה בשמירת הגדרות התמיכה"),
+  });
+
+  const saveWhatsappTemplatesMutation = useMutation({
+    mutationFn: () => upsertSetting("whatsapp_templates", whatsappTemplates),
+    onSuccess: () => {
+      logActivity({
+        action: "עדכון תבניות הודעות וואטסאפ",
+        type: "עדכון מערכת",
+        entity: "AppSettings",
+      });
+      queryClient.invalidateQueries({ queryKey: ["app-settings"] });
+      toast.success("הודעות הוואטסאפ נשמרו בהצלחה");
+    },
+    onError: () => toast.error("שגיאה בשמירת הודעות הוואטסאפ"),
   });
 
   // Fetches all shifts (shares the ['shifts'] cache with the rest of the app),
@@ -1392,6 +1440,11 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         id: "themes",
         label: "ערכת נושא",
         icon: "https://cdn-icons-png.flaticon.com/128/9521/9521756.png",
+      },
+      {
+        id: "whatsapp",
+        label: "הודעות וואטסאפ",
+        Icon: MessageSquare,
       },
       {
         id: "logs",
@@ -2294,6 +2347,104 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
           )}
 
           {activeTab === "themes" && <ThemesTab />}
+
+          {activeTab === "whatsapp" && (
+            <div className="space-y-3 md:space-y-4 overflow-y-auto" dir="rtl">
+              <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="w-10 h-10 rounded-xl bg-[#25D366]/10 flex items-center justify-center shrink-0">
+                    <MessageSquare className="w-5 h-5 text-[#128C7E]" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">
+                      הודעות וואטסאפ מוכנות מראש
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      עריכת ההודעה שנשלחת לכל סוג בקשה. הסמנים בסוגריים
+                      מסולסלים (למשל <span dir="ltr">{"{ownerName}"}</span>)
+                      מוחלפים אוטומטית בערכים האמיתיים בעת השליחה.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {Object.entries(WHATSAPP_TEMPLATES).map(([key, def]) => (
+                <div
+                  key={key}
+                  className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-3"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-800">
+                        {def.label}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {def.description}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() =>
+                        setWhatsappTemplatesState((prev) => ({
+                          ...prev,
+                          [key]: def.default,
+                        }))
+                      }
+                      disabled={whatsappTemplates[key] === def.default}
+                      className="text-xs text-gray-500 hover:text-gray-700 gap-1.5 shrink-0"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      שחזור ברירת מחדל
+                    </Button>
+                  </div>
+
+                  <Textarea
+                    dir="rtl"
+                    value={whatsappTemplates[key]}
+                    onChange={(e) =>
+                      setWhatsappTemplatesState((prev) => ({
+                        ...prev,
+                        [key]: e.target.value,
+                      }))
+                    }
+                    rows={7}
+                    className="rounded-xl text-sm leading-relaxed whitespace-pre-wrap"
+                  />
+
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs text-gray-400">
+                      סמנים זמינים:
+                    </span>
+                    {def.placeholders.map((ph) => (
+                      <code
+                        key={ph}
+                        dir="ltr"
+                        className="text-[11px] bg-gray-100 text-gray-600 rounded-md px-1.5 py-0.5 font-mono"
+                      >
+                        {`{${ph}}`}
+                      </code>
+                    ))}
+                  </div>
+                </div>
+              ))}
+
+              <div className="flex justify-end pt-1 pb-2">
+                <Button
+                  onClick={() => saveWhatsappTemplatesMutation.mutate()}
+                  disabled={saveWhatsappTemplatesMutation.isPending}
+                  className="bg-[#25D366] hover:bg-[#128C7E] text-white rounded-xl gap-2"
+                >
+                  {saveWhatsappTemplatesMutation.isPending ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Check className="w-4 h-4" />
+                  )}
+                  <span>שמירת הודעות</span>
+                </Button>
+              </div>
+            </div>
+          )}
 
           {activeTab === "logs" && <LogsTab />}
 
