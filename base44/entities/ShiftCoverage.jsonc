@@ -52,7 +52,6 @@
     }
   },
   "required": [
-    "request_id",
     "shift_id",
     "covering_user_id",
     "cover_start_date",
