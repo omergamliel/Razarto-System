@@ -9,6 +9,8 @@ import {
   normalizeShiftContext,
   computeCoverageSummary,
   buildGiftTemplate,
+  syncAssignmentOwner,
+  createAssignmentForShift,
 } from "./whatsappTemplates";
 
 // Components
@@ -863,6 +865,13 @@ export default function ShiftCalendar() {
           }),
         ),
       );
+      // Dual-write: keep each shift's base assignment coverage in step with the
+      // new owner so coverage-based labeling stays correct (Phase 3).
+      await Promise.all(
+        theirShiftIds.map((id) =>
+          syncAssignmentOwner(id, authorizedPerson.serial_id, coverages),
+        ),
+      );
 
       await base44.entities.SwapRequest.update(request.id, {
         status: "Closed",
@@ -1103,6 +1112,16 @@ export default function ShiftCalendar() {
           }),
         ),
       ]);
+      // Dual-write: keep both traded shifts' base assignment coverage in step
+      // with their new owners so coverage-based labeling stays correct (Phase 3).
+      await Promise.all([
+        ...myShiftIds.map((id) =>
+          syncAssignmentOwner(id, request.requesting_user_id, coverages),
+        ),
+        ...theirShiftIds.map((id) =>
+          syncAssignmentOwner(id, authorizedPerson.serial_id, coverages),
+        ),
+      ]);
 
       await base44.entities.SwapRequest.update(request.id, {
         status: "Closed",
@@ -1226,6 +1245,13 @@ export default function ShiftCalendar() {
           }),
         ),
       );
+      // Dual-write: move each gifted shift's base assignment coverage to the
+      // giver so coverage-based labeling stays correct (Phase 3).
+      await Promise.all(
+        giftedShiftIds.map((id) =>
+          syncAssignmentOwner(id, request.requesting_user_id, coverages),
+        ),
+      );
 
       await base44.entities.SwapRequest.update(request.id, {
         status: "Closed",
@@ -1287,7 +1313,10 @@ export default function ShiftCalendar() {
           coverData.endDate || coverData.coverDate || normalizedShift.end_date,
         cover_start_time: coverData.startTime || normalizedShift.start_time,
         cover_end_time: coverData.endTime || normalizedShift.end_time,
-        type: coverData.type || (coverData.coverFull ? "Full" : "Partial"),
+        // A swap/partial takeover layered over the base assignment row. Full vs
+        // partial is derived from the window, not stored here (Phase 3 schema:
+        // ShiftCoverage.type is "assignment" | "cover").
+        type: "cover",
         status: "Approved",
       };
 
@@ -1409,7 +1438,7 @@ export default function ShiftCalendar() {
 
   const addShiftMutation = useMutation({
     mutationFn: async (newShiftData) => {
-      return await base44.entities.Shift.create({
+      const shift = await base44.entities.Shift.create({
         start_date: newShiftData.start_date,
         end_date: newShiftData.end_date,
         start_time: newShiftData.start_time || "09:00",
@@ -1417,9 +1446,14 @@ export default function ShiftCalendar() {
         original_user_id: newShiftData.original_user_id,
         status: "Active",
       });
+      // Dual-write: give the new shift its base assignment coverage so ownership
+      // is recorded in the coverage ledger too (Phase 3).
+      await createAssignmentForShift(shift, newShiftData.original_user_id);
+      return shift;
     },
     onSuccess: () => {
       queryClient.invalidateQueries(["shifts"]);
+      queryClient.invalidateQueries(["coverages"]);
       toast.success("המשמרת נוספה בהצלחה");
       setShowAddShiftModal(false);
     },
@@ -1427,10 +1461,17 @@ export default function ShiftCalendar() {
 
   const editRoleMutation = useMutation({
     mutationFn: async ({ id, ...data }) => {
-      return await base44.entities.Shift.update(id, data);
+      const updated = await base44.entities.Shift.update(id, data);
+      // Dual-write: EditRoleModal reassigns ownership via original_user_id, so
+      // keep the base assignment coverage in step (Phase 3).
+      if (data.original_user_id != null) {
+        await syncAssignmentOwner(id, data.original_user_id, coverages);
+      }
+      return updated;
     },
     onSuccess: () => {
       queryClient.invalidateQueries(["shifts"]);
+      queryClient.invalidateQueries(["coverages"]);
       toast.success("התפקיד עודכן בהצלחה");
       setShowEditRoleModal(false);
       setShowActionModal(false);
