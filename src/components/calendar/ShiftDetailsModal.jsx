@@ -33,7 +33,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { base44, logActivity } from "@/api/base44Client";
 import { toast } from "sonner";
 import {
   buildShiftDeepLink,
@@ -177,6 +177,12 @@ export default function ShiftDetailsModal({
       return syncAssignmentOwner(shift.id, parseInt(newUserId, 10), coverages);
     },
     onSuccess: () => {
+      logActivity({
+        action: "העברת משמרת למשתמש אחר (ניהול)",
+        type: "שינויים בהרשאות",
+        entity: "ShiftCoverage",
+        entityId: shift?.id,
+      });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["swap-requests"]);
       queryClient.invalidateQueries(["coverages"]);
