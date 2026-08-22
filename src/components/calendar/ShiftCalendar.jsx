@@ -536,7 +536,12 @@ export default function ShiftCalendar() {
     const orphanedCoverages =
       swapRequests.length > 0
         ? coverages.filter(
-            (c) => c.request_id && !liveRequestIds.has(c.request_id),
+            (c) =>
+              // Base "assignment" rows carry a sentinel request_id (they have no
+              // parent request) — never treat them as orphans.
+              c.type !== "assignment" &&
+              c.request_id &&
+              !liveRequestIds.has(c.request_id),
           )
         : [];
 
