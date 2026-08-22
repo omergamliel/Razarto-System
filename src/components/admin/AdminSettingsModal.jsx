@@ -191,6 +191,47 @@ function UserComboBox({
 // Removed in Phase 4 when request_id is dropped from the schema.
 const ASSIGNMENT_REQUEST_SENTINEL = "assignment";
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Does an error look like a rate-limit (429 / "rate limit")? Only those are
+// worth retrying — a validation error should fail fast, not spin 3 times.
+const isRateLimitError = (e) => {
+  const status = e?.status ?? e?.response?.status ?? e?.code;
+  if (status === 429) return true;
+  return /rate limit|too many requests|429/i.test(e?.message || "");
+};
+
+// Run an array of thunks (each returns a promise) in small concurrent batches
+// with a pause between them, so a bulk operation over hundreds of rows stays
+// under the base44 write rate limit. Each task is retried with exponential
+// backoff when it hits a rate limit, so a brief spike self-heals instead of
+// aborting the whole migration. Tuned conservatively — this is a one-time admin
+// routine, so throughput matters far less than not tripping the limiter.
+async function runThrottled(
+  tasks,
+  { batchSize = 3, delayMs = 700, maxRetries = 6 } = {},
+) {
+  const runOne = async (thunk) => {
+    let attempt = 0;
+    for (;;) {
+      try {
+        return await thunk();
+      } catch (e) {
+        if (!isRateLimitError(e) || attempt >= maxRetries) throw e;
+        attempt += 1;
+        // Exponential backoff, capped at 15s: 1s, 2s, 4s, 8s, 15s, 15s.
+        await sleep(Math.min(15000, 1000 * 2 ** (attempt - 1)));
+      }
+    }
+  };
+
+  for (let i = 0; i < tasks.length; i += batchSize) {
+    const batch = tasks.slice(i, i + batchSize);
+    await Promise.all(batch.map(runOne));
+    if (i + batchSize < tasks.length) await sleep(delayMs);
+  }
+}
+
 export default function AdminSettingsModal({ isOpen, onClose }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedDepartments, setSelectedDepartments] = useState([]);
@@ -1094,15 +1135,25 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         throw new Error("לא נטענו משמרות — נסו שוב");
       }
 
-      const shiftIdsWithAssignment = new Set(
-        coverages
-          .filter((c) => c.type === "assignment")
-          .map((c) => c.shift_id),
-      );
+      // Group existing assignment rows by shift so we can both (a) skip shifts
+      // that already have one and (b) find/remove DUPLICATES — if an earlier
+      // partial run created two assignment rows for the same shift, keep one and
+      // delete the rest, guaranteeing exactly one base assignment per shift.
+      const assignmentsByShift = new Map(); // shift_id -> ShiftCoverage[]
+      for (const c of coverages) {
+        if (c.type !== "assignment") continue;
+        const list = assignmentsByShift.get(c.shift_id) || [];
+        list.push(c);
+        assignmentsByShift.set(c.shift_id, list);
+      }
+      const duplicateAssignments = [];
+      for (const list of assignmentsByShift.values()) {
+        if (list.length > 1) duplicateAssignments.push(...list.slice(1));
+      }
+
       const shiftsNeedingAssignment = shifts.filter(
         (s) =>
-          s.original_user_id != null &&
-          !shiftIdsWithAssignment.has(s.id),
+          s.original_user_id != null && !assignmentsByShift.has(s.id),
       );
 
       // Old covers carry type "Full"/"Partial" (or none); reclassify the active
@@ -1114,8 +1165,10 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
           c.type !== "cover",
       );
 
-      await Promise.all([
-        ...shiftsNeedingAssignment.map((s) =>
+      // Build one flat queue of thunks and run it throttled, so we never blow
+      // the base44 rate limit the way a single Promise.all over ~400 writes did.
+      const tasks = [
+        ...shiftsNeedingAssignment.map((s) => () =>
           base44.entities.ShiftCoverage.create({
             shift_id: s.id,
             covering_user_id: Number(s.original_user_id),
@@ -1132,14 +1185,20 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
             cover_end_time: s.end_time || "09:00",
           }),
         ),
-        ...coversToReclassify.map((c) =>
+        ...coversToReclassify.map((c) => () =>
           base44.entities.ShiftCoverage.update(c.id, { type: "cover" }),
         ),
-      ]);
+        ...duplicateAssignments.map((c) => () =>
+          base44.entities.ShiftCoverage.delete(c.id),
+        ),
+      ];
+
+      await runThrottled(tasks);
 
       return {
         created: shiftsNeedingAssignment.length,
         reclassified: coversToReclassify.length,
+        deduped: duplicateAssignments.length,
         totalShifts: shifts.length,
       };
     },
@@ -1148,7 +1207,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       queryClient.invalidateQueries(["shifts"]);
       setCoverageMigrationResult(result);
       toast.success(
-        `המיגרציה הושלמה: נוצרו ${result.created} שיבוצי בסיס, סווגו מחדש ${result.reclassified} כיסויים`,
+        `המיגרציה הושלמה: נוצרו ${result.created} שיבוצי בסיס, סווגו מחדש ${result.reclassified} כיסויים, נמחקו ${result.deduped} כפילויות`,
       );
     },
     onError: (error) => {
@@ -2607,7 +2666,8 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                     <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                     <span className="text-gray-700">
                       נוצרו {coverageMigrationResult.created} שיבוצי בסיס · סווגו
-                      מחדש {coverageMigrationResult.reclassified} כיסויים · מתוך{" "}
+                      מחדש {coverageMigrationResult.reclassified} כיסויים · נמחקו{" "}
+                      {coverageMigrationResult.deduped} כפילויות · מתוך{" "}
                       {coverageMigrationResult.totalShifts} משמרות
                     </span>
                   </div>
