@@ -12,37 +12,44 @@ export const base44 = createClient({
   requiresAuth: false
 });
 
-// --- Activity logging (ActivityLog entity) ---
-// The acting user is registered once per session (ShiftCalendar calls
-// setActivityActor) so every data mutation can be attributed without threading
-// the actor through each call site. logActivity is fire-and-forget: a failed
-// audit write must never break the user flow it records.
+// --- Activity logging -------------------------------------------------------
+// Every user action that changes a data entity is recorded to the ActivityLog
+// entity, surfaced (newest first) under ניהול מערכת ▸ לוגים. The acting user is
+// an AuthorizedPerson; it's registered once (from ShiftCalendar, which is always
+// mounted for an authenticated user) so log calls don't have to thread it
+// through every mutation — though a caller may still pass an explicit `actor`.
 let currentActor = null;
 
-export const setActivityActor = (actor) => {
-  currentActor = actor || null;
-};
+export function setActivityActor(person) {
+  currentActor = person || null;
+}
 
-export const logActivity = async ({
+// Fire-and-forget: logging must never break (or block) the action it records,
+// so failures are swallowed with just a console warning.
+export function logActivity({
   action,
   type,
+  actor,
+  status = "ok",
   entity,
   entityId,
-  status = "ok",
-  actor,
-}) => {
+} = {}) {
+  const who = actor || currentActor;
   try {
-    const a = actor || currentActor;
-    await base44.entities.ActivityLog.create({
+    return base44.entities.ActivityLog.create({
+      actor_id:
+        who?.serial_id != null ? Number(who.serial_id) : undefined,
+      actor_name: who?.full_name || who?.assigned_role || "מערכת",
       action,
       type,
+      status,
       entity,
       entity_id: entityId != null ? String(entityId) : undefined,
-      status,
-      actor_id: a?.serial_id != null ? Number(a.serial_id) : undefined,
-      actor_name: a?.full_name || undefined,
+    }).catch((e) => {
+      console.error("logActivity failed:", e);
     });
-  } catch {
-    // Swallow — logging is best-effort and must not surface in the UI.
+  } catch (e) {
+    console.error("logActivity failed:", e);
+    return Promise.resolve();
   }
-};
+}
