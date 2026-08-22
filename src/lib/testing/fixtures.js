@@ -26,6 +26,14 @@ export function createTestContext() {
     return record;
   };
 
+  // Cancel is now a hard delete of the coverage row, so tests that exercise a
+  // cancel delete a tracked fixture themselves. Untracking it keeps cleanup()
+  // from trying to delete the same id a second time (which would throw).
+  const untrack = (id) => {
+    const idx = created.findIndex((c) => c.id === id);
+    if (idx !== -1) created.splice(idx, 1);
+  };
+
   const createPerson = async (overrides = {}) => {
     const serial_id = overrides.serial_id ?? nextFixtureSerialId();
     const record = await base44.entities.AuthorizedPerson.create({
@@ -40,18 +48,42 @@ export function createTestContext() {
     return track("AuthorizedPerson", record);
   };
 
-  // original_user_id has no default on purpose — every test must wire it to
-  // one of its own createPerson() fixtures explicitly.
+  // A Shift is now a pure time slot — ownership lives in a base "assignment"
+  // ShiftCoverage row (Phase 4), not on the shift. Pass `owner` (a serial_id)
+  // to have the fixture create that assignment row too; most tests want an
+  // owned shift, so they pass it. There is no default owner on purpose.
   const createShift = async (overrides = {}) => {
+    const { owner, ...shiftFields } = overrides;
     const record = await base44.entities.Shift.create({
       start_date: PLACEHOLDER_DATE,
       end_date: PLACEHOLDER_DATE,
       start_time: "09:00",
       end_time: "09:00",
-      status: "Active",
-      ...overrides,
+      ...shiftFields,
     });
-    return track("Shift", record);
+    track("Shift", record);
+    if (owner != null) {
+      await createCoverage({
+        shift_id: record.id,
+        covering_user_id: Number(owner),
+        type: "assignment",
+        cover_start_date: record.start_date,
+        cover_end_date: record.end_date,
+        cover_start_time: record.start_time,
+        cover_end_time: record.end_time,
+      });
+    }
+    return record;
+  };
+
+  // The base "assignment" ShiftCoverage row records who owns a shift; "who works
+  // window W" is a cover row overlapping W if one exists, else this row.
+  const getOwner = async (shiftId) => {
+    const rows = await base44.entities.ShiftCoverage.filter({
+      shift_id: shiftId,
+      type: "assignment",
+    });
+    return rows[0] ? Number(rows[0].covering_user_id) : undefined;
   };
 
   // shift_ids/requesting_user_id/offered_shift_ids have no default — tests
@@ -69,15 +101,17 @@ export function createTestContext() {
     return track("SwapRequest", record);
   };
 
-  // request_id/shift_id/covering_user_id have no default — tests must wire
-  // them to their own fixtures.
+  // shift_id/covering_user_id have no default — tests must wire them to their
+  // own fixtures. `type` defaults to "cover" (a helper taking a window);
+  // ownership rows pass type:"assignment" explicitly. Cancel = delete the row
+  // (there is no status field anymore).
   const createCoverage = async (overrides = {}) => {
     const record = await base44.entities.ShiftCoverage.create({
+      type: "cover",
       cover_start_date: PLACEHOLDER_DATE,
       cover_end_date: PLACEHOLDER_DATE,
       cover_start_time: "09:00",
       cover_end_time: "09:00",
-      status: "Approved",
       ...overrides,
     });
     return track("ShiftCoverage", record);
@@ -104,5 +138,5 @@ export function createTestContext() {
     }
   };
 
-  return { createPerson, createShift, createSwapRequest, createCoverage, cleanup };
+  return { createPerson, createShift, getOwner, createSwapRequest, createCoverage, untrack, cleanup };
 }
