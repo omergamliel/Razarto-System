@@ -165,20 +165,15 @@ export default function ShiftDetailsModal({
           status: "Cancelled",
         });
       }
+      // Delete the shift's "cover" rows — reassigning hands the whole shift to
+      // the new owner, so any partial/full covers no longer apply (cancel =
+      // delete; Phase 4). The base "assignment" row is repointed below, not deleted.
       await Promise.all(
         coverages
-          .filter((c) => c.status === "Approved" || !c.status)
-          .map((c) =>
-            base44.entities.ShiftCoverage.update(c.id, {
-              status: "Cancelled",
-            }),
-          ),
+          .filter((c) => c.type !== "assignment")
+          .map((c) => base44.entities.ShiftCoverage.delete(c.id)),
       );
-      await base44.entities.Shift.update(shift.id, {
-        original_user_id: parseInt(newUserId, 10),
-        status: "Active",
-      });
-      // Dual-write: point the base assignment coverage at the new owner (Phase 3).
+      // Ownership lives in the base "assignment" coverage row (Phase 4).
       return syncAssignmentOwner(shift.id, parseInt(newUserId, 10), coverages);
     },
     onSuccess: () => {
@@ -527,8 +522,8 @@ export default function ShiftDetailsModal({
     () =>
       coverages.find(
         (c) =>
-          Number(c.covering_user_id) === Number(currentUser?.serial_id) &&
-          (c.status === "Approved" || !c.status),
+          c.type !== "assignment" &&
+          Number(c.covering_user_id) === Number(currentUser?.serial_id),
       ) || null,
     [coverages, currentUser?.serial_id],
   );
