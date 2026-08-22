@@ -184,6 +184,13 @@ function UserComboBox({
   );
 }
 
+// request_id placed on the base "assignment" ShiftCoverage rows created by the
+// one-time migration. base44 still requires request_id, but an assignment row
+// has no parent request; this sentinel marks it as such so the orphan-coverage
+// cleanup (which deletes covers whose request_id has no live request) skips it.
+// Removed in Phase 4 when request_id is dropped from the schema.
+const ASSIGNMENT_REQUEST_SENTINEL = "assignment";
+
 export default function AdminSettingsModal({ isOpen, onClose }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedDepartments, setSelectedDepartments] = useState([]);
@@ -1111,9 +1118,18 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         ...shiftsNeedingAssignment.map((s) =>
           base44.entities.ShiftCoverage.create({
             shift_id: s.id,
-            covering_user_id: s.original_user_id,
+            covering_user_id: Number(s.original_user_id),
             type: "assignment",
             status: "Cancelled",
+            // base44 still enforces these as required (Phase 4 relaxes the
+            // schema). The assignment row covers the WHOLE shift, so its window
+            // is the shift's own window; request_id gets a non-request sentinel
+            // (assignment rows are excluded from the orphan-coverage cleanup).
+            request_id: ASSIGNMENT_REQUEST_SENTINEL,
+            cover_start_date: s.start_date,
+            cover_end_date: s.end_date,
+            cover_start_time: s.start_time || "09:00",
+            cover_end_time: s.end_time || "09:00",
           }),
         ),
         ...coversToReclassify.map((c) =>
