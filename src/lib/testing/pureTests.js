@@ -3,6 +3,7 @@ import {
   resolveSwapType,
   subtractSegments,
   computeCoverageSummary,
+  resolveOwnerId,
 } from "@/components/calendar/whatsappTemplates";
 import { distributeShifts } from "@/components/calendar/shiftDistributionAlgorithm";
 import { computeNotificationEvents } from "@/components/sidebar/notificationEvents";
@@ -124,7 +125,7 @@ function testComputeCoverageSummary() {
     activeRequest,
     coverages: [
       {
-        status: "Approved",
+        type: "cover",
         cover_start_date: "2999-01-06",
         cover_start_time: "12:00",
         cover_end_date: "2999-01-06",
@@ -144,7 +145,7 @@ function testComputeCoverageSummary() {
     activeRequest,
     coverages: [
       {
-        status: "Approved",
+        type: "cover",
         cover_start_date: "2999-01-06",
         cover_start_time: "12:00",
         cover_end_date: "2999-01-06",
@@ -170,6 +171,92 @@ function testComputeCoverageSummary() {
   assert(
     !partiallyCovered.isFullyCovered,
     "should report isFullyCovered = false while a gap remains",
+  );
+}
+
+// Ownership after Phase 4: the base "assignment" ShiftCoverage row is the
+// source of truth for who owns a slot, and "who works window W" is a cover row
+// overlapping W if one exists, else the assignment owner. Cover rows never
+// change ownership; only the assignment row does.
+function testResolveOwnership() {
+  const shift = {
+    id: "s1",
+    start_date: "2999-01-06",
+    end_date: "2999-01-06",
+    start_time: "09:00",
+    end_time: "18:00",
+  };
+  const activeRequest = {
+    request_type: "Partial",
+    req_start_date: "2999-01-06",
+    req_end_date: "2999-01-06",
+    req_start_time: "12:00",
+    req_end_time: "18:00",
+  };
+
+  // The assignment row's covering_user_id is the owner.
+  const withAssignment = [
+    { id: "a1", shift_id: "s1", covering_user_id: 7, type: "assignment" },
+  ];
+  assertEqual(
+    Number(resolveOwnerId(shift, withAssignment)),
+    7,
+    "resolveOwnerId should return the assignment row's covering_user_id",
+  );
+
+  // A cover row layered on top must NOT change ownership — the owner is still 7,
+  // even though user 9 works the 12:00–18:00 window.
+  const withCover = [
+    ...withAssignment,
+    {
+      id: "c1",
+      shift_id: "s1",
+      covering_user_id: 9,
+      type: "cover",
+      cover_start_date: "2999-01-06",
+      cover_start_time: "12:00",
+      cover_end_date: "2999-01-06",
+      cover_end_time: "18:00",
+    },
+  ];
+  assertEqual(
+    Number(resolveOwnerId(shift, withCover)),
+    7,
+    "a cover row must not change the shift's owner",
+  );
+
+  // The cover overlaps the requested window fully → that window is worked by the
+  // coverer (no gap left), while the un-covered remainder falls back to the
+  // assignment owner.
+  const covered = computeCoverageSummary({
+    shift,
+    activeRequest,
+    coverages: withCover,
+  });
+  assert(
+    covered.isFullyCovered,
+    "a cover overlapping the whole requested window leaves no gap for the owner",
+  );
+
+  // With no cover, the whole window is still the owner's (nothing covered).
+  const uncovered = computeCoverageSummary({
+    shift,
+    activeRequest,
+    coverages: withAssignment,
+  });
+  assertEqual(
+    uncovered.missingSegments.length,
+    1,
+    "with no cover row, the requested window is entirely the owner's (one gap)",
+  );
+
+  // Legacy fallback: with no assignment row at all, resolveOwnerId reads the
+  // deprecated shift.original_user_id (harmless dead path once the column is
+  // gone, but kept until then).
+  assertEqual(
+    Number(resolveOwnerId({ ...shift, original_user_id: 4 }, [])),
+    4,
+    "resolveOwnerId falls back to shift.original_user_id when no assignment row exists",
   );
 }
 
@@ -269,11 +356,13 @@ function testComputeNotificationEvents() {
     { serial_id: 3, full_name: "Bob", email: "bob@x.com" },
   ];
 
+  // Shifts are pure slots now — ownership is read from the base "assignment"
+  // ShiftCoverage rows below, not from the shift.
   const shifts = [
-    { id: "s1", original_user_id: 1, status: "Active", start_date: "2999-01-06" }, // mine
-    { id: "s2", original_user_id: 2, status: "Active", start_date: "2999-01-07" }, // Alice's
-    { id: "s3", original_user_id: 1, status: "Active", start_date: "2999-01-08" }, // mine
-    { id: "s4", original_user_id: 1, status: "Active", start_date: "2999-01-09" }, // mine
+    { id: "s1", start_date: "2999-01-06" }, // mine
+    { id: "s2", start_date: "2999-01-07" }, // Alice's
+    { id: "s3", start_date: "2999-01-08" }, // mine
+    { id: "s4", start_date: "2999-01-09" }, // mine
   ];
 
   const swapRequests = [
@@ -342,12 +431,15 @@ function testComputeNotificationEvents() {
   ];
 
   const coverages = [
+    // Ownership ledger: one base "assignment" row per shift records the owner.
+    { id: "aS1", shift_id: "s1", covering_user_id: 1, type: "assignment" }, // mine
+    { id: "aS2", shift_id: "s2", covering_user_id: 2, type: "assignment" }, // Alice's
+    { id: "aS3", shift_id: "s3", covering_user_id: 1, type: "assignment" }, // mine
+    { id: "aS4", shift_id: "s4", covering_user_id: 1, type: "assignment" }, // mine
     // Bob offers coverage on my open Partial request (rMinePartial/s1).
-    { id: "c1", shift_id: "s1", covering_user_id: 3, status: "Pending", request_id: "rMinePartial" },
+    { id: "c1", shift_id: "s1", covering_user_id: 3, type: "cover" },
     // Negative: I'm both the shift owner and the coverer — must not fire.
-    { id: "cSelf", shift_id: "s3", covering_user_id: 1, status: "Pending", request_id: "rGiftIn" },
-    // Negative: a Cancelled coverage isn't Pending/Approved — must not fire.
-    { id: "cCancelled", shift_id: "s4", covering_user_id: 3, status: "Cancelled", request_id: "rMineFull" },
+    { id: "cSelf", shift_id: "s3", covering_user_id: 1, type: "cover" },
   ];
 
   const events = computeNotificationEvents({ me, shifts, swapRequests, coverages, allUsers });
@@ -379,7 +471,8 @@ function testComputeNotificationEvents() {
   assert(!has("gift-offer:rGiftOut"), "a gift I sent should not notify me as an incoming offer");
   assert(!has("sr-pending:rGiftOut"), "a gift I sent should not surface as a pending swap request");
   assert(!has("coverage-new:cSelf"), "a coverage where I'm both owner and coverer should not notify");
-  assert(!has("coverage-new:cCancelled"), "a Cancelled coverage should not fire a new-coverage event");
+  assert(!has("coverage-new:aS1"), "a base assignment row is ownership, not a coverage offer — it must not notify");
+  assert(!has("coverage-new:aS4"), "a base assignment row must never fire a new-coverage event");
 
   // Fingerprint stability: identical input must yield an identical fingerprint
   // set (this is what useNotificationScanner's localStorage dedupe relies on).
@@ -692,6 +785,12 @@ export const pureTests = [
     name: "computeCoverageSummary: missing segments",
     category: "pure",
     run: testComputeCoverageSummary,
+  },
+  {
+    id: "pure-resolve-ownership",
+    name: "resolveOwnerId / coverage layering: assignment owns, cover overlaps window",
+    category: "pure",
+    run: testResolveOwnership,
   },
   {
     id: "pure-distribute-shifts",
