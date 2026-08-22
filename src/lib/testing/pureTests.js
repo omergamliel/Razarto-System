@@ -410,7 +410,6 @@ function testShiftActionFlags() {
     isRequestOwner: false,
     isPastShift: false,
     isPartialLike: false,
-    isTodayShift: true,
     canTakeShifts: true,
     hasMyCoverageEntry: false,
   };
@@ -419,7 +418,7 @@ function testShiftActionFlags() {
   // Stranger's white shift today: can gift it or propose a head-to-head, but
   // there's nothing to "offer cover" for and it isn't mine to request/cancel.
   const stranger = flags({});
-  assert(stranger.canGift, "white shift starting today is giftable");
+  assert(stranger.canGift, "a stranger's white shift from today onward is giftable");
   assert(stranger.canHeadToHead, "a stranger's white shift allows a head-to-head offer");
   assert(!stranger.canOfferCover, "no active request → nothing to offer cover for");
   assert(!stranger.canRequestSwap, "can't request a swap on a shift that isn't mine");
@@ -491,10 +490,11 @@ function testShiftActionFlags() {
   assert(!closed.canHeadToHead, "a covered/closed shift can't be countered");
   assert(!closed.canGift, "a covered/closed shift can't be gifted");
 
-  // Gift guards: role that can't take shifts, and an overnight shift that
-  // started yesterday (not today), both block gifting.
+  // Gift reach: a future white shift is giftable too (not just today's), while
+  // a role that can't take shifts and any past shift both block gifting.
+  assert(flags({ isPastShift: false }).canGift, "a future white shift is giftable, not only today's");
   assert(!flags({ canTakeShifts: false }).canGift, "a viewer who can't take shifts can't gift");
-  assert(!flags({ isTodayShift: false }).canGift, "a shift that didn't start today isn't giftable");
+  assert(!flags({ isPastShift: true }).canGift, "a past shift isn't giftable");
 
   // WhatsApp share is only for the owner of an active request.
   assert(flags({ hasActiveRequest: true, isRequestOwner: true }).canWhatsappShare,
