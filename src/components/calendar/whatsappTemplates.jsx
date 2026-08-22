@@ -218,12 +218,13 @@ export const computeCoverageSummary = ({
   );
   const approvedCoverages = normalizedCoverages.filter(
     // Base "assignment" rows record ownership, not a coverage band — exclude
-    // them so the owner's own row is never counted as phantom coverage. (Cancel
-    // now deletes cover rows, so a present cover row is active; the leftover
-    // status check keeps pre-Phase-4 "Cancelled" rows out during the migration.)
-    (cov) =>
-      cov.type !== "assignment" &&
-      (cov.status === "Approved" || !cov.status),
+    // them so the owner's own row is never counted as phantom coverage. Cancel
+    // now DELETES a cover row, so any present cover row is active; we must NOT
+    // gate on status === "Approved" (Phase 4 covers are created with no status,
+    // and base44's old default would stamp them "Pending"). The only status that
+    // still means "not active" is a leftover pre-Phase-4 "Cancelled" row, kept
+    // out here until the Phase 5 cleanup deletes them.
+    (cov) => cov.type !== "assignment" && cov.status !== "Cancelled",
   );
   const missingSegments =
     baseStart && baseEnd
