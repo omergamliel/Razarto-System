@@ -250,13 +250,13 @@ function testResolveOwnership() {
     "with no cover row, the requested window is entirely the owner's (one gap)",
   );
 
-  // Legacy fallback: with no assignment row at all, resolveOwnerId reads the
-  // deprecated shift.original_user_id (harmless dead path once the column is
-  // gone, but kept until then).
+  // No assignment row → no resolvable owner. Shift.original_user_id was removed
+  // in Phase 4, so there is no fallback: a shift with no assignment row returns
+  // undefined (a stray original_user_id-shaped field is ignored).
   assertEqual(
-    Number(resolveOwnerId({ ...shift, original_user_id: 4 }, [])),
-    4,
-    "resolveOwnerId falls back to shift.original_user_id when no assignment row exists",
+    resolveOwnerId({ ...shift, original_user_id: 4 }, []),
+    undefined,
+    "resolveOwnerId returns undefined when no assignment row exists (no legacy fallback)",
   );
 }
 
