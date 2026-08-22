@@ -289,6 +289,11 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   const [isRunningTests, setIsRunningTests] = useState(false);
   const [showTestExportGate, setShowTestExportGate] = useState(false);
 
+  // --- One-time ShiftCoverage migration (Phase 1 of the schema refactor) ---
+  const [showCoverageMigrationGate, setShowCoverageMigrationGate] =
+    useState(false);
+  const [coverageMigrationResult, setCoverageMigrationResult] = useState(null);
+
   const queryClient = useQueryClient();
 
   const monitorChecks = MONITOR_CHECKS;
@@ -1050,6 +1055,90 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       toUserId: replaceShiftsForm.toUserId,
     });
   };
+
+  // One-time migration (Phase 1 of the Shift/ShiftCoverage refactor): make
+  // ShiftCoverage the single ownership ledger.
+  //   1. For every Shift, create a base "assignment" ShiftCoverage from its
+  //      current original_user_id (skipping shifts that already have one, so
+  //      the routine is idempotent and safe to re-run).
+  //   2. Reclassify every still-active existing coverage (the old Full/Partial
+  //      covers, status "Approved") as type "cover".
+  //
+  // Transition safety: the base assignment rows are written with
+  // status:"Cancelled" ON PURPOSE. Every CURRENT (pre-Phase-3) coverage reader
+  // filters coverages by either `status === "Approved" || !status` or
+  // `status !== "Cancelled"` — a "Cancelled" row is skipped by BOTH, so these
+  // new assignment rows stay completely invisible to the old code until the
+  // Phase 3 readers (which key off `type === "assignment"`, ignoring status)
+  // ship. This lets the migration run and be verified against the OLD code
+  // without the owner appearing to "cover" their own shift. Phase 4 drops the
+  // status column entirely.
+  //   Requires the `type` field to already exist on ShiftCoverage (added in the
+  // base44 dashboard before running this).
+  const coverageMigrationMutation = useMutation({
+    mutationFn: async () => {
+      const [shifts, coverages] = await Promise.all([
+        base44.entities.Shift.list(),
+        base44.entities.ShiftCoverage.list(),
+      ]);
+
+      // Guard against a transient empty fetch mass-creating garbage.
+      if (shifts.length === 0) {
+        throw new Error("לא נטענו משמרות — נסו שוב");
+      }
+
+      const shiftIdsWithAssignment = new Set(
+        coverages
+          .filter((c) => c.type === "assignment")
+          .map((c) => c.shift_id),
+      );
+      const shiftsNeedingAssignment = shifts.filter(
+        (s) =>
+          s.original_user_id != null &&
+          !shiftIdsWithAssignment.has(s.id),
+      );
+
+      // Old covers carry type "Full"/"Partial" (or none); reclassify the active
+      // ones to "cover". Cancelled rows are left as history (cleaned in Phase 5).
+      const coversToReclassify = coverages.filter(
+        (c) =>
+          c.status === "Approved" &&
+          c.type !== "assignment" &&
+          c.type !== "cover",
+      );
+
+      await Promise.all([
+        ...shiftsNeedingAssignment.map((s) =>
+          base44.entities.ShiftCoverage.create({
+            shift_id: s.id,
+            covering_user_id: s.original_user_id,
+            type: "assignment",
+            status: "Cancelled",
+          }),
+        ),
+        ...coversToReclassify.map((c) =>
+          base44.entities.ShiftCoverage.update(c.id, { type: "cover" }),
+        ),
+      ]);
+
+      return {
+        created: shiftsNeedingAssignment.length,
+        reclassified: coversToReclassify.length,
+        totalShifts: shifts.length,
+      };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries(["coverages"]);
+      queryClient.invalidateQueries(["shifts"]);
+      setCoverageMigrationResult(result);
+      toast.success(
+        `המיגרציה הושלמה: נוצרו ${result.created} שיבוצי בסיס, סווגו מחדש ${result.reclassified} כיסויים`,
+      );
+    },
+    onError: (error) => {
+      toast.error(`המיגרציה נכשלה: ${error?.message || "שגיאה לא ידועה"}`);
+    },
+  });
 
   // Runs the full test suite (src/lib/testing): pure-logic tests first (no
   // data risk), then the live tests, which create+delete their own [TEST]
@@ -2462,6 +2551,53 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                 </Button>
               </div>
 
+              {/* One-time ShiftCoverage migration (schema refactor Phase 1) */}
+              <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">
+                      מיגרציית כיסויים (חד-פעמי)
+                    </p>
+                    <p className="text-xs text-gray-500 max-w-xl">
+                      יוצר רשומת שיבוץ בסיס (ShiftCoverage מסוג "assignment") לכל
+                      משמרת לפי הבעלים הנוכחי, ומסווג מחדש כיסויים פעילים קיימים
+                      כ-"cover". פעולה חד-פעמית, בטוחה להרצה חוזרת (מדלגת על
+                      משמרות שכבר קיבלו שיבוץ בסיס). יש להוסיף תחילה את השדה
+                      `type` ל-ShiftCoverage בלוח הבקרה של base44.
+                    </p>
+                  </div>
+                  <ArrowLeftRight className="w-5 h-5 text-purple-500 shrink-0" />
+                </div>
+
+                <Button
+                  onClick={() => setShowCoverageMigrationGate(true)}
+                  disabled={coverageMigrationMutation.isPending}
+                  className="w-full md:w-auto h-11 rounded-xl bg-purple-600 hover:bg-purple-700 text-white gap-2"
+                >
+                  {coverageMigrationMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" /> מריץ
+                      מיגרציה...
+                    </>
+                  ) : (
+                    <>
+                      <ArrowLeftRight className="w-4 h-4" /> הרץ מיגרציית כיסויים
+                    </>
+                  )}
+                </Button>
+
+                {coverageMigrationResult && (
+                  <div className="mt-3 flex items-start gap-2 p-2.5 rounded-xl border bg-emerald-50 border-emerald-200 text-sm">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <span className="text-gray-700">
+                      נוצרו {coverageMigrationResult.created} שיבוצי בסיס · סווגו
+                      מחדש {coverageMigrationResult.reclassified} כיסויים · מתוך{" "}
+                      {coverageMigrationResult.totalShifts} משמרות
+                    </span>
+                  </div>
+                )}
+              </div>
+
               {testResults && (
                 <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm space-y-3">
                   <div className="flex items-center gap-2">
@@ -2560,6 +2696,46 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
               className="bg-blue-600 hover:bg-blue-700 text-white"
             >
               המשך בכל זאת
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm gate for the one-time coverage migration routine */}
+      <Dialog
+        open={showCoverageMigrationGate}
+        onOpenChange={setShowCoverageMigrationGate}
+      >
+        <DialogContent dir="rtl" className="text-right">
+          <DialogHeader className="text-right">
+            <DialogTitle className="flex items-center gap-2 text-purple-700">
+              <ArrowLeftRight className="w-5 h-5" />
+              מיגרציית כיסויים
+            </DialogTitle>
+            <DialogDescription>
+              פעולה חד-פעמית שיוצרת שורת שיבוץ בסיס (assignment) לכל משמרת לפי
+              הבעלים הנוכחי שלה, ומסווגת מחדש כיסויים פעילים קיימים ל-cover.
+              הפעולה בטוחה לחזרה (idempotent) — משמרות שכבר יש להן שיבוץ בסיס
+              יידלגו. ודאו שהוספתם את השדה <code>type</code> לישות ShiftCoverage
+              בלוח הבקרה של base44 לפני ההרצה.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowCoverageMigrationGate(false)}
+            >
+              ביטול
+            </Button>
+            <Button
+              onClick={() => {
+                coverageMigrationMutation.mutate();
+                setShowCoverageMigrationGate(false);
+              }}
+              disabled={coverageMigrationMutation.isPending}
+              className="bg-purple-600 hover:bg-purple-700 text-white"
+            >
+              כן, הרץ מיגרציה
             </Button>
           </DialogFooter>
         </DialogContent>
