@@ -6,6 +6,7 @@ import { format } from 'date-fns';
 import { he } from 'date-fns/locale';
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { resolveOwnerId } from './whatsappTemplates';
 
 export default function HeadToHeadApprovalModal({ 
   isOpen, 
@@ -29,11 +30,20 @@ export default function HeadToHeadApprovalModal({
       enabled: isOpen
   });
 
+  // Ownership comes from the base "assignment" ShiftCoverage row (Phase 4).
+  const { data: coverages = [] } = useQuery({
+      queryKey: ['coverages'],
+      queryFn: () => base44.entities.ShiftCoverage.list(),
+      enabled: isOpen
+  });
+
   // Helper to enrich shift with name
   const getShiftInfo = (id) => {
       const shift = allShifts.find(s => s.id === id);
       if (!shift) return null;
-      const user = authorizedPeople.find(u => u.serial_id === shift.original_user_id);
+      const user = authorizedPeople.find(
+        u => Number(u.serial_id) === Number(resolveOwnerId(shift, coverages)),
+      );
       return { ...shift, user_name: user?.full_name || 'לא ידוע' };
   };
 
