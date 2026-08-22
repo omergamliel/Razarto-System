@@ -43,7 +43,6 @@ export function deriveShiftActionFlags({
   isRequestOwner,
   isPastShift,
   isPartialLike,
-  isTodayShift,
   canTakeShifts,
   // Boolean(myCoverageEntry): the viewer has an approved coverage window on
   // this shift (they joined a partial swap as a helper).
@@ -82,12 +81,14 @@ export function deriveShiftActionFlags({
   const canRequestSwap = isOwnShift && !hasAnyRequest && !isPastShift;
   const canWhatsappShare = hasActiveRequest && isRequestOwner;
   const canAddToCalendarOrEmail = isOwnShift;
-  // Gift only the plain, un-swapped shift that STARTS today (an overnight shift
-  // that began yesterday still covers today but belongs to yesterday).
+  // Gift any plain, un-swapped shift from today onward — a colleague's shift
+  // today or on any future date can be taken off their hands. Only past shifts
+  // are excluded (isPastShift keys off the shift's start date, so an overnight
+  // shift that began yesterday is still treated as past and stays non-giftable).
   const canGift =
     canTakeShifts &&
     !isOwnShift &&
-    isTodayShift &&
+    !isPastShift &&
     isWhiteShift &&
     !isCoveredOrClosed;
 
