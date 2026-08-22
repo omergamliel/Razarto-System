@@ -39,23 +39,13 @@
   },
   "required": [
     "start_date",
-    "end_date",
-    "original_user_id"
+    "end_date"
   ],
   "rls": {
     "read": {
-      "$or": [
-        {
-          "user_condition": {
-            "data.is_authorized": true
-          }
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
+      "user_condition": {
+        "data.is_authorized": true
+      }
     },
     "create": {
       "user_condition": {
