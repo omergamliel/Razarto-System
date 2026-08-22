@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { base44, setActivityActor, logActivity } from "@/api/base44Client";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -467,6 +467,27 @@ export default function ShiftCalendar() {
       );
   }, [authorizedPerson, currentUser]);
 
+  // Register the acting user for activity logging, so every data mutation the
+  // app records (see logActivity in base44Client) is attributed to this person
+  // without threading the actor through each call site.
+  useEffect(() => {
+    setActivityActor(authorizedPerson || null);
+  }, [authorizedPerson]);
+
+  // Log a single "login" entry the first time the acting user is resolved this
+  // session (guarded by a ref so the actor-sync re-renders don't re-log it).
+  const loginLoggedRef = useRef(false);
+  useEffect(() => {
+    if (!authorizedPerson || loginLoggedRef.current) return;
+    loginLoggedRef.current = true;
+    logActivity({
+      action: "כניסה למערכת",
+      type: "כניסות משתמשים",
+      entity: "User",
+      actor: authorizedPerson,
+    });
+  }, [authorizedPerson]);
+
   // --- MAIN DATA QUERIES (Shifts, Users, Requests, Coverages) ---
   const { data: shifts = [], isLoading: isShiftsLoading } = useQuery({
     queryKey: ["shifts"],
@@ -698,8 +719,17 @@ export default function ShiftCalendar() {
     onMutate: (variables) => {
       appendSwapLog("🚀 התחלת שליחה", variables);
     },
-    onSuccess: (data) => {
+    onSuccess: (data, variables) => {
       appendSwapLog("✅ הבקשה נשמרה והמשמרת עודכנה");
+      logActivity({
+        action:
+          variables?.type === "full"
+            ? "יצירת בקשת החלפה מלאה"
+            : "יצירת בקשת החלפה חלקית",
+        type: "בקשות החלפה",
+        entity: "SwapRequest",
+        entityId: variables?.shiftId,
+      });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["swap-requests"]);
       toast.success("בקשת ההחלפה נשלחה בהצלחה!");
@@ -760,6 +790,11 @@ export default function ShiftCalendar() {
       // Shift "requested" state is derived from these open requests (Phase 4).
     },
     onSuccess: () => {
+      logActivity({
+        action: "יצירת בקשת החלפה ראש-בראש",
+        type: "בקשות החלפה",
+        entity: "SwapRequest",
+      });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["swap-requests"]);
       toast.success("בקשות ההחלפה נשלחו בהצלחה!");
@@ -804,6 +839,11 @@ export default function ShiftCalendar() {
       // Shift "requested" state is derived from this open request (Phase 4).
     },
     onSuccess: () => {
+      logActivity({
+        action: "יצירת בקשת החלפה כללית",
+        type: "בקשות החלפה",
+        entity: "SwapRequest",
+      });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["swap-requests"]);
       toast.success("בקשת ההחלפה הכללית נשלחה!");
@@ -852,7 +892,13 @@ export default function ShiftCalendar() {
         ),
       );
     },
-    onSuccess: () => {
+    onSuccess: (_data, request) => {
+      logActivity({
+        action: "לקיחת בקשת החלפה כללית",
+        type: "בקשות החלפה",
+        entity: "SwapRequest",
+        entityId: request?.id,
+      });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["swap-requests"]);
       toast.success("המשמרות נלקחו בהצלחה!");
@@ -924,7 +970,13 @@ export default function ShiftCalendar() {
           .map((c) => base44.entities.ShiftCoverage.delete(c.id)),
       );
     },
-    onSuccess: () => {
+    onSuccess: (_data, shiftId) => {
+      logActivity({
+        action: "ביטול בקשת החלפה של המשמרת",
+        type: "בקשות החלפה",
+        entity: "SwapRequest",
+        entityId: shiftId,
+      });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["swap-requests"]);
       queryClient.invalidateQueries(["coverages"]);
@@ -968,7 +1020,13 @@ export default function ShiftCalendar() {
       // The shift's status is derived from the (re-opened) request above — no
       // Shift.status to write (Phase 4).
     },
-    onSuccess: () => {
+    onSuccess: (_data, shift) => {
+      logActivity({
+        action: "ביטול השתתפות בכיסוי משמרת",
+        type: "בקשות החלפה",
+        entity: "ShiftCoverage",
+        entityId: shift?.id,
+      });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["swap-requests"]);
       queryClient.invalidateQueries(["coverages"]);
@@ -1016,7 +1074,13 @@ export default function ShiftCalendar() {
       // The reset shifts' status is derived from the absence of a live request
       // (Phase 4) — nothing to write on the Shift.
     },
-    onSuccess: () => {
+    onSuccess: (_data, request) => {
+      logActivity({
+        action: "ביטול בקשת החלפה",
+        type: "בקשות החלפה",
+        entity: "SwapRequest",
+        entityId: request?.id,
+      });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["swap-requests"]);
       queryClient.invalidateQueries(["coverages"]);
@@ -1072,7 +1136,13 @@ export default function ShiftCalendar() {
         ),
       );
     },
-    onSuccess: () => {
+    onSuccess: (_data, request) => {
+      logActivity({
+        action: "קבלת בקשת החלפה ראש-בראש",
+        type: "בקשות החלפה",
+        entity: "SwapRequest",
+        entityId: request?.id,
+      });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["swap-requests"]);
       toast.success("ההחלפה בוצעה בהצלחה!");
@@ -1121,6 +1191,12 @@ export default function ShiftCalendar() {
       });
     },
     onSuccess: (_data, shift) => {
+      logActivity({
+        action: "הצעת משמרת במתנה",
+        type: "בקשות החלפה",
+        entity: "SwapRequest",
+        entityId: shift?.id,
+      });
       queryClient.invalidateQueries(["swap-requests"]);
       const recipientName =
         allUsers.find(
@@ -1191,7 +1267,13 @@ export default function ShiftCalendar() {
         ),
       );
     },
-    onSuccess: () => {
+    onSuccess: (_data, request) => {
+      logActivity({
+        action: "קבלת משמרת במתנה",
+        type: "בקשות החלפה",
+        entity: "SwapRequest",
+        entityId: request?.id,
+      });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["swap-requests"]);
       toast.success("המתנה התקבלה — אין צורך להגיע למשמרת 🎁");
@@ -1272,7 +1354,13 @@ export default function ShiftCalendar() {
         status: missingSegments.length === 0 ? "Closed" : "Partially_Covered",
       });
     },
-    onSuccess: () => {
+    onSuccess: (_data, { shift } = {}) => {
+      logActivity({
+        action: "הצעת כיסוי למשמרת",
+        type: "בקשות החלפה",
+        entity: "ShiftCoverage",
+        entityId: shift?.id,
+      });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["swap-requests"]);
       queryClient.invalidateQueries(["coverages"]);
@@ -1298,6 +1386,12 @@ export default function ShiftCalendar() {
       await syncAssignmentOwner(h2hOfferId, targetOwner, coverages);
     },
     onSuccess: () => {
+      logActivity({
+        action: "ביצוע החלפה ראש-בראש",
+        type: "בקשות החלפה",
+        entity: "ShiftCoverage",
+        entityId: h2hTargetId,
+      });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["coverages"]);
       toast.success("החלפה ראש בראש בוצעה בהצלחה!");
@@ -1329,7 +1423,13 @@ export default function ShiftCalendar() {
       // Update Coverage status (optional if you have status field on coverage)
       // await base44.entities.ShiftCoverage.update(pendingCoverage.id, { status: 'approved' });
     },
-    onSuccess: () => {
+    onSuccess: (_data, shift) => {
+      logActivity({
+        action: "אישור החלפה ועדכון הלוח",
+        type: "בקשות החלפה",
+        entity: "Shift",
+        entityId: shift?.id,
+      });
       queryClient.invalidateQueries(["shifts"]);
       toast.success("ההחלפה אושרה והלוח עודכן!");
       setShowDetailsModal(false);
@@ -1349,7 +1449,13 @@ export default function ShiftCalendar() {
       await createAssignmentForShift(shift, newShiftData.original_user_id);
       return shift;
     },
-    onSuccess: () => {
+    onSuccess: (shift) => {
+      logActivity({
+        action: "הוספת משמרת",
+        type: "הוספת משמרות",
+        entity: "Shift",
+        entityId: shift?.id,
+      });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["coverages"]);
       toast.success("המשמרת נוספה בהצלחה");
@@ -1370,7 +1476,13 @@ export default function ShiftCalendar() {
       }
       return null;
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      logActivity({
+        action: "עריכת תפקיד / בעלות על משמרת",
+        type: "שינויים בהרשאות",
+        entity: "Shift",
+        entityId: variables?.id,
+      });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["coverages"]);
       toast.success("התפקיד עודכן בהצלחה");
@@ -1402,7 +1514,13 @@ export default function ShiftCalendar() {
       ]);
       return await base44.entities.Shift.delete(id);
     },
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
+      logActivity({
+        action: "מחיקת משמרת",
+        type: "מחיקת משמרות",
+        entity: "Shift",
+        entityId: id,
+      });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["swap-requests"]);
       queryClient.invalidateQueries(["coverages"]);
@@ -1418,6 +1536,13 @@ export default function ShiftCalendar() {
 
   const logoutMutation = useMutation({
     mutationFn: async () => {
+      // Log the logout before the auth call — the redirect in onSuccess tears
+      // the app down, so a post-logout fire-and-forget wouldn't survive.
+      await logActivity({
+        action: "התנתקות מהמערכת",
+        type: "כניסות משתמשים",
+        entity: "User",
+      });
       await base44.auth.logout();
     },
     onSuccess: () => {
