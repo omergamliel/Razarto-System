@@ -12,6 +12,7 @@ import {
   Edit2,
   Trash2,
   ArrowLeftRight,
+  ArrowLeft,
   Shield,
   UserX,
   UserPlus,
@@ -647,6 +648,10 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   const setActiveMemberMutation = useMutation({
     mutationFn: async ({ symbol, person }) => {
       const existing = activeSegmentBySymbol.get(symbol);
+      // The email of the active member being replaced (if any), captured before
+      // we overwrite the row, so onSuccess can offer to migrate their shifts.
+      const previousActiveEmail =
+        existing?.active && existing?.username ? existing.username : null;
       const clearing =
         !person || (existing?.active && existing?.username === person.email);
       if (clearing) {
@@ -656,7 +661,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
             active: false,
           });
         }
-        return;
+        return { previousActiveEmail, cleared: true };
       }
       if (existing) {
         await base44.entities.ShiftSegment.update(existing.id, {
@@ -671,12 +676,93 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
           active: true,
         });
       }
+      return { previousActiveEmail, cleared: false };
     },
-    onSuccess: () => {
+    onSuccess: (result, { person }) => {
       queryClient.invalidateQueries(["shift-segments"]);
+      offerFutureShiftMigration(result, person);
     },
     onError: () => toast.error("שגיאה בעדכון המשתמש הפעיל בקבוצה."),
   });
+
+  // When a group's active member is swapped for a different person, the shifts
+  // the OUTGOING active member owns from tomorrow on will keep being theirs even
+  // though distribution now favours the newcomer. Rather than silently reassign
+  // them, offer it: a toast shows "outgoing → incoming" with a one-tap action to
+  // hand every future shift of the outgoing member over to the incoming one.
+  const migrateFutureShiftsMutation = useMutation({
+    mutationFn: async ({ shiftIds, toUserId }) => {
+      await Promise.all(
+        shiftIds.map((id) =>
+          base44.entities.Shift.update(id, {
+            original_user_id: Number(toUserId),
+          }),
+        ),
+      );
+      return shiftIds.length;
+    },
+    onSuccess: (count) => {
+      queryClient.invalidateQueries(["shifts"]);
+      toast.success(`הועברו ${count} משמרות עתידיות למשתמש הפעיל החדש`);
+    },
+    onError: () => toast.error("העברת המשמרות העתידיות נכשלה. נסו שוב."),
+  });
+
+  const offerFutureShiftMigration = (result, person) => {
+    const previousEmail = result?.previousActiveEmail;
+    // Only when we replaced an existing, different active member with a real
+    // newcomer — clearing the active member, or setting the first one, has
+    // nothing to migrate.
+    if (
+      !result ||
+      result.cleared ||
+      !person ||
+      !previousEmail ||
+      previousEmail === person.email
+    ) {
+      return;
+    }
+    const previousPerson = authorizedPeople.find(
+      (p) => p.email === previousEmail,
+    );
+    if (!previousPerson) return;
+
+    const todayStr = format(new Date(), "yyyy-MM-dd");
+    const futureShifts = allShiftsForDistribution.filter(
+      (s) =>
+        Number(s.original_user_id) === Number(previousPerson.serial_id) &&
+        s.start_date > todayStr,
+    );
+    if (futureShifts.length === 0) return;
+
+    toast(
+      <div className="flex flex-col gap-2" dir="rtl">
+        <span className="text-sm font-semibold text-gray-800">
+          להעביר {futureShifts.length} משמרות עתידיות למשתמש הפעיל החדש?
+        </span>
+        <div className="flex items-center gap-2 text-sm">
+          <span className="font-semibold text-gray-700">
+            {previousPerson.full_name}
+          </span>
+          <ArrowLeft className="w-4 h-4 text-blue-600 shrink-0" />
+          <span className="font-semibold text-blue-700">
+            {person.full_name}
+          </span>
+        </div>
+      </div>,
+      {
+        duration: 12000,
+        action: {
+          label: "העבר משמרות",
+          onClick: () =>
+            migrateFutureShiftsMutation.mutate({
+              shiftIds: futureShifts.map((s) => s.id),
+              toUserId: person.serial_id,
+            }),
+        },
+      },
+    );
+  };
 
   // 3b-i. Groups — add a new group (a ShiftSegment row with just a symbol).
   const addGroupMutation = useMutation({
