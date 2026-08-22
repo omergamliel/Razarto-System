@@ -9,6 +9,10 @@ import {
   normalizeShiftContext,
   computeCoverageSummary,
   buildGiftTemplate,
+  buildGeneralTemplate,
+  buildHeadToHeadTemplate,
+  buildHeadToHeadDeepLink,
+  setWhatsappTemplates,
   syncAssignmentOwner,
   createAssignmentForShift,
   resolveOwnerId,
@@ -488,6 +492,30 @@ export default function ShiftCalendar() {
     });
   }, [authorizedPerson]);
 
+  // Load admin-edited WhatsApp message templates once (setting_key
+  // "whatsapp_templates" on AppSettings) and register them app-wide, so every
+  // ready-made WhatsApp share (here and in child modals) uses the custom wording
+  // with a fallback to the built-in defaults. See setWhatsappTemplates.
+  const { data: appSettingsList = [] } = useQuery({
+    queryKey: ["app-settings"],
+    queryFn: () => base44.entities.AppSettings.list(),
+    enabled: !!authorizedPerson,
+  });
+  useEffect(() => {
+    const row = appSettingsList.find(
+      (s) => s.setting_key === "whatsapp_templates",
+    );
+    if (!row?.value) {
+      setWhatsappTemplates({});
+      return;
+    }
+    try {
+      setWhatsappTemplates(JSON.parse(row.value));
+    } catch {
+      setWhatsappTemplates({});
+    }
+  }, [appSettingsList]);
+
   // --- MAIN DATA QUERIES (Shifts, Users, Requests, Coverages) ---
   const { data: shifts = [], isLoading: isShiftsLoading } = useQuery({
     queryKey: ["shifts"],
@@ -789,7 +817,7 @@ export default function ShiftCalendar() {
       );
       // Shift "requested" state is derived from these open requests (Phase 4).
     },
-    onSuccess: () => {
+    onSuccess: (_data, { ownShiftIds, targetShiftIds }) => {
       logActivity({
         action: "יצירת בקשת החלפה ראש-בראש",
         type: "בקשות החלפה",
@@ -797,7 +825,42 @@ export default function ShiftCalendar() {
       });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["swap-requests"]);
-      toast.success("בקשות ההחלפה נשלחו בהצלחה!");
+
+      // Ready-made WhatsApp message for the head-to-head offer (optional action
+      // on the success toast). The switch flow restricts targets to a single
+      // owner, so one message covers the request. Wording is admin-editable via
+      // the "הודעות וואטסאפ" tab (setting_key whatsapp_templates).
+      const targetShift = shifts.find((s) => s.id === targetShiftIds[0]);
+      const ownShift = shifts.find((s) => s.id === ownShiftIds[0]);
+      const targetOwner = allUsers.find(
+        (u) =>
+          Number(u.serial_id) === Number(resolveOwnerId(targetShift, coverages)),
+      );
+      const fmt = (d) => (d ? format(new Date(d), "dd/MM") : "");
+      toast.success("בקשות ההחלפה נשלחו בהצלחה!", {
+        duration: 10000,
+        action: {
+          label: "שליחה בוואטסאפ",
+          onClick: () => {
+            const message = buildHeadToHeadTemplate({
+              targetUserName: targetOwner?.full_name,
+              targetShiftOwner: targetOwner?.full_name,
+              targetShiftDate: fmt(targetShift?.start_date),
+              myShiftOwner: authorizedPerson.full_name,
+              myShiftDate: fmt(ownShift?.start_date),
+              uniqueApprovalUrl: buildHeadToHeadDeepLink(
+                targetShiftIds[0],
+                ownShiftIds[0],
+              ),
+            });
+            window.open(
+              `https://wa.me/?text=${encodeURIComponent(message)}`,
+              "_blank",
+            );
+          },
+        },
+      });
+
       if (switchFlowWarningTimeoutRef.current)
         clearTimeout(switchFlowWarningTimeoutRef.current);
       setSwitchFlowWarning(null);
@@ -838,7 +901,7 @@ export default function ShiftCalendar() {
       });
       // Shift "requested" state is derived from this open request (Phase 4).
     },
-    onSuccess: () => {
+    onSuccess: (_data, { ownShiftIds }) => {
       logActivity({
         action: "יצירת בקשת החלפה כללית",
         type: "בקשות החלפה",
@@ -846,7 +909,37 @@ export default function ShiftCalendar() {
       });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["swap-requests"]);
-      toast.success("בקשת ההחלפה הכללית נשלחה!");
+
+      // Ready-made WhatsApp broadcast for the general request (optional action
+      // on the success toast) — its message is admin-editable via the
+      // "הודעות וואטסאפ" tab (setting_key whatsapp_templates).
+      const ownShifts = shifts.filter((s) => ownShiftIds.includes(s.id));
+      const startDate = ownShifts.map((s) => s.start_date).sort()[0];
+      const endDate = ownShifts
+        .map((s) => s.end_date || s.start_date)
+        .sort()
+        .slice(-1)[0];
+      toast.success("בקשת ההחלפה הכללית נשלחה!", {
+        duration: 10000,
+        action: {
+          label: "שליחה בוואטסאפ",
+          onClick: () => {
+            const message = buildGeneralTemplate({
+              originalOwnerName: authorizedPerson.full_name,
+              startDate,
+              startTime: ownShifts[0]?.start_time,
+              endDate,
+              endTime: ownShifts[0]?.end_time,
+              shiftId: ownShiftIds[0],
+            });
+            window.open(
+              `https://wa.me/?text=${encodeURIComponent(message)}`,
+              "_blank",
+            );
+          },
+        },
+      });
+
       if (switchFlowWarningTimeoutRef.current)
         clearTimeout(switchFlowWarningTimeoutRef.current);
       setSwitchFlowWarning(null);
