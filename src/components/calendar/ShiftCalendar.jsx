@@ -11,6 +11,7 @@ import {
   buildGiftTemplate,
   syncAssignmentOwner,
   createAssignmentForShift,
+  resolveOwnerId,
 } from "./whatsappTemplates";
 
 // Components
@@ -506,69 +507,45 @@ export default function ShiftCalendar() {
         activeStatuses.includes(sr.status) &&
         (sr.req_end_date || sr.req_start_date) < today,
     );
-    const staleRequestIds = new Set(staleRequests.map((sr) => sr.id));
 
-    // Shifts marked as mid-swap that no longer have a live (non-stale) active request.
-    const liveShiftIds = new Set(
+    // Orphaned coverages: a "cover" ShiftCoverage whose backing SwapRequest is
+    // gone (e.g. force-deleted out-of-band). Normal cancels now DELETE the cover
+    // row directly, so orphans only accrue from out-of-band request deletion —
+    // but a dangling cover still makes a shift render "covered" (via
+    // isFullyCovered), so self-heal by deleting any "cover" row whose shift is
+    // no longer referenced by a live/closed request. Base "assignment" rows
+    // (ownership, no parent request) are never touched.
+    //   Guard with swapRequests.length > 0 so a transient empty fetch can't
+    // mass-delete every cover.
+    const shiftIdsWithBackingRequest = new Set(
       swapRequests
-        .filter(
-          (sr) =>
-            activeStatuses.includes(sr.status) && !staleRequestIds.has(sr.id),
+        .filter((sr) =>
+          ["Open", "Partially_Covered", "Closed"].includes(sr.status),
         )
         .flatMap((sr) => sr.shift_ids || []),
     );
-    const orphanedShifts = shifts.filter(
-      (s) =>
-        ["Swap_Requested", "Partially_Covered"].includes(s.status) &&
-        !liveShiftIds.has(s.id),
-    );
-
-    // Orphaned coverages: a ShiftCoverage whose parent SwapRequest no longer
-    // exists (e.g. the request row was force-deleted out-of-band). Every
-    // coverage consumer keys off shift_id alone — never the parent request —
-    // so a dangling Approved coverage silently re-attaches to any *new* request
-    // on the same shift, showing phantom coverage and corrupting the coverage
-    // summary of an unrelated swap. Deleting them here self-heals both existing
-    // orphans (on the next load) and any future out-of-band deletion.
-    //   Guard with swapRequests.length > 0: only trust "this request_id is
-    // missing" once the request list has actually loaded, so a transient empty
-    // fetch can never mass-delete every coverage. Coverages without a
-    // request_id (legacy rows) are left alone.
-    const liveRequestIds = new Set(swapRequests.map((sr) => sr.id));
     const orphanedCoverages =
       swapRequests.length > 0
         ? coverages.filter(
             (c) =>
-              // Base "assignment" rows carry a sentinel request_id (they have no
-              // parent request) — never treat them as orphans.
-              c.type !== "assignment" &&
-              c.request_id &&
-              !liveRequestIds.has(c.request_id),
+              c.type === "cover" &&
+              !shiftIdsWithBackingRequest.has(c.shift_id),
           )
         : [];
 
-    if (
-      staleRequests.length === 0 &&
-      orphanedShifts.length === 0 &&
-      orphanedCoverages.length === 0
-    )
-      return;
+    if (staleRequests.length === 0 && orphanedCoverages.length === 0) return;
 
     Promise.all([
       ...staleRequests.map((sr) => base44.entities.SwapRequest.delete(sr.id)),
-      ...orphanedShifts.map((s) =>
-        base44.entities.Shift.update(s.id, { status: "Active" }),
-      ),
       ...orphanedCoverages.map((c) =>
         base44.entities.ShiftCoverage.delete(c.id),
       ),
     ])
       .then(() => {
         debugLog(
-          "🧹 [ShiftCalendar] Cleaned up expired swap requests, orphaned shift statuses & orphaned coverages:",
+          "🧹 [ShiftCalendar] Cleaned up expired swap requests & orphaned coverages:",
           {
             requestIds: staleRequests.map((sr) => sr.id),
-            shiftIds: orphanedShifts.map((s) => s.id),
             coverageIds: orphanedCoverages.map((c) => c.id),
           },
         );
@@ -712,10 +689,11 @@ export default function ShiftCalendar() {
 
       await base44.entities.SwapRequest.create(payload);
 
-      appendSwapLog("🔄 מעדכן סטטוס משמרת ל-Swap_Requested", { shiftId });
-      return await base44.entities.Shift.update(shiftId, {
-        status: "Swap_Requested",
-      });
+      // The shift's "requested" state is now derived from the open SwapRequest
+      // above (Phase 4) — no Shift.status to write. Return the shift for the
+      // success modal.
+      appendSwapLog("✅ הבקשה נשמרה");
+      return shifts.find((s) => s.id === shiftId) || { id: shiftId };
     },
     onMutate: (variables) => {
       appendSwapLog("🚀 התחלת שליחה", variables);
@@ -777,12 +755,7 @@ export default function ShiftCalendar() {
           }),
         ),
       );
-
-      await Promise.all(
-        ownShiftIds.map((id) =>
-          base44.entities.Shift.update(id, { status: "Swap_Requested" }),
-        ),
-      );
+      // Shift "requested" state is derived from these open requests (Phase 4).
     },
     onSuccess: () => {
       queryClient.invalidateQueries(["shifts"]);
@@ -826,12 +799,7 @@ export default function ShiftCalendar() {
         req_end_time,
         status: "Open",
       });
-
-      await Promise.all(
-        ownShiftIds.map((id) =>
-          base44.entities.Shift.update(id, { status: "Swap_Requested" }),
-        ),
-      );
+      // Shift "requested" state is derived from this open request (Phase 4).
     },
     onSuccess: () => {
       queryClient.invalidateQueries(["shifts"]);
@@ -857,16 +825,8 @@ export default function ShiftCalendar() {
       const theirShiftIds = request.shift_ids || [];
       if (theirShiftIds.length === 0) return;
 
-      await Promise.all(
-        theirShiftIds.map((id) =>
-          base44.entities.Shift.update(id, {
-            original_user_id: authorizedPerson.serial_id,
-            status: "Active",
-          }),
-        ),
-      );
-      // Dual-write: keep each shift's base assignment coverage in step with the
-      // new owner so coverage-based labeling stays correct (Phase 3).
+      // Ownership lives in the base "assignment" coverage row (Phase 4) — point
+      // each taken shift's assignment at the accepting user.
       await Promise.all(
         theirShiftIds.map((id) =>
           syncAssignmentOwner(id, authorizedPerson.serial_id, coverages),
@@ -916,7 +876,8 @@ export default function ShiftCalendar() {
     if (targetShiftIds.length === 0) return;
     const targetShift = shifts.find((s) => s.id === targetShiftIds[0]);
     const targetOwner = allUsers.find(
-      (u) => u.serial_id === targetShift?.original_user_id,
+      (u) =>
+        Number(u.serial_id) === Number(resolveOwnerId(targetShift, coverages)),
     );
     setShowKPIListModal(false);
     if (switchFlowWarningTimeoutRef.current)
@@ -952,23 +913,14 @@ export default function ShiftCalendar() {
       }
 
       // Cancelling the owner's own partial/full swap request means the whole
-      // shift just returns to them as a normal shift — any coverage other
-      // people had already been granted no longer applies.
-      await Promise.all(
+      // shift just returns to them as a normal shift — delete the "cover" rows
+      // other people were granted (cancel = delete; Phase 4). The base
+      // "assignment" row is left untouched so ownership is preserved.
+      return await Promise.all(
         coverages
-          .filter(
-            (c) =>
-              c.shift_id === shiftId && (c.status === "Approved" || !c.status),
-          )
-          .map((c) =>
-            base44.entities.ShiftCoverage.update(c.id, {
-              status: "Cancelled",
-            }),
-          ),
+          .filter((c) => c.shift_id === shiftId && c.type !== "assignment")
+          .map((c) => base44.entities.ShiftCoverage.delete(c.id)),
       );
-
-      // Update shift status
-      return await base44.entities.Shift.update(shiftId, { status: "Active" });
     },
     onSuccess: () => {
       queryClient.invalidateQueries(["shifts"]);
@@ -988,14 +940,14 @@ export default function ShiftCalendar() {
       const myCoverage = coverages.find(
         (c) =>
           c.shift_id === shift.id &&
-          Number(c.covering_user_id) === Number(authorizedPerson.serial_id) &&
-          (c.status === "Approved" || !c.status),
+          c.type !== "assignment" &&
+          Number(c.covering_user_id) === Number(authorizedPerson.serial_id),
       );
       if (!myCoverage) throw new Error("No coverage found to cancel");
 
-      await base44.entities.ShiftCoverage.update(myCoverage.id, {
-        status: "Cancelled",
-      });
+      // Backing out of a covered window = delete the cover row (Phase 4). The
+      // owner keeps whatever nobody covers (missingSegments treats it as theirs).
+      await base44.entities.ShiftCoverage.delete(myCoverage.id);
 
       const activeRequest = swapRequests.find(
         (sr) => sr.shift_ids?.includes(shift.id) && sr.status !== "Cancelled",
@@ -1004,19 +956,15 @@ export default function ShiftCalendar() {
         const remainingCoverages = coverages.filter(
           (c) =>
             c.shift_id === shift.id &&
-            c.id !== myCoverage.id &&
-            (c.status === "Approved" || !c.status),
+            c.type !== "assignment" &&
+            c.id !== myCoverage.id,
         );
         await base44.entities.SwapRequest.update(activeRequest.id, {
           status: remainingCoverages.length > 0 ? "Partially_Covered" : "Open",
         });
       }
-
-      // The shift is no longer fully covered once a coverage is pulled back —
-      // it goes back to (or stays) an in-progress partial swap.
-      await base44.entities.Shift.update(shift.id, {
-        status: "Swap_Requested",
-      });
+      // The shift's status is derived from the (re-opened) request above — no
+      // Shift.status to write (Phase 4).
     },
     onSuccess: () => {
       queryClient.invalidateQueries(["shifts"]);
@@ -1053,26 +1001,18 @@ export default function ShiftCalendar() {
       );
 
       // As with cancelSwapMutation: any coverage already granted on these
-      // shifts no longer applies once the request itself is cancelled.
+      // shifts no longer applies once the request itself is cancelled — delete
+      // the "cover" rows (cancel = delete; Phase 4). Assignment rows are kept.
       await Promise.all(
         coverages
           .filter(
             (c) =>
-              shiftsToReset.includes(c.shift_id) &&
-              (c.status === "Approved" || !c.status),
+              shiftsToReset.includes(c.shift_id) && c.type !== "assignment",
           )
-          .map((c) =>
-            base44.entities.ShiftCoverage.update(c.id, {
-              status: "Cancelled",
-            }),
-          ),
+          .map((c) => base44.entities.ShiftCoverage.delete(c.id)),
       );
-
-      await Promise.all(
-        shiftsToReset.map((id) =>
-          base44.entities.Shift.update(id, { status: "Active" }),
-        ),
-      );
+      // The reset shifts' status is derived from the absence of a live request
+      // (Phase 4) — nothing to write on the Shift.
     },
     onSuccess: () => {
       queryClient.invalidateQueries(["shifts"]);
@@ -1098,22 +1038,9 @@ export default function ShiftCalendar() {
       const theirShiftIds = request.shift_ids || [];
       const myShiftIds = request.offered_shift_ids || [];
 
-      await Promise.all([
-        ...myShiftIds.map((id) =>
-          base44.entities.Shift.update(id, {
-            original_user_id: request.requesting_user_id,
-            status: "Active",
-          }),
-        ),
-        ...theirShiftIds.map((id) =>
-          base44.entities.Shift.update(id, {
-            original_user_id: authorizedPerson.serial_id,
-            status: "Active",
-          }),
-        ),
-      ]);
-      // Dual-write: keep both traded shifts' base assignment coverage in step
-      // with their new owners so coverage-based labeling stays correct (Phase 3).
+      // A head-to-head trade permanently reassigns ownership on both sides —
+      // point each traded shift's base "assignment" coverage row at its new
+      // owner (Phase 4: ownership lives in coverage, not on the Shift).
       await Promise.all([
         ...myShiftIds.map((id) =>
           syncAssignmentOwner(id, request.requesting_user_id, coverages),
@@ -1237,16 +1164,8 @@ export default function ShiftCalendar() {
       const giftedShiftIds = request.shift_ids || [];
       if (giftedShiftIds.length === 0) return;
 
-      await Promise.all(
-        giftedShiftIds.map((id) =>
-          base44.entities.Shift.update(id, {
-            original_user_id: request.requesting_user_id,
-            status: "Active",
-          }),
-        ),
-      );
-      // Dual-write: move each gifted shift's base assignment coverage to the
-      // giver so coverage-based labeling stays correct (Phase 3).
+      // Accepting a gift permanently hands each shift to the giver — point its
+      // base "assignment" coverage row at them (Phase 4: ownership = coverage).
       await Promise.all(
         giftedShiftIds.map((id) =>
           syncAssignmentOwner(id, request.requesting_user_id, coverages),
@@ -1302,7 +1221,6 @@ export default function ShiftCalendar() {
       if (!activeRequest) throw new Error("No active swap request found");
 
       const payload = {
-        request_id: activeRequest.id,
         shift_id: shift.id,
         covering_user_id: authorizedPerson.serial_id,
         cover_start_date:
@@ -1314,10 +1232,9 @@ export default function ShiftCalendar() {
         cover_start_time: coverData.startTime || normalizedShift.start_time,
         cover_end_time: coverData.endTime || normalizedShift.end_time,
         // A swap/partial takeover layered over the base assignment row. Full vs
-        // partial is derived from the window, not stored here (Phase 3 schema:
+        // partial is derived from the window, not stored here (schema:
         // ShiftCoverage.type is "assignment" | "cover").
         type: "cover",
-        status: "Approved",
       };
 
       // If the user already has a coverage on this shift, update it in place
@@ -1331,12 +1248,13 @@ export default function ShiftCalendar() {
         await base44.entities.ShiftCoverage.create(payload);
       }
 
-      // Evaluate remaining gaps after this coverage to decide status updates
+      // Evaluate remaining gaps after this coverage to decide the request's
+      // status (the shift's own status is derived from that request; Phase 4).
       const shiftCoverages = [
         ...coverages.filter(
           (c) =>
             c.shift_id === shift.id &&
-            c.status !== "Cancelled" &&
+            c.type !== "assignment" &&
             c.id !== coverData.coverageId,
         ),
         { ...payload, id: coverData.coverageId },
@@ -1348,19 +1266,9 @@ export default function ShiftCalendar() {
         coverages: shiftCoverages,
       });
 
-      if (missingSegments.length === 0) {
-        await base44.entities.SwapRequest.update(activeRequest.id, {
-          status: "Closed",
-        });
-        await base44.entities.Shift.update(shift.id, { status: "Covered" });
-      } else {
-        await base44.entities.SwapRequest.update(activeRequest.id, {
-          status: "Partially_Covered",
-        });
-        await base44.entities.Shift.update(shift.id, {
-          status: "Swap_Requested",
-        });
-      }
+      await base44.entities.SwapRequest.update(activeRequest.id, {
+        status: missingSegments.length === 0 ? "Closed" : "Partially_Covered",
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries(["shifts"]);
@@ -1376,29 +1284,20 @@ export default function ShiftCalendar() {
     mutationFn: async () => {
       if (!h2hTargetId || !h2hOfferId) return;
 
-      // 1. Get Shifts
       const targetShift = shifts.find((s) => s.id === h2hTargetId);
       const offerShift = shifts.find((s) => s.id === h2hOfferId);
 
-      // 2. Swap Assignees
-      await base44.entities.Shift.update(h2hTargetId, {
-        assigned_person: offerShift.assigned_person,
-        assigned_email: offerShift.assigned_email,
-        role: offerShift.role,
-        department: offerShift.department,
-        status: "regular",
-      });
-
-      await base44.entities.Shift.update(h2hOfferId, {
-        assigned_person: targetShift.assigned_person,
-        assigned_email: targetShift.assigned_email,
-        role: targetShift.role,
-        department: targetShift.department,
-        status: "regular",
-      });
+      // Swap ownership: each shift's base "assignment" coverage row moves to the
+      // other shift's owner (Phase 4: ownership lives in coverage, not on the
+      // Shift's assigned_* fields, which are re-derived from the owner on render).
+      const targetOwner = resolveOwnerId(targetShift, coverages);
+      const offerOwner = resolveOwnerId(offerShift, coverages);
+      await syncAssignmentOwner(h2hTargetId, offerOwner, coverages);
+      await syncAssignmentOwner(h2hOfferId, targetOwner, coverages);
     },
     onSuccess: () => {
       queryClient.invalidateQueries(["shifts"]);
+      queryClient.invalidateQueries(["coverages"]);
       toast.success("החלפה ראש בראש בוצעה בהצלחה!");
       setShowHeadToHeadApproval(false);
       setH2hTargetId(null);
@@ -1416,12 +1315,11 @@ export default function ShiftCalendar() {
 
       if (!pendingCoverage) return;
 
-      // Update Shift with new assignee
+      // Update Shift with new assignee (Shift.status removed in Phase 4).
       await base44.entities.Shift.update(shift.id, {
         assigned_person: pendingCoverage.covering_person,
         assigned_email: pendingCoverage.covering_email,
         role: pendingCoverage.covering_role, // Or keep original role name if preferred
-        status: "regular",
         swap_start_time: null,
         swap_end_time: null,
       });
@@ -1438,16 +1336,14 @@ export default function ShiftCalendar() {
 
   const addShiftMutation = useMutation({
     mutationFn: async (newShiftData) => {
+      // Shift is now a pure time slot (Phase 4) — ownership is recorded solely
+      // in its base "assignment" coverage row, created right after.
       const shift = await base44.entities.Shift.create({
         start_date: newShiftData.start_date,
         end_date: newShiftData.end_date,
         start_time: newShiftData.start_time || "09:00",
         end_time: newShiftData.end_time || "09:00",
-        original_user_id: newShiftData.original_user_id,
-        status: "Active",
       });
-      // Dual-write: give the new shift its base assignment coverage so ownership
-      // is recorded in the coverage ledger too (Phase 3).
       await createAssignmentForShift(shift, newShiftData.original_user_id);
       return shift;
     },
@@ -1460,14 +1356,17 @@ export default function ShiftCalendar() {
   });
 
   const editRoleMutation = useMutation({
-    mutationFn: async ({ id, ...data }) => {
-      const updated = await base44.entities.Shift.update(id, data);
-      // Dual-write: EditRoleModal reassigns ownership via original_user_id, so
-      // keep the base assignment coverage in step (Phase 3).
-      if (data.original_user_id != null) {
-        await syncAssignmentOwner(id, data.original_user_id, coverages);
+    mutationFn: async ({ id, original_user_id, ...data }) => {
+      // EditRoleModal reassigns ownership — that now lives in the base
+      // "assignment" coverage row, not on the Shift (Phase 4).
+      if (original_user_id != null) {
+        await syncAssignmentOwner(id, original_user_id, coverages);
       }
-      return updated;
+      // Any remaining (non-ownership) slot fields still update the Shift itself.
+      if (Object.keys(data).length > 0) {
+        return base44.entities.Shift.update(id, data);
+      }
+      return null;
     },
     onSuccess: () => {
       queryClient.invalidateQueries(["shifts"]);
