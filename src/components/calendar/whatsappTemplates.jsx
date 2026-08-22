@@ -2,12 +2,6 @@ import { format, addDays } from "date-fns";
 import { he } from "date-fns/locale";
 import { base44 } from "@/api/base44Client";
 
-// request_id placed on the base "assignment" ShiftCoverage rows (the ownership
-// ledger). base44 still requires request_id, but an assignment row has no parent
-// SwapRequest; this sentinel marks it so the orphan-coverage cleanup skips it.
-// Removed in Phase 4 when request_id is dropped from the schema.
-export const ASSIGNMENT_REQUEST_SENTINEL = "assignment";
-
 // Distinct colors for each person helping cover a shift, so multiple
 // simultaneous helpers can be told apart at a glance on the coverage
 // sliders. Full class names are spelled out (not built from a template
@@ -223,7 +217,13 @@ export const computeCoverageSummary = ({
     normalizeCoverageEntry(cov, coverageWindow),
   );
   const approvedCoverages = normalizedCoverages.filter(
-    (cov) => cov.status === "Approved" || !cov.status,
+    // Base "assignment" rows record ownership, not a coverage band — exclude
+    // them so the owner's own row is never counted as phantom coverage. (Cancel
+    // now deletes cover rows, so a present cover row is active; the leftover
+    // status check keeps pre-Phase-4 "Cancelled" rows out during the migration.)
+    (cov) =>
+      cov.type !== "assignment" &&
+      (cov.status === "Approved" || !cov.status),
   );
   const missingSegments =
     baseStart && baseEnd
@@ -269,17 +269,13 @@ export const findAssignmentCoverage = (shiftId, coverages = []) =>
     (c) => c.type === "assignment" && c.shift_id === shiftId,
   );
 
-// The full field set for a base assignment row covering a WHOLE shift. base44
-// still requires request_id + the cover_* window, so mirror the shift's own
-// window and tag it with the non-request sentinel. Written status:"Cancelled"
-// so legacy (pre-Phase-4) coverage readers skip it — ownership is read via
-// type:"assignment", not status.
+// The full field set for a base assignment row covering a WHOLE shift. It
+// records ownership (type:"assignment"), not a coverage band; every coverage
+// reader excludes type:"assignment" rows. The cover_* window mirrors the shift.
 export const buildAssignmentCoverageFields = (shift, ownerId) => ({
   shift_id: shift.id,
   covering_user_id: Number(ownerId),
   type: "assignment",
-  status: "Cancelled",
-  request_id: ASSIGNMENT_REQUEST_SENTINEL,
   cover_start_date: shift.start_date,
   cover_end_date: shift.end_date,
   cover_start_time: shift.start_time || "09:00",
@@ -393,13 +389,13 @@ export const normalizeShiftContext = (
     coverages: shiftCoverages,
   });
 
-  let displayStatus = shift.status || "regular";
-  // "Active" and "regular" both mean a plain, unswapped shift — several
-  // mutations (addShiftMutation, cancelSwapMutation, the lazy-cleanup
-  // reconciliation, acceptHeadToHeadRequestMutation) reset shifts to
-  // "Active", so normalize it here once instead of special-casing it in
-  // every downstream "is this a normal shift" check.
-  if (displayStatus.toLowerCase() === "active") displayStatus = "regular";
+  // Status is derived purely from the active request + coverage — Shift.status
+  // no longer exists (Phase 4). A shift with no active request and no full
+  // coverage is a plain, unswapped shift ("regular"). Once a request is
+  // cancelled or force-deleted (so activeRequest no longer resolves), the shift
+  // returns to "regular" on its own — no leftover shift.status can pin it to a
+  // stale swap state, which is exactly the orphan-coverage bug this refactor kills.
+  let displayStatus = "regular";
   if (activeRequest) {
     if (activeRequest.status === "Closed") displayStatus = "covered";
     else if (
@@ -407,26 +403,11 @@ export const normalizeShiftContext = (
       requestType === "partial"
     )
       displayStatus = "partial";
-    else if (
-      activeRequest.status === "Open" ||
-      shift.status === "Swap_Requested"
-    )
+    else if (activeRequest.status === "Open")
       displayStatus = requestType === "partial" ? "partial" : "requested";
   }
   if (isFullyCovered) {
     displayStatus = "covered";
-  } else if (
-    displayStatus === "regular" &&
-    // Only treat leftover approved coverage as an active partial gap while the
-    // shift itself is still genuinely mid-swap. Once the lazy-cleanup reconciles
-    // an expired request (resets shift.status to "Active"/"regular"), any
-    // ShiftCoverage rows are just history — the original owner has reclaimed
-    // whatever nobody else took, so the shift should render as a normal shift
-    // again instead of getting stuck showing a partial-gap highlight forever.
-    ["Swap_Requested", "Partially_Covered"].includes(shift.status) &&
-    shiftCoverages.some((cov) => cov.status === "Approved")
-  ) {
-    displayStatus = requestType === "partial" ? "partial" : "requested";
   }
 
   const ownerName =
