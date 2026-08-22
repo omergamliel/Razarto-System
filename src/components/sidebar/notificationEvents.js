@@ -39,6 +39,20 @@ export function computeNotificationEvents({
   const shiftById = new Map(shifts.map((s) => [s.id, s]));
   const requestById = new Map(swapRequests.map((r) => [r.id, r]));
 
+  // Ownership is read from the base "assignment" ShiftCoverage row (the
+  // ownership ledger), falling back to the legacy shift.original_user_id while
+  // that column still exists (Phase 3 dual-read). Built once as a map to keep
+  // the per-shift lookups cheap.
+  const assignmentOwnerByShift = new Map(
+    coverages
+      .filter((c) => c.type === "assignment")
+      .map((c) => [c.shift_id, c.covering_user_id]),
+  );
+  const ownerOf = (shift) =>
+    shift
+      ? (assignmentOwnerByShift.get(shift.id) ?? shift.original_user_id)
+      : undefined;
+
   const events = [];
 
   // 1. Incoming Head2Head request: one of my shifts sits in offered_shift_ids.
@@ -48,7 +62,7 @@ export function computeNotificationEvents({
       r.status === "Open" &&
       Number(r.requesting_user_id) !== myId &&
       (r.offered_shift_ids || []).some(
-        (id) => Number(shiftById.get(id)?.original_user_id) === myId,
+        (id) => Number(ownerOf(shiftById.get(id))) === myId,
       )
     ) {
       events.push({
@@ -72,7 +86,7 @@ export function computeNotificationEvents({
     if (Number(r.requesting_user_id) === myId) return;
     const giftedShift = (r.shift_ids || [])
       .map((id) => shiftById.get(id))
-      .find((s) => s && Number(s.original_user_id) === myId);
+      .find((s) => s && Number(ownerOf(s)) === myId);
     if (!giftedShift) return;
     events.push({
       fingerprint: `gift-offer:${r.id}`,
@@ -92,7 +106,7 @@ export function computeNotificationEvents({
   coverages.forEach((c) => {
     const shift = shiftById.get(c.shift_id);
     if (!shift) return;
-    if (Number(shift.original_user_id) !== myId) return;
+    if (Number(ownerOf(shift)) !== myId) return;
     if (Number(c.covering_user_id) === myId) return;
     if (c.status !== "Pending" && c.status !== "Approved") return;
 
