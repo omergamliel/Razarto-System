@@ -46,6 +46,7 @@ import {
   mergeOverlappingSegments,
   buildDateTime,
   subtractSegments,
+  resolveOwnerId,
 } from "../calendar/whatsappTemplates";
 import SwapTransition from "./SwapTransition";
 import PartialShiftTrack from "../calendar/PartialShiftTrack";
@@ -565,7 +566,9 @@ export default function KPIListModal({
           authorizedUsers.find(
             (u) => u?.serial_id === req.requesting_user_id,
           ) ||
-          authorizedUsers.find((u) => u?.serial_id === shift?.original_user_id);
+          authorizedUsers.find(
+            (u) => u?.serial_id === resolveOwnerId(shift, coveragesAll),
+          );
         // Head2Head requests also carry target shift(s) being asked for in
         // exchange (offered_shift_ids), which have their own owner.
         const offeredShiftIds = req.offered_shift_ids || [];
@@ -573,7 +576,9 @@ export default function KPIListModal({
           offeredShiftIds.includes(s.id),
         );
         const offeredUsers = offeredShifts.map((s) =>
-          authorizedUsers.find((u) => u?.serial_id === s.original_user_id),
+          authorizedUsers.find(
+            (u) => u?.serial_id === resolveOwnerId(s, coveragesAll),
+          ),
         );
         const coverageSegments = mergeOverlappingSegments(
           coveragesAll
@@ -615,7 +620,7 @@ export default function KPIListModal({
                   .map(
                     (s) =>
                       authorizedUsers.find(
-                        (u) => u?.serial_id === s.original_user_id,
+                        (u) => u?.serial_id === resolveOwnerId(s, coveragesAll),
                       )?.full_name,
                   )
                   .filter(Boolean),
@@ -640,7 +645,8 @@ export default function KPIListModal({
           is_request_object: true,
           is_closed_request: isClosedRequest,
           accepted_by_names: acceptedByNames,
-          original_user_id: shift?.original_user_id ?? req.requesting_user_id,
+          original_user_id:
+            resolveOwnerId(shift, coveragesAll) ?? req.requesting_user_id,
           covering_user_ids: coverageSegments
             .map((c) => c.covering_user_id)
             .filter(Boolean),
@@ -708,7 +714,7 @@ export default function KPIListModal({
           (r) => r.shift_ids?.includes(shift.id) && isOpenStatus(r.status),
         );
         const user = authorizedUsers.find(
-          (u) => u.serial_id === shift.original_user_id,
+          (u) => u.serial_id === resolveOwnerId(shift, coveragesAll),
         );
 
         const startTime =
@@ -769,8 +775,9 @@ export default function KPIListModal({
           shift_date: startDate,
           request_type: "Partial",
           requesting_user_id:
-            activeRequest?.requesting_user_id || shift.original_user_id,
-          original_user_id: shift.original_user_id,
+            activeRequest?.requesting_user_id ||
+            resolveOwnerId(shift, coveragesAll),
+          original_user_id: resolveOwnerId(shift, coveragesAll),
           covering_user_ids: coverageSegments
             .map((c) => c.covering_user_id)
             .filter(Boolean),
@@ -797,8 +804,8 @@ export default function KPIListModal({
     const owned = shiftsAll
       .filter(
         (s) =>
-          s.original_user_id === currentUser?.serial_id &&
-          s.start_date >= todayStr,
+          Number(resolveOwnerId(s, coveragesAll)) ===
+            Number(currentUser?.serial_id) && s.start_date >= todayStr,
       )
       .map((s) => ({ ...s, ownership: "mine" }));
 
