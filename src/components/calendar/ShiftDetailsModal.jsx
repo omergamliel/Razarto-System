@@ -45,6 +45,7 @@ import {
   getCoverageColor,
   subtractSegments,
   mergeOverlappingSegments,
+  syncAssignmentOwner,
 } from "./whatsappTemplates";
 import { useHolidays } from "./useHolidays";
 import { useOverlappingLabels } from "./useOverlappingLabels";
@@ -173,10 +174,12 @@ export default function ShiftDetailsModal({
             }),
           ),
       );
-      return base44.entities.Shift.update(shift.id, {
+      await base44.entities.Shift.update(shift.id, {
         original_user_id: parseInt(newUserId, 10),
         status: "Active",
       });
+      // Dual-write: point the base assignment coverage at the new owner (Phase 3).
+      return syncAssignmentOwner(shift.id, parseInt(newUserId, 10), coverages);
     },
     onSuccess: () => {
       queryClient.invalidateQueries(["shifts"]);
@@ -418,13 +421,14 @@ export default function ShiftDetailsModal({
     requestStartStr,
   ]);
 
-  // FIXED: Identify covering user for full swap view
-  const primaryCoverage = useMemo(() => {
-    return (
-      approvedCoverages.find((cov) => cov.type === "Full") ||
-      approvedCoverages[0]
-    );
-  }, [approvedCoverages]);
+  // Identify covering user for full swap view. Covers no longer carry a
+  // Full/Partial type (ShiftCoverage.type is "assignment" | "cover" now), so the
+  // primary cover is simply the first approved one — for a full swap there's a
+  // single cover row anyway.
+  const primaryCoverage = useMemo(
+    () => approvedCoverages[0],
+    [approvedCoverages],
+  );
 
   const coveringUserName = useMemo(() => {
     if (!primaryCoverage) return shift?.user_name;
