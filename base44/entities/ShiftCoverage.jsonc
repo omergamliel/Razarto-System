@@ -36,10 +36,19 @@
       "type": "string",
       "enum": [
         "Pending",
-        "Approved"
+        "Approved",
+        "Cancelled"
       ],
       "default": "Pending",
-      "description": "\u05e1\u05d8\u05d8\u05d8\u05d5\u05e1 \u05d4\u05db\u05d9\u05e1\u05d5\u05d9"
+      "description": "\u05e1\u05d8\u05d8\u05d5\u05e1 \u05d4\u05db\u05d9\u05e1\u05d5\u05d9 (deprecated \u2014 \u05de\u05d5\u05d7\u05dc\u05e3 \u05d1-type)"
+    },
+    "type": {
+      "type": "string",
+      "enum": [
+        "assignment",
+        "cover"
+      ],
+      "description": "assignment = \u05e9\u05d9\u05d1\u05d5\u05e5 \u05d4\u05d1\u05e2\u05dc\u05d9\u05dd \u05d4\u05d1\u05e1\u05d9\u05e1\u05d9 \u05dc\u05de\u05e9\u05de\u05e8\u05ea; cover = \u05db\u05d9\u05e1\u05d5\u05d9/\u05d4\u05d7\u05dc\u05e4\u05d4 \u05e9\u05db\u05d1\u05ea \u05de\u05e2\u05dc"
     }
   },
   "required": [
@@ -53,18 +62,9 @@
   ],
   "rls": {
     "read": {
-      "$or": [
-        {
-          "user_condition": {
-            "data.is_authorized": true
-          }
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
+      "user_condition": {
+        "data.is_authorized": true
+      }
     },
     "create": {
       "user_condition": {
