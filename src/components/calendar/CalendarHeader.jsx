@@ -15,7 +15,7 @@ import {
 import { format, addMonths, subMonths, addWeeks, subWeeks } from "date-fns";
 import { he } from "date-fns/locale";
 import { motion } from "framer-motion";
-import { base44 } from "@/api/base44Client";
+import { base44, logActivity } from "@/api/base44Client";
 import { toast } from "sonner";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSystemSettings } from "@/hooks/useAuthorizedPerson";
@@ -79,6 +79,11 @@ export default function CalendarHeader({
       }
     },
     onSuccess: () => {
+      logActivity({
+        action: "עדכון לוגו המערכת",
+        type: "עדכון מערכת",
+        entity: "AppSettings",
+      });
       queryClient.invalidateQueries({ queryKey: ["app-settings"] });
     },
   });
