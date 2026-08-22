@@ -4,6 +4,7 @@ import { X, Scale } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { resolveOwnerId } from "@/components/calendar/whatsappTemplates";
 import {
   format,
   startOfMonth,
@@ -37,6 +38,14 @@ export default function FairnessMatrixModal({ isOpen, onClose, currentUser }) {
   const { data: people = [], isLoading: isPeopleLoading } = useQuery({
     queryKey: ["all-users"],
     queryFn: () => base44.entities.AuthorizedPerson.list(),
+    enabled: isOpen,
+  });
+
+  // Ownership lives in the base "assignment" ShiftCoverage row (Phase 4), so
+  // the fairness tally reads the owner from coverage, not Shift.original_user_id.
+  const { data: coverages = [] } = useQuery({
+    queryKey: ["coverages"],
+    queryFn: () => base44.entities.ShiftCoverage.list(),
     enabled: isOpen,
   });
 
@@ -92,7 +101,7 @@ export default function FairnessMatrixModal({ isOpen, onClose, currentUser }) {
     const userCounts = new Map(); // serial_id -> count
 
     dedupedInRange.forEach((s) => {
-      const owner = s.original_user_id;
+      const owner = resolveOwnerId(s, coverages);
       if (owner == null) return;
       // Skip shifts owned by people who aren't RR.
       if (!rrSerialIds.has(owner)) return;
@@ -159,7 +168,7 @@ export default function FairnessMatrixModal({ isOpen, onClose, currentUser }) {
     );
 
     return { users, groups, maxCount };
-  }, [shifts, people, shiftSegments, startDate, endDate, currentUser]);
+  }, [shifts, people, shiftSegments, coverages, startDate, endDate, currentUser]);
 
   const setRangeToCurrentMonth = () => {
     setStartDate(format(startOfMonth(today), "yyyy-MM-dd"));
