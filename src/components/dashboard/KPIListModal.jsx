@@ -585,6 +585,7 @@ export default function KPIListModal({
             .filter(
               (c) =>
                 c.shift_id === shift?.id &&
+                c.type !== "assignment" &&
                 (c.status === "Approved" || !c.status),
             )
             .map((c, idx) => {
@@ -812,8 +813,8 @@ export default function KPIListModal({
     const asCovering = coveragesAll
       .filter(
         (c) =>
+          c.type !== "assignment" &&
           c.covering_user_id === currentUser?.serial_id &&
-          c.status !== "Cancelled" &&
           c.cover_start_date >= todayStr,
       )
       .map((cov) => {
