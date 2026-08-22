@@ -1,6 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format } from "date-fns";
 import { distributeShifts } from "../calendar/shiftDistributionAlgorithm";
+import {
+  buildAssignmentCoverageFields,
+  createAssignmentForShift,
+  syncAssignmentOwner,
+} from "../calendar/whatsappTemplates";
 import { useHolidays } from "../calendar/useHolidays";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -183,13 +188,6 @@ function UserComboBox({
     </div>
   );
 }
-
-// request_id placed on the base "assignment" ShiftCoverage rows created by the
-// one-time migration. base44 still requires request_id, but an assignment row
-// has no parent request; this sentinel marks it as such so the orphan-coverage
-// cleanup (which deletes covers whose request_id has no live request) skips it.
-// Removed in Phase 4 when request_id is dropped from the schema.
-const ASSIGNMENT_REQUEST_SENTINEL = "assignment";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -751,17 +749,25 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   // future shift of the outgoing member over to the incoming one on confirm.
   const migrateFutureShiftsMutation = useMutation({
     mutationFn: async ({ shiftIds, toUserId }) => {
-      await Promise.all(
-        shiftIds.map((id) =>
-          base44.entities.Shift.update(id, {
-            original_user_id: Number(toUserId),
-          }),
-        ),
+      // Dual-write (Phase 3): keep the legacy original_user_id and the base
+      // "assignment" coverage row in sync so coverage-preferring readers see
+      // the new owner too. Fetch coverages once and pass them to
+      // syncAssignmentOwner so it can reuse the assignment row it already has.
+      const coverages = await base44.entities.ShiftCoverage.list();
+      await runThrottled(
+        shiftIds.flatMap((id) => [
+          () =>
+            base44.entities.Shift.update(id, {
+              original_user_id: Number(toUserId),
+            }),
+          () => syncAssignmentOwner(id, Number(toUserId), coverages),
+        ]),
       );
       return shiftIds.length;
     },
     onSuccess: (count) => {
       queryClient.invalidateQueries(["shifts"]);
+      queryClient.invalidateQueries(["coverages"]);
       setPendingShiftMigration(null);
       toast.success(`הועברו ${count} משמרות עתידיות למשתמש הפעיל החדש`);
     },
@@ -947,23 +953,28 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         cholHamoedDates,
       });
 
-      await Promise.all(
-        result.assignments.map((a) =>
-          base44.entities.Shift.create({
+      // Create each shift slot, then its base "assignment" coverage row
+      // (Phase 3 dual-write). Throttled so a large distribution can't trip the
+      // rate limiter — creating N shifts + N coverage rows in one burst does.
+      await runThrottled(
+        result.assignments.map((a) => async () => {
+          const shift = await base44.entities.Shift.create({
             start_date: a.date,
             end_date: a.date,
             start_time: "09:00",
             end_time: "09:00",
             original_user_id: a.personId,
             status: "Active",
-          }),
-        ),
+          });
+          await createAssignmentForShift(shift, a.personId);
+        }),
       );
 
       return result;
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries(["shifts"]);
+      queryClient.invalidateQueries(["coverages"]);
       setDistributionResult(result);
       setDistributionError("");
     },
@@ -1048,17 +1059,23 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
 
   const replaceShiftsMutation = useMutation({
     mutationFn: async ({ shiftIds, toUserId }) => {
-      await Promise.all(
-        shiftIds.map((id) =>
-          base44.entities.Shift.update(id, {
-            original_user_id: Number(toUserId),
-          }),
-        ),
+      // Dual-write (Phase 3): sync both the legacy field and the assignment
+      // coverage row, throttled to stay under the rate limit on big ranges.
+      const coverages = await base44.entities.ShiftCoverage.list();
+      await runThrottled(
+        shiftIds.flatMap((id) => [
+          () =>
+            base44.entities.Shift.update(id, {
+              original_user_id: Number(toUserId),
+            }),
+          () => syncAssignmentOwner(id, Number(toUserId), coverages),
+        ]),
       );
       return shiftIds.length;
     },
     onSuccess: (count) => {
       queryClient.invalidateQueries(["shifts"]);
+      queryClient.invalidateQueries(["coverages"]);
       toast.success(`הוחלפו ${count} משמרות בהצלחה`);
       setIsReplaceShiftsConfirmOpen(false);
       setReplaceShiftsForm({
@@ -1171,21 +1188,9 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       // the base44 rate limit the way a single Promise.all over ~400 writes did.
       const tasks = [
         ...shiftsNeedingAssignment.map((s) => () =>
-          base44.entities.ShiftCoverage.create({
-            shift_id: s.id,
-            covering_user_id: Number(s.original_user_id),
-            type: "assignment",
-            status: "Cancelled",
-            // base44 still enforces these as required (Phase 4 relaxes the
-            // schema). The assignment row covers the WHOLE shift, so its window
-            // is the shift's own window; request_id gets a non-request sentinel
-            // (assignment rows are excluded from the orphan-coverage cleanup).
-            request_id: ASSIGNMENT_REQUEST_SENTINEL,
-            cover_start_date: s.start_date,
-            cover_end_date: s.end_date,
-            cover_start_time: s.start_time || "09:00",
-            cover_end_time: s.end_time || "09:00",
-          }),
+          base44.entities.ShiftCoverage.create(
+            buildAssignmentCoverageFields(s, s.original_user_id),
+          ),
         ),
         ...coversToReclassify.map((c) => () =>
           base44.entities.ShiftCoverage.update(c.id, { type: "cover" }),
