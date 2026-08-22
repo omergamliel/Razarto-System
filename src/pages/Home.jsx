@@ -405,12 +405,29 @@ function AppTour() {
     let tries = 0;
 
     const track = (el) => {
-      el.scrollIntoView({ block: "center", behavior: "smooth" });
+      const bringIntoView = () =>
+        el.scrollIntoView({ block: "center", behavior: "smooth" });
+      bringIntoView();
       const t0 = performance.now();
+      let lastScroll = 0;
       const loop = () => {
         if (cancelled) return;
         measure();
-        if (performance.now() - t0 < 800) rafId = requestAnimationFrame(loop);
+        // The first scroll can fire before the target's surface has settled its
+        // layout — a modal/menu that scrolls internally, or an entrance
+        // animation (scale / slide-up) that shifts the target after mount — which
+        // leaves it parked off-screen with the spotlight pointing below the fold.
+        // Re-issue the scroll while the target's centre is still outside the
+        // viewport so it always ends up centred once layout settles.
+        const now = performance.now();
+        const r = el.getBoundingClientRect();
+        const center = r.top + r.height / 2;
+        const outOfView = center < 0 || center > window.innerHeight;
+        if (outOfView && now - lastScroll > 200) {
+          bringIntoView();
+          lastScroll = now;
+        }
+        if (now - t0 < 1200) rafId = requestAnimationFrame(loop);
       };
       loop();
     };
