@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from "react";
-import { Search, CalendarDays, Circle } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Search, CalendarDays, Circle, Loader2 } from "lucide-react";
+import { format } from "date-fns";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -8,7 +10,29 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { base44 } from "@/api/base44Client";
 import { LOG_TYPE_OPTIONS } from "@/components/admin/adminConstants";
+
+const PAGE_SIZE = 50;
+
+// Map an ActivityLog row (base44 entity) into the shape the table renders,
+// deriving the display date/time from the system created_date timestamp.
+function toEntry(log) {
+  const ts = log.created_date || log.updated_date;
+  const parsed = ts ? new Date(ts) : null;
+  const valid = parsed && !isNaN(parsed);
+  return {
+    id: log.id,
+    user: log.actor_name || "לא ידוע",
+    action: log.action || "",
+    type: log.type || "",
+    status: log.status || "ok",
+    date: valid ? format(parsed, "yyyy-MM-dd") : "",
+    displayDate: valid ? format(parsed, "dd/MM/yyyy") : "",
+    time: valid ? format(parsed, "HH:mm") : "",
+    sortMs: valid ? parsed.getTime() : 0,
+  };
+}
 
 export default function LogsTab() {
   const [logFilters, setLogFilters] = useState({
@@ -17,7 +41,12 @@ export default function LogsTab() {
     type: "all",
   });
 
-  const logEntries = useMemo(() => [], []);
+  const { data: rawLogs = [], isLoading } = useQuery({
+    queryKey: ["activity-logs"],
+    queryFn: () => base44.entities.ActivityLog.list(),
+    staleTime: 1000 * 30,
+  });
+
   const logTypeOptions = LOG_TYPE_OPTIONS;
 
   const statusColors = {
@@ -26,15 +55,25 @@ export default function LogsTab() {
     error: "bg-rose-500",
   };
 
+  // Newest first — the log's most recent change at the top.
+  const logEntries = useMemo(
+    () => rawLogs.map(toEntry).sort((a, b) => b.sortMs - a.sortMs),
+    [rawLogs],
+  );
+
   const filteredLogs = logEntries.filter((entry) => {
+    const term = logFilters.search.toLowerCase();
     const matchesSearch =
-      entry.action.toLowerCase().includes(logFilters.search.toLowerCase()) ||
-      entry.user.toLowerCase().includes(logFilters.search.toLowerCase());
+      !term ||
+      entry.action.toLowerCase().includes(term) ||
+      entry.user.toLowerCase().includes(term);
     const matchesDate = !logFilters.date || entry.date === logFilters.date;
     const matchesType =
       logFilters.type === "all" || entry.type === logFilters.type;
     return matchesSearch && matchesDate && matchesType;
   });
+
+  const visibleLogs = filteredLogs.slice(0, PAGE_SIZE);
 
   return (
     <div className="space-y-3 md:space-y-4 overflow-y-auto">
@@ -120,51 +159,73 @@ export default function LogsTab() {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {filteredLogs.slice(0, 10).map((log, idx) => (
-                <tr
-                  key={`${log.user}-${idx}`}
-                  className="text-sm hover:bg-gray-50/60"
-                >
-                  <td className="px-4 py-3">
-                    <span
-                      className={`inline-flex items-center gap-2 text-xs font-semibold ${log.status === "ok" ? "text-emerald-600" : log.status === "warn" ? "text-amber-600" : "text-rose-600"}`}
-                    >
-                      <span
-                        className={`w-3 h-3 rounded-full ${statusColors[log.status]} animate-pulse`}
-                      />
-                      {log.status === "ok"
-                        ? "תקין"
-                        : log.status === "warn"
-                          ? "חריג"
-                          : "אסור"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 font-semibold text-gray-800">
-                    {log.user}
-                  </td>
-                  <td className="px-4 py-3 text-gray-700">
-                    {log.action}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">
-                    {log.displayDate}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">
-                    {log.time}
-                  </td>
-                  <td className="px-4 py-3 text-gray-600">
-                    {log.type}
+              {isLoading && (
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="px-4 py-10 text-center text-gray-400"
+                  >
+                    <Loader2 className="w-5 h-5 animate-spin inline-block" />
                   </td>
                 </tr>
-              ))}
+              )}
+              {!isLoading && visibleLogs.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="px-4 py-10 text-center text-sm text-gray-400"
+                  >
+                    אין רשומות לוג להצגה
+                  </td>
+                </tr>
+              )}
+              {!isLoading &&
+                visibleLogs.map((log) => (
+                  <tr
+                    key={log.id}
+                    className="text-sm hover:bg-gray-50/60"
+                  >
+                    <td className="px-4 py-3">
+                      <span
+                        className={`inline-flex items-center gap-2 text-xs font-semibold ${log.status === "ok" ? "text-emerald-600" : log.status === "warn" ? "text-amber-600" : "text-rose-600"}`}
+                      >
+                        <span
+                          className={`w-3 h-3 rounded-full ${statusColors[log.status]}`}
+                        />
+                        {log.status === "ok"
+                          ? "תקין"
+                          : log.status === "warn"
+                            ? "חריג"
+                            : "אסור"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 font-semibold text-gray-800">
+                      {log.user}
+                    </td>
+                    <td className="px-4 py-3 text-gray-700">
+                      {log.action}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {log.displayDate}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {log.time}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600">
+                      {log.type}
+                    </td>
+                  </tr>
+                ))}
             </tbody>
           </table>
         </div>
         <div className="p-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-500 flex justify-between px-6">
           <span>
-            מציג {filteredLogs.slice(0, 10).length} מתוך{" "}
-            {filteredLogs.length}
+            מציג {visibleLogs.length} מתוך {filteredLogs.length}
           </span>
-          <span className="hidden md:inline">עד 10 רשומות בעמוד</span>
+          <span className="hidden md:inline">
+            עד {PAGE_SIZE} רשומות בעמוד
+          </span>
         </div>
       </div>
     </div>
