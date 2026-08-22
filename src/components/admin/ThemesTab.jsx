@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Palette, CalendarDays, Check, Loader2 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { base44, logActivity } from "@/api/base44Client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { DEFAULT_THEME_PALETTE } from "@/hooks/useAuthorizedPerson";
@@ -54,6 +54,11 @@ export default function ThemesTab() {
       });
     },
     onSuccess: () => {
+      logActivity({
+        action: "שמירת ערכת נושא",
+        type: "עדכון מערכת",
+        entity: "AppSettings",
+      });
       queryClient.invalidateQueries({ queryKey: ["app-settings"] });
       toast.success("ערכת הנושא נשמרה בהצלחה");
     },
