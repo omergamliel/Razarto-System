@@ -255,12 +255,13 @@ export const computeCoverageSummary = ({
 // this shift is consulted. Returns undefined for a null shift.
 export const resolveOwnerId = (shift, coverages = []) => {
   if (!shift) return undefined;
+  // Ownership is the base "assignment" ShiftCoverage row's covering_user_id.
+  // Shift.original_user_id was removed in Phase 4, so there is no fallback — a
+  // shift with no assignment row simply has no resolvable owner (undefined).
   const assignment = (coverages || []).find(
     (c) => c.type === "assignment" && c.shift_id === shift.id,
   );
-  return assignment?.covering_user_id != null
-    ? assignment.covering_user_id
-    : shift.original_user_id;
+  return assignment?.covering_user_id;
 };
 
 // The base "assignment" ShiftCoverage row for a shift, if present in the given
@@ -326,21 +327,18 @@ export const normalizeShiftContext = (
 ) => {
   if (!shift) return null;
 
-  // --- Ownership from the coverage ledger (Phase 3 dual-read) ---
-  // The base "assignment" ShiftCoverage row is the source of truth for who owns
-  // the slot; fall back to the legacy shift.original_user_id while that column
-  // still exists (removed in Phase 4). The assignment row records ownership, not
-  // a coverage band, so it's pulled out here and excluded from the covers below.
+  // --- Ownership from the coverage ledger ---
+  // The base "assignment" ShiftCoverage row is the single source of truth for
+  // who owns the slot (Shift.original_user_id was removed in Phase 4). The
+  // assignment row records ownership, not a coverage band, so it's pulled out
+  // here and excluded from the covers below.
   const rawShiftCoverages = (coverages || []).filter(
     (c) => c.shift_id === shift.id || !c.shift_id,
   );
   const assignmentCoverage = rawShiftCoverages.find(
     (c) => c.type === "assignment",
   );
-  const ownerId =
-    assignmentCoverage?.covering_user_id != null
-      ? assignmentCoverage.covering_user_id
-      : shift.original_user_id;
+  const ownerId = assignmentCoverage?.covering_user_id;
 
   const activeRequest =
     activeRequestOverride ||
@@ -432,9 +430,11 @@ export const normalizeShiftContext = (
 
   return {
     ...shift,
-    // Owner resolved from the assignment coverage row (fallback: legacy field),
-    // written back so every consumer of the normalized shift reads the ledger.
-    original_user_id: ownerId != null ? Number(ownerId) : shift.original_user_id,
+    // Derived owner from the assignment coverage row, exposed under the familiar
+    // `original_user_id` key so every consumer of the normalized shift reads the
+    // ledger. (The Shift column of the same name was removed in Phase 4; this is
+    // a computed field on the normalized object, not the raw column.)
+    original_user_id: ownerId != null ? Number(ownerId) : undefined,
     date: shift.start_date || shift.date,
     role: ownerName,
     department: originalUser?.department || shift.department || "",
