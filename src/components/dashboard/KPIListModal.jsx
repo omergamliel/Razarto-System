@@ -43,6 +43,7 @@ import LoadingSkeleton from "../LoadingSkeleton";
 import {
   buildSwapTemplate,
   buildGiftTemplate,
+  buildGeneralTemplate,
   mergeOverlappingSegments,
   buildDateTime,
   subtractSegments,
@@ -988,15 +989,21 @@ export default function KPIListModal({
   };
 
   const handleReshareWhatsapp = (item) => {
-    const message = buildSwapTemplate({
-      employeeName: item.user_name,
+    const shared = {
       startDate: item.start_date || item.shift_date,
       startTime: item.start_time || item.req_start_time || "09:00",
       endDate: item.end_date || item.shift_date,
       endTime:
         item.end_time || item.req_end_time || item.req_start_time || "09:00",
       approvalUrl: getApprovalUrl(item),
-    });
+    };
+    // A general/open request broadcasts to everyone, so it gets the dedicated
+    // "general" template; full/partial reuse the swap template. Both are
+    // admin-editable (ניהול מערכת ▸ הודעות וואטסאפ).
+    const message =
+      item.request_type === "General"
+        ? buildGeneralTemplate({ originalOwnerName: item.user_name, ...shared })
+        : buildSwapTemplate({ employeeName: item.user_name, ...shared });
     const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, "_blank");
   };
