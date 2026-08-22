@@ -51,8 +51,8 @@ export default function AcceptSwapModal({
     () =>
       existingCoverages.find(
         (c) =>
-          c.covering_user_id === currentUserId &&
-          (c.status === 'Approved' || !c.status)
+          c.type !== 'assignment' &&
+          c.covering_user_id === currentUserId
       ) || null,
     [existingCoverages, currentUserId]
   );
