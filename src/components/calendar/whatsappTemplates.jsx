@@ -490,6 +490,95 @@ export const buildHeadToHeadDeepLink = (targetId, offerId) => {
   return `${PRODUCTION_BASE_URL}?headToHeadTarget=${targetId}&headToHeadOffer=${offerId}`;
 };
 
+// --- Editable WhatsApp message templates -----------------------------------
+// The ready-made WhatsApp message offered after opening each kind of request is
+// admin-editable (ניהול מערכת ▸ הודעות וואטסאפ, persisted as the AppSettings row
+// setting_key:"whatsapp_templates"). Each template is a plain string with
+// {placeholder} tokens substituted at send time. The defaults below preserve
+// the original hard-coded wording; an admin override replaces the whole string.
+export const WHATSAPP_TEMPLATES = {
+  swap: {
+    label: "בקשת החלפה (מלאה / חלקית)",
+    description: "נשלחת לאחר פתיחת בקשת החלפה מלאה או חלקית על משמרת.",
+    placeholders: [
+      "ownerName",
+      "startDate",
+      "startTime",
+      "endDate",
+      "endTime",
+      "link",
+    ],
+    default:
+      "היי, פתחתי בקשה ב-Razarto להחלפה למשמרת *{ownerName}* 👮‍♂️\nמתאריך {startDate} בשעה {startTime} ועד תאריך {endDate} בשעה {endTime} ⏰\n\nמי יכול לעזור? 🙏\nאפשר לאשר כאן:\n{link}",
+  },
+  headToHead: {
+    label: "החלפה ראש בראש",
+    description: "נשלחת למשתמש ספציפי בהצעת החלפה ראש בראש.",
+    placeholders: [
+      "targetUserName",
+      "targetShiftOwner",
+      "targetShiftDate",
+      "myShiftOwner",
+      "myShiftDate",
+      "link",
+    ],
+    default:
+      "היי *{targetUserName}*! 👋🏼\nאני מעוניין להחליף איתך משמרת רז״רתו ראש בראש:\n\n🫡 הצעת החלפה:\n🫵🏼 המשמרת שלך: *{targetShiftOwner}* {targetShiftDate}\n🤞🏼 המשמרת שלי: *{myShiftOwner}* {myShiftDate}\n\n✅ לחץ כאן לאישור ההחלפה בתוך המערכת:\n{link}",
+  },
+  general: {
+    label: "בקשת החלפה כללית",
+    description: "נשלחת לכל הצוות בבקשת החלפה כללית (ללא נמען מסוים).",
+    placeholders: [
+      "ownerName",
+      "startDate",
+      "startTime",
+      "endDate",
+      "endTime",
+      "link",
+    ],
+    default:
+      "היי לכולם! 📢\nפתחתי בקשת החלפה כללית למשמרת *{ownerName}*\nמתאריך {startDate} בשעה {startTime} ועד תאריך {endDate} בשעה {endTime} ⏰\n\nמישהו זמין לקחת? אפשר לאשר כאן:\n{link}",
+  },
+  gift: {
+    label: "מתנת משמרת",
+    description: "נשלחת לנמען כשמציעים לו לקחת ממנו את המשמרת במתנה.",
+    placeholders: [
+      "recipientName",
+      "giverName",
+      "startDate",
+      "startTime",
+      "endDate",
+      "endTime",
+    ],
+    default:
+      "היי *{recipientName}*! 🎁\nרוצה לתת לך מתנה — לקחת על עצמי את המשמרת שלך, בלי תמורה 🙌\n\n📅 המשמרת: מ-{startDate} בשעה {startTime} ועד {endDate} בשעה {endTime} ⏰\n\nכל מה שצריך זה לאשר את ההצעה באפליקציה (בקשות אליי) ✅\n— {giverName}",
+  },
+};
+
+// Admin overrides, loaded once from AppSettings (see setWhatsappTemplates,
+// registered from ShiftCalendar on mount). Keyed by the WHATSAPP_TEMPLATES keys;
+// a missing/blank key falls back to that template's built-in default.
+let templateOverrides = {};
+export function setWhatsappTemplates(map) {
+  templateOverrides = map && typeof map === "object" ? map : {};
+}
+
+// Substitute {placeholder} tokens (missing → empty string) into the admin-edited
+// template for `key` if one is set, else the built-in default.
+export const applyTemplate = (key, vars = {}) => {
+  const override = templateOverrides[key];
+  const tpl =
+    (override && String(override).trim()) ||
+    WHATSAPP_TEMPLATES[key]?.default ||
+    "";
+  return tpl.replace(/\{(\w+)\}/g, (_m, name) =>
+    vars[name] != null ? String(vars[name]) : "",
+  );
+};
+
+const formatShareDate = (value, fallback = "") =>
+  value ? format(new Date(value), "dd/MM/yyyy", { locale: he }) : fallback;
+
 export const buildSwapTemplate = ({
   originalOwnerName,
   employeeName,
@@ -500,16 +589,16 @@ export const buildSwapTemplate = ({
   approvalUrl,
   shiftId,
 }) => {
-  const safeStart = startDate
-    ? format(new Date(startDate), "dd/MM/yyyy", { locale: he })
-    : "";
-  const safeEnd = endDate
-    ? format(new Date(endDate), "dd/MM/yyyy", { locale: he })
-    : safeStart;
-  const resolvedLink = approvalUrl || buildShiftDeepLink(shiftId);
-  const ownerName = originalOwnerName || employeeName || "";
-
-  return `היי, פתחתי בקשה ב-Razarto להחלפה למשמרת *${ownerName}* 👮‍♂️\nמתאריך ${safeStart} בשעה ${startTime || ""} ועד תאריך ${safeEnd} בשעה ${endTime || ""} ⏰\n\nמי יכול לעזור? 🙏\nאפשר לאשר כאן:\n${resolvedLink || ""}`;
+  const safeStart = formatShareDate(startDate);
+  const safeEnd = formatShareDate(endDate, safeStart);
+  return applyTemplate("swap", {
+    ownerName: originalOwnerName || employeeName || "",
+    startDate: safeStart,
+    startTime: startTime || "",
+    endDate: safeEnd,
+    endTime: endTime || "",
+    link: approvalUrl || buildShiftDeepLink(shiftId) || "",
+  });
 };
 
 export const buildHeadToHeadTemplate = ({
@@ -519,8 +608,37 @@ export const buildHeadToHeadTemplate = ({
   myShiftOwner,
   myShiftDate,
   uniqueApprovalUrl,
+}) =>
+  applyTemplate("headToHead", {
+    targetUserName: targetUserName || "",
+    targetShiftOwner: targetShiftOwner || "",
+    targetShiftDate: targetShiftDate || "",
+    myShiftOwner: myShiftOwner || "",
+    myShiftDate: myShiftDate || "",
+    link: uniqueApprovalUrl || "",
+  });
+
+// A general/open swap request: broadcast to the whole team (no specific
+// recipient), so anyone can take the offered shift or counter-offer.
+export const buildGeneralTemplate = ({
+  originalOwnerName,
+  startDate,
+  startTime,
+  endDate,
+  endTime,
+  approvalUrl,
+  shiftId,
 }) => {
-  return `היי *${targetUserName || ""}*! 👋🏼\nאני מעוניין להחליף איתך משמרת רז״רתו ראש בראש:\n\n🫡 הצעת החלפה:\n🫵🏼 המשמרת שלך: *${targetShiftOwner || ""}* ${targetShiftDate || ""}\n🤞🏼 המשמרת שלי: *${myShiftOwner || ""}* ${myShiftDate || ""}\n\n✅ לחץ כאן לאישור ההחלפה בתוך המערכת:\n${uniqueApprovalUrl || ""}`;
+  const safeStart = formatShareDate(startDate);
+  const safeEnd = formatShareDate(endDate, safeStart);
+  return applyTemplate("general", {
+    ownerName: originalOwnerName || "",
+    startDate: safeStart,
+    startTime: startTime || "",
+    endDate: safeEnd,
+    endTime: endTime || "",
+    link: approvalUrl || buildShiftDeepLink(shiftId) || "",
+  });
 };
 
 // A "gift" is a one-directional takeover: an RR user offers to take today's
@@ -535,11 +653,14 @@ export const buildGiftTemplate = ({
   endDate,
   endTime,
 }) => {
-  const safeStart = startDate
-    ? format(new Date(startDate), "dd/MM/yyyy", { locale: he })
-    : "";
-  const safeEnd = endDate
-    ? format(new Date(endDate), "dd/MM/yyyy", { locale: he })
-    : safeStart;
-  return `היי *${recipientName || ""}*! 🎁\nרוצה לתת לך מתנה — לקחת על עצמי את המשמרת שלך, בלי תמורה 🙌\n\n📅 המשמרת: מ-${safeStart} בשעה ${startTime || ""} ועד ${safeEnd} בשעה ${endTime || ""} ⏰\n\nכל מה שצריך זה לאשר את ההצעה באפליקציה (בקשות אליי) ✅${giverName ? `\n— ${giverName}` : ""}`;
+  const safeStart = formatShareDate(startDate);
+  const safeEnd = formatShareDate(endDate, safeStart);
+  return applyTemplate("gift", {
+    recipientName: recipientName || "",
+    giverName: giverName || "",
+    startDate: safeStart,
+    startTime: startTime || "",
+    endDate: safeEnd,
+    endTime: endTime || "",
+  });
 };
