@@ -37,7 +37,6 @@ export function computeNotificationEvents({
   const myId = Number(me.serial_id);
 
   const shiftById = new Map(shifts.map((s) => [s.id, s]));
-  const requestById = new Map(swapRequests.map((r) => [r.id, r]));
 
   // Ownership is read from the base "assignment" ShiftCoverage row (the
   // ownership ledger), falling back to the legacy shift.original_user_id while
@@ -104,16 +103,22 @@ export function computeNotificationEvents({
   // Active via cancelSwapMutation, which doesn't warrant notifying them
   // about their own action).
   coverages.forEach((c) => {
+    // Only "cover" rows are helpers taking a window; the base "assignment" row
+    // is ownership, not a coverage offer (Phase 4).
+    if (c.type === "assignment") return;
     const shift = shiftById.get(c.shift_id);
     if (!shift) return;
     if (Number(ownerOf(shift)) !== myId) return;
     if (Number(c.covering_user_id) === myId) return;
-    if (c.status !== "Pending" && c.status !== "Approved") return;
 
     const coverer = nameOf(allUsers, c.covering_user_id);
     const dateLabel = formatShiftDate(shift);
 
-    const parentRequest = requestById.get(c.request_id);
+    // A cover no longer stores its parent request id; the parent is the live
+    // request on the same shift.
+    const parentRequest = swapRequests.find(
+      (r) => r.shift_ids?.includes(c.shift_id) && r.status !== "Cancelled",
+    );
 
     const resolved =
       !!parentRequest && RESOLVED_STATUSES.includes(parentRequest.status);
@@ -157,7 +162,9 @@ export function computeNotificationEvents({
     if (!RESOLVED_STATUSES.includes(r.status) && r.status !== "Cancelled")
       return;
 
-    const everHadCoverage = coverages.some((c) => c.request_id === r.id);
+    const everHadCoverage = coverages.some(
+      (c) => c.type !== "assignment" && r.shift_ids?.includes(c.shift_id),
+    );
 
     let title, body, type;
     if (RESOLVED_STATUSES.includes(r.status)) {
