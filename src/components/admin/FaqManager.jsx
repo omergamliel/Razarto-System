@@ -13,7 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { base44, logActivity } from "@/api/base44Client";
 import { toast } from "sonner";
 
 // Admin-only FAQ manager — reads/writes the FaqItem entity (shared with
@@ -36,7 +36,13 @@ export default function FaqManager() {
 
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.FaqItem.create(data),
-    onSuccess: () => {
+    onSuccess: (data) => {
+      logActivity({
+        action: "הוספת שאלה נפוצה",
+        type: "עדכון מערכת",
+        entity: "FaqItem",
+        entityId: data?.id,
+      });
       invalidate();
       toast.success("השאלה נוספה");
     },
@@ -45,13 +51,27 @@ export default function FaqManager() {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.FaqItem.update(id, data),
-    onSuccess: () => invalidate(),
+    onSuccess: (_data, variables) => {
+      logActivity({
+        action: "עדכון שאלה נפוצה",
+        type: "עדכון מערכת",
+        entity: "FaqItem",
+        entityId: variables?.id,
+      });
+      invalidate();
+    },
     onError: () => toast.error("שגיאה בעדכון שאלה"),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id) => base44.entities.FaqItem.delete(id),
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
+      logActivity({
+        action: "מחיקת שאלה נפוצה",
+        type: "עדכון מערכת",
+        entity: "FaqItem",
+        entityId: id,
+      });
       invalidate();
       toast.success("השאלה נמחקה");
       setFaqToDelete(null);
