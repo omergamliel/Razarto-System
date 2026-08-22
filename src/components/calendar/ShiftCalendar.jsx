@@ -735,7 +735,9 @@ export default function ShiftCalendar() {
       const targetShifts = shifts.filter((s) => targetShiftIds.includes(s.id));
       const targetIdsByOwner = new Map();
       targetShifts.forEach((s) => {
-        const ownerId = s.original_user_id;
+        // `shifts` is the raw base44 list, so ownership must be resolved from the
+        // assignment coverage row (Shift.original_user_id was removed in Phase 4).
+        const ownerId = resolveOwnerId(s, coverages);
         if (!targetIdsByOwner.has(ownerId)) targetIdsByOwner.set(ownerId, []);
         targetIdsByOwner.get(ownerId).push(s.id);
       });
@@ -1491,7 +1493,10 @@ export default function ShiftCalendar() {
         );
         if (
           firstTargetShift &&
-          firstTargetShift.original_user_id !== shift.original_user_id
+          // `shifts` is raw, so resolve ownership from the assignment coverage
+          // row on both sides (Shift.original_user_id was removed in Phase 4).
+          resolveOwnerId(firstTargetShift, coverages) !==
+            resolveOwnerId(shift, coverages)
         ) {
           if (switchFlowWarningTimeoutRef.current)
             clearTimeout(switchFlowWarningTimeoutRef.current);
