@@ -2,10 +2,6 @@
   "name": "ShiftCoverage",
   "type": "object",
   "properties": {
-    "request_id": {
-      "type": "string",
-      "description": "\u05de\u05d6\u05d4\u05d4 \u05d4\u05d1\u05e7\u05e9\u05d4 \u05dc\u05d4\u05d7\u05dc\u05e4\u05d4"
-    },
     "shift_id": {
       "type": "string",
       "description": "\u05de\u05d6\u05d4\u05d4 \u05d4\u05de\u05e9\u05de\u05e8\u05ea"
@@ -31,16 +27,6 @@
     "cover_end_time": {
       "type": "string",
       "description": "\u05e9\u05e2\u05ea \u05e1\u05d9\u05d5\u05dd \u05d4\u05db\u05d9\u05e1\u05d5\u05d9"
-    },
-    "status": {
-      "type": "string",
-      "enum": [
-        "Pending",
-        "Approved",
-        "Cancelled"
-      ],
-      "default": "Pending",
-      "description": "\u05e1\u05d8\u05d8\u05d5\u05e1 \u05d4\u05db\u05d9\u05e1\u05d5\u05d9 (deprecated \u2014 \u05de\u05d5\u05d7\u05dc\u05e3 \u05d1-type)"
     },
     "type": {
       "type": "string",
