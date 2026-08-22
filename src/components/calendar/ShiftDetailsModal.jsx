@@ -528,11 +528,6 @@ export default function ShiftDetailsModal({
       ) || null,
     [coverages, currentUser?.serial_id],
   );
-  // "Gift" keys off the date that STARTS today — an overnight shift that began
-  // yesterday still "covers" today (it ends ~09:00 the next morning) but
-  // belongs to yesterday and must not be giftable.
-  const todayStr = format(new Date(), "yyyy-MM-dd");
-  const isTodayShift = shiftStartDate === todayStr;
   // Shift interaction is gated on being the active member of one's group
   // (computed by the parent ShiftCalendar from ShiftSegment data and passed
   // in). Falls back to the older role-based rule only if no prop is provided
@@ -567,7 +562,6 @@ export default function ShiftDetailsModal({
     isRequestOwner,
     isPastShift,
     isPartialLike,
-    isTodayShift,
     canTakeShifts,
     hasMyCoverageEntry: Boolean(myCoverageEntry),
     isDirectedRequest,
