@@ -4,6 +4,7 @@ import { distributeShifts } from "../calendar/shiftDistributionAlgorithm";
 import {
   buildAssignmentCoverageFields,
   createAssignmentForShift,
+  resolveOwnerId,
   syncAssignmentOwner,
 } from "../calendar/whatsappTemplates";
 import { useHolidays } from "../calendar/useHolidays";
@@ -341,6 +342,10 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   const [coverageMigrationResult, setCoverageMigrationResult] = useState(null);
   // Phase 2 read-only verification of the migration's invariants.
   const [coverageVerifyResult, setCoverageVerifyResult] = useState(null);
+  // Phase 5 cleanup: deleting the now-stale Cancelled cover rows.
+  const [showCoverageCleanupGate, setShowCoverageCleanupGate] =
+    useState(false);
+  const [coverageCleanupResult, setCoverageCleanupResult] = useState(null);
 
   const queryClient = useQueryClient();
 
@@ -592,11 +597,29 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   // but shiftDistributionAlgorithm only ever looks at the ones that fall
   // inside the chosen [startDate, endDate] range — it has no dependency on
   // shift history from before the range.
-  const { data: allShiftsForDistribution = [] } = useQuery({
+  const { data: rawShiftsForDistribution = [] } = useQuery({
     queryKey: ["shifts"],
     queryFn: () => base44.entities.Shift.list(),
     enabled: isOpen,
   });
+
+  // Ownership lives in the base "assignment" ShiftCoverage row (Phase 4). Join
+  // each shift with its resolved owner into an `original_user_id`-shaped field
+  // so the owner-based filters below (and the distribution algorithm, which
+  // reads s.original_user_id) keep working without a schema field.
+  const { data: allCoveragesForOwnership = [] } = useQuery({
+    queryKey: ["coverages"],
+    queryFn: () => base44.entities.ShiftCoverage.list(),
+    enabled: isOpen,
+  });
+  const allShiftsForDistribution = useMemo(
+    () =>
+      rawShiftsForDistribution.map((s) => ({
+        ...s,
+        original_user_id: resolveOwnerId(s, allCoveragesForOwnership),
+      })),
+    [rawShiftsForDistribution, allCoveragesForOwnership],
+  );
 
   const distributionYears = useMemo(() => {
     const { startDate, endDate } = distributionRange;
@@ -749,19 +772,15 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   // future shift of the outgoing member over to the incoming one on confirm.
   const migrateFutureShiftsMutation = useMutation({
     mutationFn: async ({ shiftIds, toUserId }) => {
-      // Dual-write (Phase 3): keep the legacy original_user_id and the base
-      // "assignment" coverage row in sync so coverage-preferring readers see
-      // the new owner too. Fetch coverages once and pass them to
-      // syncAssignmentOwner so it can reuse the assignment row it already has.
+      // Ownership lives in the base "assignment" coverage row (Phase 4) — repoint
+      // it for each migrated shift. Fetch coverages once and pass them in so
+      // syncAssignmentOwner can reuse the assignment row it already has. Throttled
+      // to stay under the rate limit on large ranges.
       const coverages = await base44.entities.ShiftCoverage.list();
       await runThrottled(
-        shiftIds.flatMap((id) => [
-          () =>
-            base44.entities.Shift.update(id, {
-              original_user_id: Number(toUserId),
-            }),
-          () => syncAssignmentOwner(id, Number(toUserId), coverages),
-        ]),
+        shiftIds.map(
+          (id) => () => syncAssignmentOwner(id, Number(toUserId), coverages),
+        ),
       );
       return shiftIds.length;
     },
@@ -953,9 +972,10 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         cholHamoedDates,
       });
 
-      // Create each shift slot, then its base "assignment" coverage row
-      // (Phase 3 dual-write). Throttled so a large distribution can't trip the
-      // rate limiter — creating N shifts + N coverage rows in one burst does.
+      // Create each shift slot (a pure time slot; Phase 4), then its base
+      // "assignment" coverage row recording the owner. Throttled so a large
+      // distribution can't trip the rate limiter — creating N shifts + N
+      // coverage rows in one burst does.
       await runThrottled(
         result.assignments.map((a) => async () => {
           const shift = await base44.entities.Shift.create({
@@ -963,8 +983,6 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
             end_date: a.date,
             start_time: "09:00",
             end_time: "09:00",
-            original_user_id: a.personId,
-            status: "Active",
           });
           await createAssignmentForShift(shift, a.personId);
         }),
@@ -1059,17 +1077,13 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
 
   const replaceShiftsMutation = useMutation({
     mutationFn: async ({ shiftIds, toUserId }) => {
-      // Dual-write (Phase 3): sync both the legacy field and the assignment
-      // coverage row, throttled to stay under the rate limit on big ranges.
+      // Ownership = the base "assignment" coverage row (Phase 4). Repoint it per
+      // shift, throttled to stay under the rate limit on big ranges.
       const coverages = await base44.entities.ShiftCoverage.list();
       await runThrottled(
-        shiftIds.flatMap((id) => [
-          () =>
-            base44.entities.Shift.update(id, {
-              original_user_id: Number(toUserId),
-            }),
-          () => syncAssignmentOwner(id, Number(toUserId), coverages),
-        ]),
+        shiftIds.map(
+          (id) => () => syncAssignmentOwner(id, Number(toUserId), coverages),
+        ),
       );
       return shiftIds.length;
     },
@@ -1131,15 +1145,15 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   //   2. Reclassify every still-active existing coverage (the old Full/Partial
   //      covers, status "Approved") as type "cover".
   //
-  // Transition safety: the base assignment rows are written with
-  // status:"Cancelled" ON PURPOSE. Every CURRENT (pre-Phase-3) coverage reader
-  // filters coverages by either `status === "Approved" || !status` or
-  // `status !== "Cancelled"` — a "Cancelled" row is skipped by BOTH, so these
-  // new assignment rows stay completely invisible to the old code until the
-  // Phase 3 readers (which key off `type === "assignment"`, ignoring status)
-  // ship. This lets the migration run and be verified against the OLD code
-  // without the owner appearing to "cover" their own shift. Phase 4 drops the
-  // status column entirely.
+  // History note: during Phases 1–3 this routine wrote the base assignment rows
+  // with status:"Cancelled" on purpose, so the old status-based readers skipped
+  // them while both models coexisted. Phase 4 removed status from
+  // buildAssignmentCoverageFields (all readers now key off `type`), so a re-run
+  // today creates status-less assignment rows — harmless, since nothing reads
+  // status anymore. The already-migrated prod rows still carry the old
+  // status:"Cancelled"; they're preserved by the Phase 5 cleanup (which deletes
+  // only NON-assignment Cancelled rows) and lose the field when the status
+  // column is dropped in the dashboard.
   //   Requires the `type` field to already exist on ShiftCoverage (added in the
   // base44 dashboard before running this).
   const coverageMigrationMutation = useMutation({
@@ -1281,6 +1295,40 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     onSuccess: (r) => setCoverageVerifyResult(r),
     onError: (error) => {
       toast.error(`האימות נכשל: ${error?.message || "שגיאה לא ידועה"}`);
+    },
+  });
+
+  // Phase 5 cleanup: once the Phase 4 code is deployed (cancel = DELETE the
+  // cover row), no new "Cancelled" coverages are ever written, but the old ones
+  // linger as dead history. Delete them so the `status` column can be dropped in
+  // the base44 dashboard. CRITICAL: the base "assignment" rows were written with
+  // status:"Cancelled" during the Phase 1 migration (a transition-safety trick),
+  // so this MUST exclude type:"assignment" — deleting those would wipe the
+  // ownership ledger. Only stale cover/legacy rows are removed. Idempotent:
+  // re-running after the column is gone matches nothing.
+  const coverageCleanupMutation = useMutation({
+    mutationFn: async () => {
+      const coverages = await base44.entities.ShiftCoverage.list();
+      if (coverages.length === 0) {
+        throw new Error("לא נטענו כיסויים — נסו שוב");
+      }
+      const staleCancelled = coverages.filter(
+        (c) => c.status === "Cancelled" && c.type !== "assignment",
+      );
+      await runThrottled(
+        staleCancelled.map((c) => () =>
+          base44.entities.ShiftCoverage.delete(c.id),
+        ),
+      );
+      return { deleted: staleCancelled.length, total: coverages.length };
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries(["coverages"]);
+      setCoverageCleanupResult(result);
+      toast.success(`נמחקו ${result.deleted} שורות כיסוי מבוטלות ישנות`);
+    },
+    onError: (error) => {
+      toast.error(`הניקוי נכשל: ${error?.message || "שגיאה לא ידועה"}`);
     },
   });
 
@@ -2851,6 +2899,43 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                     </div>
                   )}
                 </div>
+
+                {/* Phase 5 cleanup: delete stale Cancelled cover rows before
+                    the `status` column is removed in the base44 dashboard. */}
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <p className="text-xs text-gray-500 max-w-xl mb-2">
+                    ניקוי שורות כיסוי מבוטלות ישנות (status "Cancelled") שנותרו
+                    מלפני המעבר לביטול-במחיקה. שורות השיבוץ בסיס (assignment)
+                    נשמרות. יש להריץ לפני הסרת שדה ה-status ב-base44.
+                  </p>
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowCoverageCleanupGate(true)}
+                    disabled={coverageCleanupMutation.isPending}
+                    className="w-full md:w-auto h-10 rounded-xl gap-2 border-red-200 text-red-700 hover:bg-red-50"
+                  >
+                    {coverageCleanupMutation.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" /> מנקה...
+                      </>
+                    ) : (
+                      <>
+                        <AlertTriangle className="w-4 h-4" /> נקה כיסויים מבוטלים
+                        ישנים
+                      </>
+                    )}
+                  </Button>
+
+                  {coverageCleanupResult && (
+                    <div className="mt-3 flex items-start gap-2 p-2.5 rounded-xl border bg-emerald-50 border-emerald-200 text-sm">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                      <span className="text-gray-700">
+                        נמחקו {coverageCleanupResult.deleted} שורות מבוטלות · מתוך{" "}
+                        {coverageCleanupResult.total} שורות כיסוי
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {testResults && (
@@ -2991,6 +3076,45 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
               className="bg-purple-600 hover:bg-purple-700 text-white"
             >
               כן, הרץ מיגרציה
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Confirm gate for the Phase 5 stale-Cancelled cleanup */}
+      <Dialog
+        open={showCoverageCleanupGate}
+        onOpenChange={setShowCoverageCleanupGate}
+      >
+        <DialogContent dir="rtl" className="text-right">
+          <DialogHeader className="text-right">
+            <DialogTitle className="flex items-center gap-2 text-red-700">
+              <AlertTriangle className="w-5 h-5" />
+              ניקוי כיסויים מבוטלים
+            </DialogTitle>
+            <DialogDescription>
+              פעולה זו מוחקת לצמיתות שורות ShiftCoverage מבוטלות ישנות
+              (status "Cancelled") שאינן שורות שיבוץ בסיס. שורות השיבוץ בסיס
+              (assignment) שמחזיקות את הבעלות נשמרות. הריצו זאת רק לאחר שקוד
+              Phase 4 פרוס ואומת, וממש לפני הסרת שדה ה-status ב-base44.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setShowCoverageCleanupGate(false)}
+            >
+              ביטול
+            </Button>
+            <Button
+              onClick={() => {
+                coverageCleanupMutation.mutate();
+                setShowCoverageCleanupGate(false);
+              }}
+              disabled={coverageCleanupMutation.isPending}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              כן, מחק כיסויים מבוטלים
             </Button>
           </DialogFooter>
         </DialogContent>
