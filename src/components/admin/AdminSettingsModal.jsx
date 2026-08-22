@@ -2596,6 +2596,18 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                     </span>
                   </div>
                 )}
+
+                {coverageMigrationMutation.isError && (
+                  <div className="mt-3 flex items-start gap-2 p-2.5 rounded-xl border bg-red-50 border-red-200 text-sm">
+                    <AlertTriangle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+                    <span className="text-gray-700 break-all">
+                      המיגרציה נכשלה:{" "}
+                      {coverageMigrationMutation.error?.message ||
+                        JSON.stringify(coverageMigrationMutation.error) ||
+                        "שגיאה לא ידועה"}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {testResults && (
