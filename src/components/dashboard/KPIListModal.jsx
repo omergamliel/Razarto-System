@@ -120,7 +120,11 @@ const getLatestActivityDate = (item) => {
   // base44 entities carry their system timestamps as *_date (created_date/
   // updated_date), not *_at — the *_at variants are kept as a fallback in
   // case a caller ever passes plain JS objects that use that convention.
+  // `latest_activity_date` (computed during enrichment) folds in the newest
+  // coverage change too, since taking/cancelling a cover doesn't bump the
+  // parent SwapRequest's own updated_date.
   const candidates = [
+    item.latest_activity_date,
     item.updated_date,
     item.updated_at,
     item.created_date,
@@ -629,8 +633,26 @@ export default function KPIListModal({
             ]
           : [];
 
+        // Newest of: the request's own create/update, and any of its covers'
+        // create/update — so the history sorts by the true last change.
+        const activityMs = [
+          req.updated_date,
+          req.created_date,
+          ...coveragesAll
+            .filter(
+              (c) => reqShiftIds.includes(c.shift_id) && c.type !== "assignment",
+            )
+            .flatMap((c) => [c.updated_date, c.created_date]),
+        ]
+          .map((v) => (v ? new Date(v).getTime() : 0))
+          .filter((n) => n > 0);
+        const latest_activity_date = activityMs.length
+          ? new Date(Math.max(...activityMs)).toISOString()
+          : req.updated_date || req.created_date;
+
         return {
           ...req,
+          latest_activity_date,
           shift_date: shift?.start_date,
           start_time: shift?.start_time,
           end_time: shift?.end_time,
@@ -765,8 +787,24 @@ export default function KPIListModal({
 
         if (!hasGap || (!hasPartialAssignment && !activeRequest)) return null;
 
+        // Newest of the parent request and this shift's covers — so an
+        // in-progress partial re-sorts to the top the moment a cover is taken.
+        const activityMs = [
+          activeRequest?.updated_date,
+          activeRequest?.created_date,
+          ...coveragesAll
+            .filter((c) => c.shift_id === shift.id && c.type !== "assignment")
+            .flatMap((c) => [c.updated_date, c.created_date]),
+        ]
+          .map((v) => (v ? new Date(v).getTime() : 0))
+          .filter((n) => n > 0);
+        const latest_activity_date = activityMs.length
+          ? new Date(Math.max(...activityMs)).toISOString()
+          : undefined;
+
         return {
           ...activeRequest,
+          latest_activity_date,
           id: activeRequest?.id || `partial-${shift.id}`,
           shift_id: shift.id,
           user_name: user?.full_name || shift.user_name || "לא ידוע",
