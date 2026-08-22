@@ -670,13 +670,12 @@ export default function KPIListModal({
           s.swap_type;
         let displayStatus = "regular";
 
-        if (
-          s.status === "Covered" ||
-          s.cover_status === "Approved" ||
-          s.ownership === "covering"
-        ) {
+        // ownership==="covering" means this row is a cover I took → covered.
+        // Otherwise an open request drives requested/partial. Shift.status was
+        // removed in Phase 4, so status is derived here, never read off the shift.
+        if (s.ownership === "covering") {
           displayStatus = "covered";
-        } else if (activeRequest || s.status === "Swap_Requested") {
+        } else if (activeRequest) {
           displayStatus = coverageType === "partial" ? "partial" : "requested";
         } else if (s.coverageType === "partial") {
           displayStatus = "partial";
@@ -709,8 +708,8 @@ export default function KPIListModal({
     if (!isOpen || !(isPartialGapsView || type === "approved")) return [];
     return shiftsAll
       .map((shift) => {
-        if (shift.status === "Active") return null;
-
+        // No early-out on shift.status (removed in Phase 4); the line-767 guard
+        // below drops plain slots that have no gap / no active request anyway.
         const activeRequest = swapRequestsAll.find(
           (r) => r.shift_ids?.includes(shift.id) && isOpenStatus(r.status),
         );
@@ -829,7 +828,6 @@ export default function KPIListModal({
           end_time: cov.cover_end_time || shift.end_time,
           ownership: "covering",
           covering_name: currentUser?.full_name,
-          cover_status: cov.status,
         };
       })
       .filter(Boolean);
