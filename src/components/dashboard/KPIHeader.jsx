@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { resolveOwnerId } from "@/components/calendar/whatsappTemplates";
 import { useThemePalette } from "@/hooks/useAuthorizedPerson";
 
 export default function KPIHeader({
@@ -71,10 +72,11 @@ export default function KPIHeader({
 
   const inProgressPartialCount = useMemo(() => {
     return shiftsAll.filter((shift) => {
-      if (shift.status === "Active") return false;
-
+      // A shift is a live partial gap only while it has an active request
+      // (Phase 4: status is derived, not stored). "cover" rows are the covers;
+      // the base "assignment" row is ownership and must be excluded from the gap.
       const shiftCoverages = coveragesAll.filter(
-        (c) => c.shift_id === shift.id,
+        (c) => c.shift_id === shift.id && c.type !== "assignment",
       );
       if (shiftCoverages.length === 0) return false;
 
@@ -83,6 +85,7 @@ export default function KPIHeader({
           r.shift_ids?.includes(shift.id) &&
           ["Open", "Partially_Covered"].includes(r.status),
       );
+      if (!activeRequest) return false;
 
       const startTime =
         activeRequest?.req_start_time ||
@@ -133,39 +136,29 @@ export default function KPIHeader({
   );
 
   // --- 4. My Future Shifts (Blue) ---
-  // Complex logic: Original assignment OR Approved coverage
-  const { data: myShiftsCount = 0 } = useQuery({
-    queryKey: ["count-my-future-shifts", currentUser?.serial_id],
-    queryFn: async () => {
-      if (!currentUser?.serial_id) return 0;
+  // Shifts I own (via the base "assignment" coverage row) OR future windows I'm
+  // covering ("cover" rows). Ownership + coverage both come from ShiftCoverage
+  // now (Phase 4), so derive from the already-loaded shifts/coverages lists.
+  const myShiftsCount = useMemo(() => {
+    if (!currentUser?.serial_id) return 0;
+    const todayStr = new Date().toISOString().split("T")[0];
+    const myId = Number(currentUser.serial_id);
 
-      const todayStr = new Date().toISOString().split("T")[0];
+    const futureOwned = shiftsAll.filter(
+      (s) =>
+        Number(resolveOwnerId(s, coveragesAll)) === myId &&
+        s.start_date >= todayStr,
+    ).length;
 
-      // A. Shifts where I am the original user (and no active swap request replacing me completely)
-      // Note: This logic can be refined. For now, simple count of future assignments.
-      // We filter locally because simple filter might not support date operator > directly in all adaptors
-      const myOriginalShifts = await base44.entities.Shift.filter({
-        original_user_id: currentUser.serial_id,
-      });
+    const futureCovering = coveragesAll.filter(
+      (c) =>
+        c.type !== "assignment" &&
+        Number(c.covering_user_id) === myId &&
+        (c.cover_start_date || "") >= todayStr,
+    ).length;
 
-      const futureOriginals = myOriginalShifts.filter(
-        (s) => s.start_date >= todayStr,
-      );
-
-      // B. Coverages where I am covering (Approved)
-      const myCoverages = await base44.entities.ShiftCoverage.filter({
-        covering_user_id: currentUser.serial_id,
-        status: "Approved",
-      });
-
-      const futureCoverages = myCoverages.filter(
-        (c) => c.cover_start_date >= todayStr,
-      );
-
-      return futureOriginals.length + futureCoverages.length;
-    },
-    enabled: !!currentUser?.serial_id,
-  });
+    return futureOwned + futureCovering;
+  }, [shiftsAll, coveragesAll, currentUser?.serial_id]);
 
   const kpis = [
     {
