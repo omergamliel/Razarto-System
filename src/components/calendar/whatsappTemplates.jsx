@@ -1,5 +1,12 @@
 import { format, addDays } from "date-fns";
 import { he } from "date-fns/locale";
+import { base44 } from "@/api/base44Client";
+
+// request_id placed on the base "assignment" ShiftCoverage rows (the ownership
+// ledger). base44 still requires request_id, but an assignment row has no parent
+// SwapRequest; this sentinel marks it so the orphan-coverage cleanup skips it.
+// Removed in Phase 4 when request_id is dropped from the schema.
+export const ASSIGNMENT_REQUEST_SENTINEL = "assignment";
 
 // Distinct colors for each person helping cover a shift, so multiple
 // simultaneous helpers can be told apart at a glance on the coverage
@@ -239,6 +246,77 @@ export const computeCoverageSummary = ({
   };
 };
 
+// The serial_id of whoever currently owns a shift, read from the base
+// "assignment" ShiftCoverage row (the ownership ledger introduced in the schema
+// refactor), falling back to the legacy shift.original_user_id while that column
+// still exists (Phase 3 dual-read; the field is removed in Phase 4). `coverages`
+// may be the full ShiftCoverage list or a subset — only the assignment row for
+// this shift is consulted. Returns undefined for a null shift.
+export const resolveOwnerId = (shift, coverages = []) => {
+  if (!shift) return undefined;
+  const assignment = (coverages || []).find(
+    (c) => c.type === "assignment" && c.shift_id === shift.id,
+  );
+  return assignment?.covering_user_id != null
+    ? assignment.covering_user_id
+    : shift.original_user_id;
+};
+
+// The base "assignment" ShiftCoverage row for a shift, if present in the given
+// list. Pure lookup (no I/O).
+export const findAssignmentCoverage = (shiftId, coverages = []) =>
+  (coverages || []).find(
+    (c) => c.type === "assignment" && c.shift_id === shiftId,
+  );
+
+// The full field set for a base assignment row covering a WHOLE shift. base44
+// still requires request_id + the cover_* window, so mirror the shift's own
+// window and tag it with the non-request sentinel. Written status:"Cancelled"
+// so legacy (pre-Phase-4) coverage readers skip it — ownership is read via
+// type:"assignment", not status.
+export const buildAssignmentCoverageFields = (shift, ownerId) => ({
+  shift_id: shift.id,
+  covering_user_id: Number(ownerId),
+  type: "assignment",
+  status: "Cancelled",
+  request_id: ASSIGNMENT_REQUEST_SENTINEL,
+  cover_start_date: shift.start_date,
+  cover_end_date: shift.end_date,
+  cover_start_time: shift.start_time || "09:00",
+  cover_end_time: shift.end_time || "09:00",
+});
+
+// Phase 3 dual-write: after a shift's owner changes, bring its base assignment
+// row in step. Prefers the row from an already-loaded `coverages` list; falls
+// back to a targeted fetch; creates the row if the shift somehow has none
+// (e.g. it predates the migration). Callers still write Shift.original_user_id
+// too, until Phase 4 removes that column.
+export const syncAssignmentOwner = async (shiftId, newOwnerId, coverages) => {
+  let existing = coverages && findAssignmentCoverage(shiftId, coverages);
+  if (!existing) {
+    const rows = await base44.entities.ShiftCoverage.filter({
+      shift_id: shiftId,
+      type: "assignment",
+    });
+    existing = rows[0];
+  }
+  if (existing) {
+    return base44.entities.ShiftCoverage.update(existing.id, {
+      covering_user_id: Number(newOwnerId),
+    });
+  }
+  const shift = await base44.entities.Shift.get(shiftId);
+  return base44.entities.ShiftCoverage.create(
+    buildAssignmentCoverageFields(shift, newOwnerId),
+  );
+};
+
+// Phase 3 dual-write: create the base assignment row for a newly created shift.
+export const createAssignmentForShift = (shift, ownerId) =>
+  base44.entities.ShiftCoverage.create(
+    buildAssignmentCoverageFields(shift, ownerId),
+  );
+
 export const normalizeShiftContext = (
   shift,
   {
@@ -251,6 +329,22 @@ export const normalizeShiftContext = (
 ) => {
   if (!shift) return null;
 
+  // --- Ownership from the coverage ledger (Phase 3 dual-read) ---
+  // The base "assignment" ShiftCoverage row is the source of truth for who owns
+  // the slot; fall back to the legacy shift.original_user_id while that column
+  // still exists (removed in Phase 4). The assignment row records ownership, not
+  // a coverage band, so it's pulled out here and excluded from the covers below.
+  const rawShiftCoverages = (coverages || []).filter(
+    (c) => c.shift_id === shift.id || !c.shift_id,
+  );
+  const assignmentCoverage = rawShiftCoverages.find(
+    (c) => c.type === "assignment",
+  );
+  const ownerId =
+    assignmentCoverage?.covering_user_id != null
+      ? assignmentCoverage.covering_user_id
+      : shift.original_user_id;
+
   const activeRequest =
     activeRequestOverride ||
     shift.active_request ||
@@ -259,23 +353,22 @@ export const normalizeShiftContext = (
         sr.shift_ids?.includes(shift.id) &&
         sr.status !== "Cancelled" &&
         // A request only describes this shift's CURRENT state if it was made
-        // by the shift's current owner. Once acceptHeadToHeadRequestMutation
-        // reassigns original_user_id to a new owner, the old (now-Closed)
-        // request still lists this shift's id in shift_ids forever — without
-        // this check it would keep being found and force displayStatus to
-        // "covered" permanently, blocking the new owner from ever requesting
-        // a swap on their own shift again.
-        sr.requesting_user_id === shift.original_user_id,
+        // by the shift's current owner. Once ownership is reassigned (head-to-
+        // head / gift accept), the old (now-Closed) request still lists this
+        // shift's id in shift_ids forever — without this check it would keep
+        // being found and force displayStatus to "covered" permanently,
+        // blocking the new owner from ever requesting a swap on their own shift.
+        Number(sr.requesting_user_id) === Number(ownerId),
     );
   const requestType = resolveSwapType(shift, activeRequest);
   const requestWindow = resolveRequestWindow(shift, activeRequest);
   const shiftWindow = resolveShiftWindow(shift, requestWindow);
 
   const originalUser =
-    allUsers?.find((u) => u.serial_id === shift.original_user_id) ||
+    allUsers?.find((u) => Number(u.serial_id) === Number(ownerId)) ||
     shift.original_user_data;
-  const shiftCoverages = (coverages || [])
-    .filter((c) => c.shift_id === shift.id || !c.shift_id)
+  const shiftCoverages = rawShiftCoverages
+    .filter((c) => c.type !== "assignment")
     .map((cov) => {
       const coveringUser = allUsers?.find(
         (u) => u.serial_id === cov.covering_user_id,
@@ -357,6 +450,9 @@ export const normalizeShiftContext = (
 
   return {
     ...shift,
+    // Owner resolved from the assignment coverage row (fallback: legacy field),
+    // written back so every consumer of the normalized shift reads the ledger.
+    original_user_id: ownerId != null ? Number(ownerId) : shift.original_user_id,
     date: shift.start_date || shift.date,
     role: ownerName,
     department: originalUser?.department || shift.department || "",
@@ -382,7 +478,7 @@ export const normalizeShiftContext = (
     // silently misreport ownership for the very same person (this is the
     // same class of bug fixed elsewhere in ShiftDetailsModal/KPIListModal).
     isMine: currentUser
-      ? Number(shift.original_user_id) === Number(currentUser.serial_id) ||
+      ? Number(ownerId) === Number(currentUser.serial_id) ||
         (!!currentUser.email && shift.assigned_email === currentUser.email)
       : false,
     isCovering: currentUser
