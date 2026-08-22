@@ -58,7 +58,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { base44, logActivity } from "@/api/base44Client";
 import { toast } from "sonner";
 import {
   DropdownMenu,
@@ -492,6 +492,11 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       });
     },
     onSuccess: () => {
+      logActivity({
+        action: "עדכון לוגו המערכת",
+        type: "עדכון מערכת",
+        entity: "AppSettings",
+      });
       queryClient.invalidateQueries({ queryKey: ["app-settings"] });
       toast.success("הלוגו עודכן בהצלחה");
     },
@@ -566,6 +571,11 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   const saveSystemSettingsMutation = useMutation({
     mutationFn: () => upsertSetting("system", { ...systemSettings, systemStatus }),
     onSuccess: () => {
+      logActivity({
+        action: "שמירת הגדרות מערכת",
+        type: "עדכון מערכת",
+        entity: "AppSettings",
+      });
       queryClient.invalidateQueries({ queryKey: ["app-settings"] });
       toast.success("ההגדרות נשמרו בהצלחה");
     },
@@ -575,6 +585,11 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   const saveSupportSettingsMutation = useMutation({
     mutationFn: () => upsertSetting("support", supportSettings),
     onSuccess: () => {
+      logActivity({
+        action: "שמירת הגדרות תמיכה",
+        type: "עדכון מערכת",
+        entity: "AppSettings",
+      });
       queryClient.invalidateQueries({ queryKey: ["app-settings"] });
       toast.success("הגדרות התמיכה נשמרו בהצלחה");
     },
@@ -661,6 +676,12 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       return created;
     },
     onSuccess: (data) => {
+      logActivity({
+        action: `הוספת משתמש: ${data?.full_name || ""}`.trim(),
+        type: "שינויים בהרשאות",
+        entity: "AuthorizedPerson",
+        entityId: data?.id,
+      });
       queryClient.invalidateQueries(["authorized-people"]);
       // Instead of closing, switch to success step
       setAddedUserData(data);
@@ -682,7 +703,13 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     mutationFn: async ({ id, data }) => {
       return await base44.entities.AuthorizedPerson.update(id, data);
     },
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
+      logActivity({
+        action: "עדכון פרטי משתמש / הרשאות",
+        type: "שינויים בהרשאות",
+        entity: "AuthorizedPerson",
+        entityId: variables?.id,
+      });
       queryClient.invalidateQueries(["authorized-people"]);
       toast.success("הפרטים עודכנו בהצלחה!");
       setIsEditUserOpen(false);
@@ -698,7 +725,13 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     mutationFn: async (id) => {
       return await base44.entities.AuthorizedPerson.delete(id);
     },
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
+      logActivity({
+        action: "מחיקת משתמש מהמערכת",
+        type: "שינויים בהרשאות",
+        entity: "AuthorizedPerson",
+        entityId: id,
+      });
       queryClient.invalidateQueries(["authorized-people"]);
       toast.success("המשתמש הוסר מהמערכת בהצלחה.");
       setIsDeleteOpen(false);
@@ -746,7 +779,14 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       }
       return { previousActiveEmail, cleared: false };
     },
-    onSuccess: (result, { person }) => {
+    onSuccess: (result, { symbol, person }) => {
+      logActivity({
+        action: result?.cleared
+          ? `ניקוי משתמש פעיל בקבוצה ${symbol}`
+          : `עדכון משתמש פעיל בקבוצה ${symbol}`,
+        type: "עדכון מערכת",
+        entity: "ShiftSegment",
+      });
       queryClient.invalidateQueries(["shift-segments"]);
       offerFutureShiftMigration(result, person);
     },
@@ -773,6 +813,11 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       return shiftIds.length;
     },
     onSuccess: (count) => {
+      logActivity({
+        action: `העברת ${count} משמרות עתידיות למשתמש פעיל חדש`,
+        type: "עדכון מערכת",
+        entity: "ShiftCoverage",
+      });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["coverages"]);
       setPendingShiftMigration(null);
@@ -826,7 +871,12 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         active: false,
       });
     },
-    onSuccess: () => {
+    onSuccess: (_data, symbol) => {
+      logActivity({
+        action: `הוספת קבוצה: ${(symbol || "").trim()}`,
+        type: "עדכון מערכת",
+        entity: "ShiftSegment",
+      });
       queryClient.invalidateQueries(["shift-segments"]);
       toast.success("הקבוצה נוספה.");
       setNewGroupSymbol("");
@@ -851,7 +901,12 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         ),
       );
     },
-    onSuccess: () => {
+    onSuccess: (_data, symbol) => {
+      logActivity({
+        action: `הסרת קבוצה: ${symbol}`,
+        type: "עדכון מערכת",
+        entity: "ShiftSegment",
+      });
       queryClient.invalidateQueries(["shift-segments"]);
       queryClient.invalidateQueries(["authorized-people"]);
       toast.success("הקבוצה הוסרה.");
@@ -874,6 +929,11 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       );
     },
     onSuccess: () => {
+      logActivity({
+        action: "יצירת קבוצות ברירת המחדל",
+        type: "עדכון מערכת",
+        entity: "ShiftSegment",
+      });
       queryClient.invalidateQueries(["shift-segments"]);
       toast.success("קבוצות ברירת המחדל נוצרו.");
     },
@@ -890,7 +950,12 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         ),
       );
     },
-    onSuccess: (_data, { personIds }) => {
+    onSuccess: (_data, { symbol, personIds }) => {
+      logActivity({
+        action: `הוספת ${personIds.length} משתמשים לקבוצה ${symbol}`,
+        type: "עדכון מערכת",
+        entity: "AuthorizedPerson",
+      });
       queryClient.invalidateQueries(["authorized-people"]);
       toast.success(`נוספו ${personIds.length} משתמשים לקבוצה.`);
       setGroupPickerSymbol(null);
@@ -914,7 +979,13 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         });
       }
     },
-    onSuccess: () => {
+    onSuccess: (_data, { person }) => {
+      logActivity({
+        action: `הסרת ${person?.full_name || "משתמש"} מקבוצה`,
+        type: "עדכון מערכת",
+        entity: "AuthorizedPerson",
+        entityId: person?.id,
+      });
       queryClient.invalidateQueries(["authorized-people"]);
       queryClient.invalidateQueries(["shift-segments"]);
       toast.success("המשתמש הוסר מהקבוצה.");
@@ -978,7 +1049,12 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
 
       return result;
     },
-    onSuccess: (result) => {
+    onSuccess: (result, { startDate, endDate }) => {
+      logActivity({
+        action: `חלוקת ${result?.assignments?.length || 0} משמרות (${startDate} — ${endDate})`,
+        type: "הוספת משמרות",
+        entity: "Shift",
+      });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["coverages"]);
       setDistributionResult(result);
@@ -1021,6 +1097,11 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       return shiftIds.length;
     },
     onSuccess: (count) => {
+      logActivity({
+        action: `מחיקת ${count} משמרות בטווח תאריכים`,
+        type: "מחיקת משמרות",
+        entity: "Shift",
+      });
       queryClient.invalidateQueries(["shifts"]);
       toast.success(`נמחקו ${count} משמרות בהצלחה`);
       setIsDeleteShiftsConfirmOpen(false);
@@ -1076,6 +1157,11 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       return shiftIds.length;
     },
     onSuccess: (count) => {
+      logActivity({
+        action: `החלפת ${count} משמרות בין משתמשים`,
+        type: "שינויים בהרשאות",
+        entity: "ShiftCoverage",
+      });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["coverages"]);
       toast.success(`הוחלפו ${count} משמרות בהצלחה`);
