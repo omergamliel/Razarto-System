@@ -279,6 +279,10 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   const [replaceShiftsError, setReplaceShiftsError] = useState("");
   const [isReplaceShiftsConfirmOpen, setIsReplaceShiftsConfirmOpen] =
     useState(false);
+  // Set when a group's active member is swapped and the outgoing member still
+  // owns future shifts — drives the "migrate future shifts?" confirm dialog.
+  // Shape: { previousPerson, newPerson, shiftIds }.
+  const [pendingShiftMigration, setPendingShiftMigration] = useState(null);
 
   // --- System test suite (src/lib/testing) ---
   const [testResults, setTestResults] = useState(null);
@@ -686,10 +690,10 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   });
 
   // When a group's active member is swapped for a different person, the shifts
-  // the OUTGOING active member owns from tomorrow on will keep being theirs even
-  // though distribution now favours the newcomer. Rather than silently reassign
-  // them, offer it: a toast shows "outgoing → incoming" with a one-tap action to
-  // hand every future shift of the outgoing member over to the incoming one.
+  // the OUTGOING active member owns ahead of today keep being theirs even though
+  // distribution now favours the newcomer. Rather than silently reassign them,
+  // offer it: a confirm dialog shows "outgoing → incoming" and hands every
+  // future shift of the outgoing member over to the incoming one on confirm.
   const migrateFutureShiftsMutation = useMutation({
     mutationFn: async ({ shiftIds, toUserId }) => {
       await Promise.all(
@@ -703,6 +707,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     },
     onSuccess: (count) => {
       queryClient.invalidateQueries(["shifts"]);
+      setPendingShiftMigration(null);
       toast.success(`הועברו ${count} משמרות עתידיות למשתמש הפעיל החדש`);
     },
     onError: () => toast.error("העברת המשמרות העתידיות נכשלה. נסו שוב."),
@@ -735,33 +740,11 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     );
     if (futureShifts.length === 0) return;
 
-    toast(
-      <div className="flex flex-col gap-2" dir="rtl">
-        <span className="text-sm font-semibold text-gray-800">
-          להעביר {futureShifts.length} משמרות עתידיות למשתמש הפעיל החדש?
-        </span>
-        <div className="flex items-center gap-2 text-sm">
-          <span className="font-semibold text-gray-700">
-            {previousPerson.full_name}
-          </span>
-          <ArrowLeft className="w-4 h-4 text-blue-600 shrink-0" />
-          <span className="font-semibold text-blue-700">
-            {person.full_name}
-          </span>
-        </div>
-      </div>,
-      {
-        duration: 12000,
-        action: {
-          label: "העבר משמרות",
-          onClick: () =>
-            migrateFutureShiftsMutation.mutate({
-              shiftIds: futureShifts.map((s) => s.id),
-              toUserId: person.serial_id,
-            }),
-        },
-      },
-    );
+    setPendingShiftMigration({
+      previousPerson,
+      newPerson: person,
+      shiftIds: futureShifts.map((s) => s.id),
+    });
   };
 
   // 3b-i. Groups — add a new group (a ShiftSegment row with just a symbol).
@@ -3510,6 +3493,68 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
               className="flex-1"
             >
               לא, ביטול
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Offer to migrate the outgoing active member's future shifts to the
+          incoming one, after a group's active member was changed. */}
+      <Dialog
+        open={!!pendingShiftMigration}
+        onOpenChange={(open) => !open && setPendingShiftMigration(null)}
+      >
+        <DialogContent className="sm:max-w-[420px] text-right" dir="rtl">
+          <DialogHeader className="text-right">
+            <DialogTitle className="flex items-center gap-2 text-xl text-blue-600">
+              <div className="bg-blue-100 p-2 rounded-full">
+                <ArrowLeftRight className="w-5 h-5 text-blue-600" />
+              </div>
+              העברת משמרות עתידיות
+            </DialogTitle>
+          </DialogHeader>
+
+          {pendingShiftMigration && (
+            <div className="py-4 space-y-4">
+              <p className="text-gray-600">
+                המשתמש הפעיל של הקבוצה שונה. להעביר את{" "}
+                <b>{pendingShiftMigration.shiftIds.length} המשמרות העתידיות</b>{" "}
+                שמשויכות למשתמש הקודם, כך שיהיו בבעלות המשתמש הפעיל החדש?
+              </p>
+              <div className="flex items-center justify-center gap-3 rounded-xl border border-blue-100 bg-blue-50/60 px-3 py-3">
+                <span className="font-semibold text-gray-700">
+                  {pendingShiftMigration.previousPerson.full_name}
+                </span>
+                <ArrowLeft className="w-5 h-5 text-blue-600 shrink-0" />
+                <span className="font-semibold text-blue-700">
+                  {pendingShiftMigration.newPerson.full_name}
+                </span>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="flex gap-2 w-full">
+            <Button
+              onClick={() =>
+                migrateFutureShiftsMutation.mutate({
+                  shiftIds: pendingShiftMigration.shiftIds,
+                  toUserId: pendingShiftMigration.newPerson.serial_id,
+                })
+              }
+              disabled={migrateFutureShiftsMutation.isPending}
+              className="flex-1 bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {migrateFutureShiftsMutation.isPending
+                ? "מעביר..."
+                : "כן, העבר משמרות"}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setPendingShiftMigration(null)}
+              disabled={migrateFutureShiftsMutation.isPending}
+              className="flex-1"
+            >
+              לא, השאר כפי שהוא
             </Button>
           </DialogFooter>
         </DialogContent>
