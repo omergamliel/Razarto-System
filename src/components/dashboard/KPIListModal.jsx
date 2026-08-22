@@ -586,7 +586,7 @@ export default function KPIListModal({
               (c) =>
                 c.shift_id === shift?.id &&
                 c.type !== "assignment" &&
-                (c.status === "Approved" || !c.status),
+                c.status !== "Cancelled",
             )
             .map((c, idx) => {
               const covShift =
