@@ -341,6 +341,8 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   const [showCoverageMigrationGate, setShowCoverageMigrationGate] =
     useState(false);
   const [coverageMigrationResult, setCoverageMigrationResult] = useState(null);
+  // Phase 2 read-only verification of the migration's invariants.
+  const [coverageVerifyResult, setCoverageVerifyResult] = useState(null);
 
   const queryClient = useQueryClient();
 
@@ -1212,6 +1214,68 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     },
     onError: (error) => {
       toast.error(`המיגרציה נכשלה: ${error?.message || "שגיאה לא ידועה"}`);
+    },
+  });
+
+  // Phase 2: read-only verification of the migration. Checks the three
+  // invariants — every owned shift has exactly one assignment row, no shift has
+  // more than one, and each assignment's covering_user_id matches the shift's
+  // old original_user_id — plus reports the assignment/cover row counts and any
+  // assignment rows pointing at a shift that no longer exists. Pure reads, no
+  // writes, so it's safe to run anytime and can't hit the rate limit.
+  const coverageVerifyMutation = useMutation({
+    mutationFn: async () => {
+      const [shifts, coverages] = await Promise.all([
+        base44.entities.Shift.list(),
+        base44.entities.ShiftCoverage.list(),
+      ]);
+      if (shifts.length === 0) throw new Error("לא נטענו משמרות — נסו שוב");
+
+      const shiftIds = new Set(shifts.map((s) => s.id));
+      const assignmentsByShift = new Map(); // shift_id -> ShiftCoverage[]
+      for (const c of coverages) {
+        if (c.type !== "assignment") continue;
+        const list = assignmentsByShift.get(c.shift_id) || [];
+        list.push(c);
+        assignmentsByShift.set(c.shift_id, list);
+      }
+
+      const shiftsWithOwner = shifts.filter((s) => s.original_user_id != null);
+      const missing = shiftsWithOwner.filter(
+        (s) => !assignmentsByShift.has(s.id),
+      );
+      const duplicates = shifts.filter(
+        (s) => (assignmentsByShift.get(s.id)?.length || 0) > 1,
+      );
+      const mismatched = shifts.filter((s) => {
+        const rows = assignmentsByShift.get(s.id);
+        if (!rows || rows.length === 0) return false;
+        return Number(rows[0].covering_user_id) !== Number(s.original_user_id);
+      });
+      const orphanAssignments = [...assignmentsByShift.keys()].filter(
+        (sid) => !shiftIds.has(sid),
+      );
+
+      return {
+        totalShifts: shifts.length,
+        shiftsWithOwner: shiftsWithOwner.length,
+        assignmentCount: coverages.filter((c) => c.type === "assignment").length,
+        coverCount: coverages.filter((c) => c.type === "cover").length,
+        totalCoverages: coverages.length,
+        missing: missing.length,
+        duplicates: duplicates.length,
+        mismatched: mismatched.length,
+        orphanAssignments: orphanAssignments.length,
+        ok:
+          missing.length === 0 &&
+          duplicates.length === 0 &&
+          mismatched.length === 0 &&
+          orphanAssignments.length === 0,
+      };
+    },
+    onSuccess: (r) => setCoverageVerifyResult(r),
+    onError: (error) => {
+      toast.error(`האימות נכשל: ${error?.message || "שגיאה לא ידועה"}`);
     },
   });
 
@@ -2684,6 +2748,104 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                     </span>
                   </div>
                 )}
+
+                {/* Phase 2 read-only verification of the migration invariants */}
+                <div className="mt-4 pt-4 border-t border-gray-100">
+                  <Button
+                    variant="outline"
+                    onClick={() => coverageVerifyMutation.mutate()}
+                    disabled={coverageVerifyMutation.isPending}
+                    className="w-full md:w-auto h-10 rounded-xl gap-2"
+                  >
+                    {coverageVerifyMutation.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" /> מאמת...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-4 h-4" /> אמת מיגרציה
+                      </>
+                    )}
+                  </Button>
+
+                  {coverageVerifyResult && (
+                    <div
+                      className={`mt-3 p-3 rounded-xl border text-sm ${
+                        coverageVerifyResult.ok
+                          ? "bg-emerald-50 border-emerald-200"
+                          : "bg-red-50 border-red-200"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 font-semibold text-gray-800 mb-2">
+                        {coverageVerifyResult.ok ? (
+                          <>
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                            המיגרציה תקינה — כל האינווריאנטים מתקיימים
+                          </>
+                        ) : (
+                          <>
+                            <AlertTriangle className="w-4 h-4 text-red-600" />
+                            נמצאו בעיות במיגרציה
+                          </>
+                        )}
+                      </div>
+                      <ul className="space-y-0.5 text-gray-700 text-xs">
+                        <li>סה"כ משמרות: {coverageVerifyResult.totalShifts}</li>
+                        <li>
+                          משמרות עם בעלים: {coverageVerifyResult.shiftsWithOwner}
+                        </li>
+                        <li>
+                          שורות שיבוץ בסיס (assignment):{" "}
+                          {coverageVerifyResult.assignmentCount}
+                        </li>
+                        <li>שורות כיסוי (cover): {coverageVerifyResult.coverCount}</li>
+                        <li>
+                          סה"כ שורות ShiftCoverage:{" "}
+                          {coverageVerifyResult.totalCoverages}
+                        </li>
+                        <li
+                          className={
+                            coverageVerifyResult.missing > 0
+                              ? "text-red-600 font-semibold"
+                              : ""
+                          }
+                        >
+                          משמרות ללא שיבוץ בסיס: {coverageVerifyResult.missing}
+                        </li>
+                        <li
+                          className={
+                            coverageVerifyResult.duplicates > 0
+                              ? "text-red-600 font-semibold"
+                              : ""
+                          }
+                        >
+                          משמרות עם שיבוץ בסיס כפול:{" "}
+                          {coverageVerifyResult.duplicates}
+                        </li>
+                        <li
+                          className={
+                            coverageVerifyResult.mismatched > 0
+                              ? "text-red-600 font-semibold"
+                              : ""
+                          }
+                        >
+                          שיבוצים עם בעלים לא תואם:{" "}
+                          {coverageVerifyResult.mismatched}
+                        </li>
+                        <li
+                          className={
+                            coverageVerifyResult.orphanAssignments > 0
+                              ? "text-red-600 font-semibold"
+                              : ""
+                          }
+                        >
+                          שיבוצים ללא משמרת קיימת:{" "}
+                          {coverageVerifyResult.orphanAssignments}
+                        </li>
+                      </ul>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {testResults && (
