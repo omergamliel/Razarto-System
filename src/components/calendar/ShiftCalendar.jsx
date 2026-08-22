@@ -521,24 +521,53 @@ export default function ShiftCalendar() {
         !liveShiftIds.has(s.id),
     );
 
-    if (staleRequests.length === 0 && orphanedShifts.length === 0) return;
+    // Orphaned coverages: a ShiftCoverage whose parent SwapRequest no longer
+    // exists (e.g. the request row was force-deleted out-of-band). Every
+    // coverage consumer keys off shift_id alone — never the parent request —
+    // so a dangling Approved coverage silently re-attaches to any *new* request
+    // on the same shift, showing phantom coverage and corrupting the coverage
+    // summary of an unrelated swap. Deleting them here self-heals both existing
+    // orphans (on the next load) and any future out-of-band deletion.
+    //   Guard with swapRequests.length > 0: only trust "this request_id is
+    // missing" once the request list has actually loaded, so a transient empty
+    // fetch can never mass-delete every coverage. Coverages without a
+    // request_id (legacy rows) are left alone.
+    const liveRequestIds = new Set(swapRequests.map((sr) => sr.id));
+    const orphanedCoverages =
+      swapRequests.length > 0
+        ? coverages.filter(
+            (c) => c.request_id && !liveRequestIds.has(c.request_id),
+          )
+        : [];
+
+    if (
+      staleRequests.length === 0 &&
+      orphanedShifts.length === 0 &&
+      orphanedCoverages.length === 0
+    )
+      return;
 
     Promise.all([
       ...staleRequests.map((sr) => base44.entities.SwapRequest.delete(sr.id)),
       ...orphanedShifts.map((s) =>
         base44.entities.Shift.update(s.id, { status: "Active" }),
       ),
+      ...orphanedCoverages.map((c) =>
+        base44.entities.ShiftCoverage.delete(c.id),
+      ),
     ])
       .then(() => {
         debugLog(
-          "🧹 [ShiftCalendar] Cleaned up expired swap requests & orphaned shift statuses:",
+          "🧹 [ShiftCalendar] Cleaned up expired swap requests, orphaned shift statuses & orphaned coverages:",
           {
             requestIds: staleRequests.map((sr) => sr.id),
             shiftIds: orphanedShifts.map((s) => s.id),
+            coverageIds: orphanedCoverages.map((c) => c.id),
           },
         );
         queryClient.invalidateQueries(["swap-requests"]);
         queryClient.invalidateQueries(["shifts"]);
+        queryClient.invalidateQueries(["coverages"]);
       })
       .catch((error) => {
         debugLog(
@@ -547,7 +576,7 @@ export default function ShiftCalendar() {
         );
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authorizedPerson, shifts, swapRequests]);
+  }, [authorizedPerson, shifts, swapRequests, coverages]);
 
   // Enrich shifts with user data and swap status (shared across UI & deep links)
   const enrichedShifts = shifts.map((shift) =>
