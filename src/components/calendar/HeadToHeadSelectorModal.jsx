@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { format } from "date-fns";
 import { he } from "date-fns/locale";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { base44, logActivity } from "@/api/base44Client";
 import {
   buildHeadToHeadDeepLink,
   buildHeadToHeadTemplate,
@@ -148,12 +148,16 @@ export default function HeadToHeadSelectorModal({
         req_end_time,
         status: "Open",
       });
-
-      await base44.entities.Shift.update(selectedShift.id, {
-        status: "Swap_Requested",
-      });
+      // The shift's swap-requested state is derived from this open Head2Head
+      // SwapRequest (Phase 4: Shift.status was removed) — no Shift write needed.
     },
     onSuccess: () => {
+      logActivity({
+        action: "יצירת בקשת החלפה ראש-בראש",
+        type: "בקשות החלפה",
+        entity: "SwapRequest",
+        entityId: selectedShift?.id,
+      });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["swap-requests"]);
       queryClient.invalidateQueries(["my-future-shifts-h2h"]);
