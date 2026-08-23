@@ -53,6 +53,7 @@ import {
   Ban,
   MessageSquare,
   RotateCcw,
+  Eye,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,6 +69,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44, logActivity } from "@/api/base44Client";
 import { isActiveGroupMember as isActiveGroupMemberRule } from "@/lib/utils";
+import { VIEWER_MODE_KEY } from "@/hooks/useAuthorizedPerson";
 import { toast } from "sonner";
 import {
   DropdownMenu,
@@ -548,6 +550,42 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     }
     return base44.entities.AppSettings.create({ setting_key: key, value });
   };
+
+  // --- READ-ONLY VIEWER MODE (global "RR ⇒ viewer" switch) ---
+  // Persisted as its own AppSettings row so it takes effect app-wide the moment
+  // it's toggled — no separate "save" press, unlike the system/support tabs.
+  // The overlay is read via useViewerMode()/isViewerFor() elsewhere; RR users
+  // are treated as read-only viewers while it's on, WITHOUT their stored
+  // permissions changing.
+  const viewerModeOn = useMemo(() => {
+    const row = appSettings.find((s) => s.setting_key === VIEWER_MODE_KEY);
+    if (!row?.value) return false;
+    try {
+      return Boolean(JSON.parse(row.value).rrAsViewer);
+    } catch {
+      return false;
+    }
+  }, [appSettings]);
+
+  const toggleViewerModeMutation = useMutation({
+    mutationFn: (next) => upsertSetting(VIEWER_MODE_KEY, { rrAsViewer: next }),
+    onSuccess: (_data, next) => {
+      logActivity({
+        action: next
+          ? "הפעלת מצב צפייה בלבד לכל משתמשי RR"
+          : "כיבוי מצב צפייה בלבד",
+        type: "עדכון מערכת",
+        entity: "AppSettings",
+      });
+      queryClient.invalidateQueries({ queryKey: ["app-settings"] });
+      toast.success(
+        next
+          ? "מצב צפייה בלבד הופעל — משתמשי RR לא יכולים לבצע שינויים"
+          : "מצב צפייה בלבד כובה",
+      );
+    },
+    onError: () => toast.error("שגיאה בעדכון מצב צפייה בלבד"),
+  });
 
   // Hydrate the tab state from saved rows once per modal open, WITHOUT
   // clobbering in-progress edits (the ref guards against re-running on every
@@ -2167,6 +2205,49 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                       />
                     </div>
                   </div>
+                </div>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">
+                      מצב צפייה בלבד
+                    </p>
+                    <p className="text-xs text-gray-500">
+                      התייחסות זמנית לכל משתמשי RR כבעלי הרשאת צפייה בלבד — הם
+                      רואים את כל מה שגלוי למשתמש RR, אך אינם יכולים לפתוח בקשות
+                      החלפה או לשנות נתונים כלשהם. ההרשאות הקבועות שלהם אינן
+                      משתנות.
+                    </p>
+                  </div>
+                  <Eye className="w-5 h-5 text-indigo-500" />
+                </div>
+                <div className="flex items-center justify-between bg-gray-50 border border-gray-100 rounded-xl px-3 py-2">
+                  <div className="flex flex-col">
+                    <span className="text-sm font-semibold text-gray-800">
+                      הרשאת צפייה למשתמשי RR
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {viewerModeOn
+                        ? "פעיל — משתמשי RR במצב קריאה בלבד"
+                        : "כבוי — משתמשי RR פועלים כרגיל"}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() =>
+                      toggleViewerModeMutation.mutate(!viewerModeOn)
+                    }
+                    disabled={toggleViewerModeMutation.isPending}
+                    className={`relative inline-flex h-10 w-16 items-center rounded-full border px-1 transition disabled:opacity-60 ${viewerModeOn ? "bg-indigo-50 border-indigo-200" : "bg-gray-100 border-gray-200"}`}
+                    aria-pressed={viewerModeOn}
+                  >
+                    <span
+                      className={`absolute inset-y-1 ${viewerModeOn ? "left-1" : "right-1"} w-8 rounded-full bg-white shadow flex items-center justify-center text-xs font-semibold text-gray-700 transition-all`}
+                    >
+                      {viewerModeOn ? "ON" : "OFF"}
+                    </span>
+                  </button>
                 </div>
               </div>
 
