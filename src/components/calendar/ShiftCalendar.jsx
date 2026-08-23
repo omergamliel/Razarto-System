@@ -43,6 +43,7 @@ import FairnessMatrixModal from "../dashboard/FairnessMatrixModal";
 import HelpSupportModal from "../dashboard/HelpSupportModal";
 import LoadingSkeleton from "../LoadingSkeleton";
 import SwitchFlowBand from "./SwitchFlowBand";
+import { isActiveGroupMember } from "@/lib/utils";
 
 // --- Summary of swap flow fixes ---
 // 1) AcceptSwapModal replaces legacy CoverSegmentModal across all entry points.
@@ -399,24 +400,15 @@ export default function ShiftCalendar() {
     enabled: !!authorizedPerson,
   });
 
-  const activeMemberEmails = useMemo(
-    () =>
-      new Set(
-        shiftGroups
-          .filter((group) => group.active && group.username)
-          .map((group) => group.username.toLowerCase()),
-      ),
-    [shiftGroups],
-  );
-
   // A user may take/interact with shifts (offer to cover, accept a
-  // general/head-to-head request, propose/approve a head-to-head swap, or pick
-  // target shifts in the switch flow) only while they are the active member of
-  // their group — they can still freely give their OWN shifts away regardless.
-  // This ties shift interaction to active-group standing, the same pool shift
-  // distribution assigns to.
-  const canTakeShifts = activeMemberEmails.has(
-    (authorizedPerson?.email || "").toLowerCase(),
+  // general/head-to-head request, propose/approve a head-to-head swap, open a
+  // swap request, or pick target shifts in the switch flow) only while they are
+  // the active member of THEIR OWN group. Delegated to the shared
+  // isActiveGroupMember rule (src/lib/utils.js) so this gate can't drift from
+  // the admin star, the assignment dropdowns, or fair distribution.
+  const canTakeShifts = useMemo(
+    () => isActiveGroupMember(authorizedPerson, shiftGroups),
+    [authorizedPerson, shiftGroups],
   );
 
   // --- DEBUG: only logs for Admin, silent for everyone else ---
@@ -1815,6 +1807,10 @@ export default function ShiftCalendar() {
   };
 
   const handleOpenSwapRequest = (shift) => {
+    if (!canTakeShifts) {
+      showRoleError();
+      return;
+    }
     setSelectedShift(shift);
     setSwapRequestInitialType("full");
     setShowSwapRequestModal(true);
@@ -2136,6 +2132,10 @@ export default function ShiftCalendar() {
         onDelete={deleteShiftMutation.mutate}
         onApprove={() => approveSwapMutation.mutate(selectedShift)}
         onRequestSwap={() => {
+          if (!canTakeShifts) {
+            showRoleError();
+            return;
+          }
           closeAllModals();
           setSwapRequestInitialType("full");
           setShowSwapRequestModal(true);
