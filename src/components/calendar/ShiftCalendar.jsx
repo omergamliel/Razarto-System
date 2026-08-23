@@ -44,6 +44,7 @@ import HelpSupportModal from "../dashboard/HelpSupportModal";
 import LoadingSkeleton from "../LoadingSkeleton";
 import SwitchFlowBand from "./SwitchFlowBand";
 import { isActiveGroupMember } from "@/lib/utils";
+import { useViewerMode, isViewerFor } from "@/hooks/useAuthorizedPerson";
 
 // --- Summary of swap flow fixes ---
 // 1) AcceptSwapModal replaces legacy CoverSegmentModal across all entry points.
@@ -218,7 +219,11 @@ export default function ShiftCalendar() {
 
   const showRoleError = () => {
     if (roleErrorTimeoutRef.current) clearTimeout(roleErrorTimeoutRef.current);
-    setRoleError("אין לך הרשאה לקחת משמרות");
+    // A read-only viewer gets an accurate message rather than the active-member
+    // one — they DO have a role, the app is just in view-only mode for them.
+    setRoleError(
+      isViewer ? "מצב צפייה בלבד — לא ניתן לבצע שינויים" : "אין לך הרשאה לקחת משמרות",
+    );
     roleErrorTimeoutRef.current = setTimeout(() => setRoleError(null), 3000);
   };
 
@@ -404,15 +409,24 @@ export default function ShiftCalendar() {
     enabled: !!authorizedPerson,
   });
 
+  // Admin "RR ⇒ viewer" overlay: while the switch is on, an RR user is treated
+  // as a read-only viewer (sees everything an RR user sees, but may not create
+  // or change anything). Their stored permission is untouched — this is runtime
+  // only, off the moment the admin flips the switch back.
+  const viewerModeOn = useViewerMode();
+  const isViewer = isViewerFor(authorizedPerson?.permissions, viewerModeOn);
+
   // A user may take/interact with shifts (offer to cover, accept a
   // general/head-to-head request, propose/approve a head-to-head swap, open a
   // swap request, or pick target shifts in the switch flow) only while they are
   // the active member of THEIR OWN group. Delegated to the shared
   // isActiveGroupMember rule (src/lib/utils.js) so this gate can't drift from
-  // the admin star, the assignment dropdowns, or fair distribution.
+  // the admin star, the assignment dropdowns, or fair distribution. A read-only
+  // viewer never takes shifts, so the overlay short-circuits this too — every
+  // acquire handler already guards on canTakeShifts.
   const canTakeShifts = useMemo(
-    () => isActiveGroupMember(authorizedPerson, shiftGroups),
-    [authorizedPerson, shiftGroups],
+    () => !isViewer && isActiveGroupMember(authorizedPerson, shiftGroups),
+    [authorizedPerson, shiftGroups, isViewer],
   );
 
   // --- DEBUG: only logs for Admin, silent for everyone else ---
@@ -1790,7 +1804,10 @@ export default function ShiftCalendar() {
 
     // Determine if it's my shift
     if (shift.status === "regular") {
-      if (isMyShift && !isPast) {
+      // A read-only viewer gets the details modal (all action buttons already
+      // suppressed there) rather than the action modal, whose only non-admin
+      // option is opening a swap request they aren't allowed to create.
+      if (isMyShift && !isPast && !isViewer) {
         setShowActionModal(true);
       } else {
         setShowDetailsModal(true); // View details for others
@@ -1839,6 +1856,12 @@ export default function ShiftCalendar() {
   };
 
   const handleSwapSubmit = (data) => {
+    // Final choke point for the read-only viewer overlay: no swap request is
+    // ever created regardless of which entry point opened the form.
+    if (isViewer) {
+      showRoleError();
+      return;
+    }
     if (!selectedShift) {
       debugLog(
         "❌ [ShiftCalendar] No shift selected for swap request submission",
@@ -1967,6 +1990,12 @@ export default function ShiftCalendar() {
               setShowKPIListModal(true);
             }}
             onStartSwitchFlow={() => {
+              // A read-only viewer may not start a switch flow (it ends in a new
+              // swap request); the rest of the KPI band stays fully viewable.
+              if (isViewer) {
+                showRoleError();
+                return;
+              }
               // Jump to the first month where the user actually has a future
               // shift they can offer. Otherwise the switch-flow band shows
               // every cell dimmed (the current month's own shifts may all be
@@ -2044,11 +2073,15 @@ export default function ShiftCalendar() {
             setSwitchFlow(null);
           }}
           onNext={() => setSwitchFlow((prev) => ({ ...prev, step: "target" }))}
-          onSkip={() =>
+          onSkip={() => {
+            if (isViewer || !canTakeShifts) {
+              showRoleError();
+              return;
+            }
             generalSwitchRequestMutation.mutate({
               ownShiftIds: switchFlow.ownShiftIds,
-            })
-          }
+            });
+          }}
           onConfirm={() => {
             if (!canTakeShifts) {
               showRoleError();
@@ -2142,8 +2175,20 @@ export default function ShiftCalendar() {
           setSelectedShift(shift);
           setShowHeadToHeadSelector(true);
         }}
-        onCancelRequest={(shift) => cancelSwapMutation.mutate(shift.id)}
-        onCancelCoverage={(shift) => cancelMyCoverageMutation.mutate(shift)}
+        onCancelRequest={(shift) => {
+          if (isViewer) {
+            showRoleError();
+            return;
+          }
+          cancelSwapMutation.mutate(shift.id);
+        }}
+        onCancelCoverage={(shift) => {
+          if (isViewer) {
+            showRoleError();
+            return;
+          }
+          cancelMyCoverageMutation.mutate(shift);
+        }}
         onGift={(shift) => {
           if (!canTakeShifts) {
             showRoleError();
@@ -2165,6 +2210,7 @@ export default function ShiftCalendar() {
         onGoToRequest={handleGoToRequest}
         currentUser={tourDemo ? TOUR_DEMO_ME : authorizedPerson}
         canTakeShifts={tourDemo ? true : canTakeShifts}
+        isViewer={tourDemo ? false : isViewer}
         demoMode={tourDemo}
         isAdmin={isAdmin}
       />
@@ -2288,7 +2334,13 @@ export default function ShiftCalendar() {
         currentUser={authorizedPerson}
         onOfferCover={handleOfferCover}
         onRequestSwap={handleOpenSwapRequest}
-        onCancelRequest={(item) => cancelSwapRequestMutation.mutate(item)}
+        onCancelRequest={(item) => {
+          if (isViewer) {
+            showRoleError();
+            return;
+          }
+          cancelSwapRequestMutation.mutate(item);
+        }}
         onAcceptHeadToHead={(item) => {
           if (!canTakeShifts) {
             showRoleError();
@@ -2312,6 +2364,7 @@ export default function ShiftCalendar() {
         }}
         onStartCounterOffer={(item) => handleStartCounterOffer(item)}
         canTakeShifts={tourDemo ? true : canTakeShifts}
+        isViewer={tourDemo ? false : isViewer}
         actionsDisabled={tourDemo}
         demoMode={tourDemo}
       />
