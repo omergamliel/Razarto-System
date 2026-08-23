@@ -49,7 +49,7 @@ import {
 } from "./whatsappTemplates";
 import { useHolidays } from "./useHolidays";
 import { useOverlappingLabels } from "./useOverlappingLabels";
-import { deriveShiftActionFlags } from "@/lib/utils";
+import { deriveShiftActionFlags, isActiveGroupMember } from "@/lib/utils";
 import LoadingSkeleton from "../LoadingSkeleton";
 
 export default function ShiftDetailsModal({
@@ -135,16 +135,6 @@ export default function ShiftDetailsModal({
     queryFn: () => base44.entities.ShiftGroup.list(),
     enabled: showReassignModal,
   });
-
-  const activeReassignEmails = useMemo(
-    () =>
-      new Set(
-        reassignGroups
-          .filter((group) => group.active && group.username)
-          .map((group) => group.username.toLowerCase()),
-      ),
-    [reassignGroups],
-  );
 
   const reassignMutation = useMutation({
     mutationFn: async (newUserId) => {
@@ -235,16 +225,14 @@ export default function ShiftDetailsModal({
   const requestWindow = coverageSummary.requestWindow;
   const shiftWindow = coverageSummary.shiftWindow;
 
-  // Only the active member of a group can be handed a shift — they must be an
-  // active ShiftGroup member (activeReassignEmails). Users in no group or
-  // non-active members are excluded from the reassign dropdown, matching who
-  // shift distribution assigns to.
+  // Only the active member of a group can be handed a shift — they must be the
+  // active member of their own group (shared isActiveGroupMember rule). Users in
+  // no group or non-active members are excluded from the reassign dropdown,
+  // matching who shift distribution assigns to.
   const rrUsers = useMemo(
     () =>
-      authorizedUsers.filter((u) =>
-        activeReassignEmails.has((u.email || "").toLowerCase()),
-      ),
-    [authorizedUsers, activeReassignEmails],
+      authorizedUsers.filter((u) => isActiveGroupMember(u, reassignGroups)),
+    [authorizedUsers, reassignGroups],
   );
 
   const departments = useMemo(() => {
