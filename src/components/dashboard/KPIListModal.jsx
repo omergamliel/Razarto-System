@@ -443,6 +443,10 @@ export default function KPIListModal({
   // own-shift actions stay available. Defaults to true so other callers keep
   // the full button set.
   canTakeShifts = true,
+  // Global read-only overlay (admin "RR ⇒ viewer" switch). When true, every
+  // data-mutating button is stripped from each row and the accept/decline/cancel
+  // handlers are blocked — only the non-mutating share/calendar exports remain.
+  isViewer = false,
   demoMode = false,
 }) {
   const [visibleCount, setVisibleCount] = useState(10);
@@ -1561,16 +1565,20 @@ export default function KPIListModal({
                         <div className="flex flex-col gap-2 flex-shrink-0 items-end">
                           {type === "swap_requests" && isMyRequest && (
                             <div className="flex flex-col gap-2 items-end">
-                              <Button
-                                variant="outline"
-                                size="icon"
-                                className="rounded-full"
-                                onClick={() => requestCancelConfirm(item)}
-                                disabled={actionsDisabled}
-                                title="בטל בקשה"
-                              >
-                                <XCircle className="w-4 h-4" />
-                              </Button>
+                              {/* Cancel mutates data — hidden for a read-only
+                                  viewer; the WhatsApp share below stays. */}
+                              {!isViewer && (
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="rounded-full"
+                                  onClick={() => requestCancelConfirm(item)}
+                                  disabled={actionsDisabled}
+                                  title="בטל בקשה"
+                                >
+                                  <XCircle className="w-4 h-4" />
+                                </Button>
+                              )}
                               <Button
                                 variant="outline"
                                 size="icon"
@@ -1590,16 +1598,18 @@ export default function KPIListModal({
 
                           {isPartialGapOwner && hasBackingRequest && (
                             <div className="flex flex-col gap-2 items-end">
-                              <Button
-                                variant="outline"
-                                size="icon"
-                                className="rounded-full text-red-600 border-red-200"
-                                onClick={() => requestCancelConfirm(item)}
-                                disabled={actionsDisabled}
-                                title="בטל בקשת החלפה"
-                              >
-                                <XCircle className="w-4 h-4" />
-                              </Button>
+                              {!isViewer && (
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="rounded-full text-red-600 border-red-200"
+                                  onClick={() => requestCancelConfirm(item)}
+                                  disabled={actionsDisabled}
+                                  title="בטל בקשת החלפה"
+                                >
+                                  <XCircle className="w-4 h-4" />
+                                </Button>
+                              )}
                               <Button
                                 variant="outline"
                                 size="icon"
@@ -1649,7 +1659,9 @@ export default function KPIListModal({
                               isMyRequest block above, so only surface it here
                               when this item is shown outside that view (avoids
                               the duplicate cancel button). */}
-                          {isGeneralRequestMine && type !== "swap_requests" && (
+                          {isGeneralRequestMine &&
+                            type !== "swap_requests" &&
+                            !isViewer && (
                             <Button
                               variant="outline"
                               size="icon"
@@ -1678,16 +1690,18 @@ export default function KPIListModal({
                                   קבל <CheckCircle2 className="w-4 h-4 mr-1" />
                                 </Button>
                               )}
-                              <Button
-                                variant="outline"
-                                size="icon"
-                                className="rounded-full text-red-600 border-red-200"
-                                onClick={() => requestCancelConfirm(item, true)}
-                                disabled={actionsDisabled}
-                                title="דחה בקשה"
-                              >
-                                <XCircle className="w-4 h-4" />
-                              </Button>
+                              {!isViewer && (
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="rounded-full text-red-600 border-red-200"
+                                  onClick={() => requestCancelConfirm(item, true)}
+                                  disabled={actionsDisabled}
+                                  title="דחה בקשה"
+                                >
+                                  <XCircle className="w-4 h-4" />
+                                </Button>
+                              )}
                             </div>
                           )}
 
@@ -1706,16 +1720,18 @@ export default function KPIListModal({
                                   קבל מתנה <Gift className="w-4 h-4 mr-1" />
                                 </Button>
                               )}
-                              <Button
-                                variant="outline"
-                                size="icon"
-                                className="rounded-full text-red-600 border-red-200"
-                                onClick={() => requestCancelConfirm(item, true)}
-                                disabled={actionsDisabled}
-                                title="דחה מתנה"
-                              >
-                                <XCircle className="w-4 h-4" />
-                              </Button>
+                              {!isViewer && (
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="rounded-full text-red-600 border-red-200"
+                                  onClick={() => requestCancelConfirm(item, true)}
+                                  disabled={actionsDisabled}
+                                  title="דחה מתנה"
+                                >
+                                  <XCircle className="w-4 h-4" />
+                                </Button>
+                              )}
                             </div>
                           )}
 
