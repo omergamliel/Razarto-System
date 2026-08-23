@@ -89,7 +89,7 @@ export function createTestContext() {
   // must wire them to their own fixtures.
   const createSwapRequest = async (overrides = {}) => {
     const record = await base44.entities.SwapRequest.create({
-      request_type: "Full",
+      request_type: "General",
       req_start_date: PLACEHOLDER_DATE,
       req_end_date: PLACEHOLDER_DATE,
       req_start_time: "09:00",
