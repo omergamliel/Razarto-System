@@ -29,20 +29,39 @@ export default function KPIHeader({
     queryKey: ["swap-requests"],
     queryFn: () => base44.entities.SwapRequest.list(),
   });
+  // Ownership/coverage source of truth (Phase 4). Loaded here (not only for the
+  // green/blue tiles below) so the red count can resolve a Gift's recipient —
+  // the gifted shift's current owner — to scope gifts to the current user.
+  const { data: shiftsAll = [] } = useQuery({
+    queryKey: ["shifts"],
+    queryFn: () => base44.entities.Shift.list(),
+  });
+  const { data: coveragesAll = [] } = useQuery({
+    queryKey: ["coverages"],
+    queryFn: () => base44.entities.ShiftCoverage.list(),
+  });
 
   // --- 1. Swap Requests Count (Red) ---
-  // Count ALL open whole-shift SwapRequests — 'General' (open to anyone) and
-  // 'Head2Head' (a targeted trade). Partial (windowed) requests are counted
-  // separately below.
-  const fullRequestsCount = useMemo(
-    () =>
-      swapRequests.filter(
-        (r) =>
-          r.status === "Open" &&
-          ["Head2Head", "General"].includes(r.request_type),
-      ).length,
-    [swapRequests],
-  );
+  // Count ALL open whole-shift SwapRequests — 'General' (open to anyone),
+  // 'Head2Head' (a targeted trade), and 'Gift' (a one-directional handoff), to
+  // match the "בקשות להחלפה" list in KPIListModal. Gifts are private to their
+  // giver + recipient, so — exactly like the modal's default "all" tab
+  // (filterRequestsForSwapTab) — only count a gift the current user is part of
+  // (they sent it, or the gifted shift is theirs). Partial (windowed) requests
+  // are counted separately below.
+  const fullRequestsCount = useMemo(() => {
+    const myId = Number(currentUser?.serial_id);
+    return swapRequests.filter((r) => {
+      if (r.status !== "Open") return false;
+      if (["Head2Head", "General"].includes(r.request_type)) return true;
+      if (r.request_type !== "Gift") return false;
+      const giftShift = shiftsAll.find((s) =>
+        (r.shift_ids || []).includes(s.id),
+      );
+      const recipientId = Number(resolveOwnerId(giftShift, coveragesAll));
+      return Number(r.requesting_user_id) === myId || recipientId === myId;
+    }).length;
+  }, [swapRequests, shiftsAll, coveragesAll, currentUser?.serial_id]);
 
   // --- 2. Partial Gaps Count (Yellow) ---
   // Count ALL open SwapRequests that are of type 'Partial', plus any request
@@ -62,15 +81,6 @@ export default function KPIHeader({
   // at least one accepted coverage window even though they're not fully
   // closed yet — same "in progress" swaps KPIListModal surfaces under this
   // tile, so the badge and the list it opens agree on the count.
-  const { data: shiftsAll = [] } = useQuery({
-    queryKey: ["shifts"],
-    queryFn: () => base44.entities.Shift.list(),
-  });
-  const { data: coveragesAll = [] } = useQuery({
-    queryKey: ["coverages"],
-    queryFn: () => base44.entities.ShiftCoverage.list(),
-  });
-
   const inProgressPartialCount = useMemo(() => {
     return shiftsAll.filter((shift) => {
       // A shift is a live partial gap only while it has an active request
