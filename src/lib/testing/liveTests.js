@@ -18,7 +18,8 @@ import { assert, assertEqual } from "./assert";
 // There is no Shift.status / Shift.original_user_id / ShiftCoverage.status /
 // ShiftCoverage.request_id anymore, so no test writes or reads them.
 
-// Mirrors requestSwapMutation.
+// Mirrors requestSwapMutation. A whole-shift swap is created as a General
+// request (the former "Full" type was folded into General).
 async function testCreateFullSwapRequest(ctx) {
   const owner = await ctx.createPerson();
   const shift = await ctx.createShift({ owner: owner.serial_id });
@@ -26,14 +27,14 @@ async function testCreateFullSwapRequest(ctx) {
   const request = await ctx.createSwapRequest({
     shift_ids: [shift.id],
     requesting_user_id: owner.serial_id,
-    request_type: "Full",
+    request_type: "General",
     req_start_date: shift.start_date,
     req_end_date: shift.end_date,
     req_start_time: shift.start_time,
     req_end_time: shift.end_time,
   });
 
-  assertEqual(request.status, "Open", "new full swap request should be Open");
+  assertEqual(request.status, "Open", "new whole-shift swap request should be Open");
   // The shift is a pure slot now — requesting a swap doesn't mutate it, and the
   // owner is still recorded by the untouched base assignment row.
   assertEqual(
@@ -50,7 +51,7 @@ async function testCancelSwapRequestClearsCovers(ctx) {
   const request = await ctx.createSwapRequest({
     shift_ids: [shift.id],
     requesting_user_id: owner.serial_id,
-    request_type: "Full",
+    request_type: "General",
     req_start_date: shift.start_date,
     req_end_date: shift.end_date,
     req_start_time: shift.start_time,
@@ -58,7 +59,7 @@ async function testCancelSwapRequestClearsCovers(ctx) {
   });
 
   // cancelSwapMutation: delete every non-assignment (cover) row on the shift,
-  // then mark the request Cancelled. A full request with no covers yet has none
+  // then mark the request Cancelled. A whole-shift request with no covers yet has none
   // to delete, but the delete-cover step must still be a no-op that leaves the
   // base assignment row intact.
   const covers = await base44.entities.ShiftCoverage.filter({ shift_id: shift.id });
