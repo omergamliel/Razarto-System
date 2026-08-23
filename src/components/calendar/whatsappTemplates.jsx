@@ -558,7 +558,7 @@ export const WHATSAPP_TEMPLATES = {
       "link",
     ],
     default:
-      "היי לכולם! 📢\nפתחתי בקשת החלפה כללית למשמרות של *{ownerName}*:\n\n{shifts}\n\nמישהו זמין לקחת? אפשר לאשר כאן:\n{link}",
+      "היי אני *{ownerName}*! 📢\nפתחתי בקשת החלפה כללית:\n\n{shifts}\n\nמישהו זמין לקחת? אפשר לאשר כאן:\n{link}",
   },
   gift: {
     label: "מתנת משמרת",
