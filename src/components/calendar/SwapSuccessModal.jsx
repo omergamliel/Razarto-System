@@ -2,24 +2,28 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, CheckCircle, Share2 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
-import { format } from 'date-fns';
-import { he } from 'date-fns/locale';
-import { buildShiftDeepLink, buildSwapTemplate } from './whatsappTemplates';
+import { buildShiftDeepLink, buildSwapTemplate, buildGeneralTemplate } from './whatsappTemplates';
 
-export default function SwapSuccessModal({ isOpen, onClose, shift }) {
+// `isGeneral` = the request is a whole-shift (General) swap, broadcast to the
+// whole team; those share the "general" template, while a partial-window swap
+// shares the "swap" (partial-coverage) template.
+export default function SwapSuccessModal({ isOpen, onClose, shift, isGeneral = false }) {
   if (!isOpen || !shift) return null;
 
   const handleWhatsAppShare = () => {
     // Fixed: Changed to Query Param for deep linking to home page
     const approvalUrl = buildShiftDeepLink(shift.id);
-    const message = buildSwapTemplate({
-      originalOwnerName: shift.original_user_data?.full_name || shift.original_user_name || shift.user_name || shift.role,
+    const ownerName = shift.original_user_data?.full_name || shift.original_user_name || shift.user_name || shift.role;
+    const shared = {
       startDate: shift.start_date || shift.date,
       startTime: shift.swap_start_time || shift.start_time || '09:00',
       endDate: shift.end_date || shift.start_date,
       endTime: shift.swap_end_time || shift.end_time || shift.start_time || '09:00',
-      approvalUrl
-    });
+      approvalUrl,
+    };
+    const message = isGeneral
+      ? buildGeneralTemplate({ originalOwnerName: ownerName, ...shared })
+      : buildSwapTemplate({ originalOwnerName: ownerName, ...shared });
     const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, '_blank');
   };
