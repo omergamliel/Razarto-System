@@ -1032,6 +1032,10 @@ export default function KPIListModal({
         targetShiftDate: fmt(theirShift?.start_date),
         myShiftOwner: item.user_name,
         myShiftDate: fmt(myShift?.start_date),
+        // Full lists so every bundled shift on each side is spelled out (a
+        // request may cover several non-contiguous shifts).
+        myShifts: item.original_shifts,
+        targetShifts: item.offered_shifts,
         uniqueApprovalUrl:
           theirShift?.id && myShift?.id
             ? buildHeadToHeadDeepLink(theirShift.id, myShift.id)
@@ -1041,6 +1045,8 @@ export default function KPIListModal({
       message = buildGeneralTemplate({
         originalOwnerName: item.user_name,
         ...shared,
+        // Every shift the request bundles, one per line.
+        shifts: item.original_shifts,
       });
     } else {
       message = buildSwapTemplate({ employeeName: item.user_name, ...shared });
