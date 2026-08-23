@@ -506,6 +506,12 @@ export const buildGiftDeepLink = (requestId) => {
 // setting_key:"whatsapp_templates"). Each template is a plain string with
 // {placeholder} tokens substituted at send time. The defaults below preserve
 // the original hard-coded wording; an admin override replaces the whole string.
+// NOTE on emoji: only simple, single-codepoint emoji from early Unicode
+// (≤ 6.0) are used here. Compound sequences — ZWJ emoji like 👮‍♂️, skin-tone
+// modifiers like 👋🏼, and newer Unicode-14 emoji like 🫡/🫵 — render as broken
+// boxes or split characters on WhatsApp Web, so they are deliberately avoided.
+// {shifts}/{myShifts}/{targetShifts} expand to a bullet list, one line per
+// bundled shift (a request may cover several non-contiguous shifts).
 export const WHATSAPP_TEMPLATES = {
   swap: {
     label: "בקשת החלפה חלקית",
@@ -519,36 +525,40 @@ export const WHATSAPP_TEMPLATES = {
       "link",
     ],
     default:
-      "היי, פתחתי בקשה ב-Razarto להחלפה למשמרת *{ownerName}* 👮‍♂️\nמתאריך {startDate} בשעה {startTime} ועד תאריך {endDate} בשעה {endTime} ⏰\n\nמי יכול לעזור? 🙏\nאפשר לאשר כאן:\n{link}",
+      "היי, פתחתי בקשה ב-Razarto להחלפה למשמרת *{ownerName}* 👮\nמתאריך {startDate} בשעה {startTime} ועד תאריך {endDate} בשעה {endTime} ⏰\n\nמי יכול לעזור? 🙏\nאפשר לאשר כאן:\n{link}",
   },
   headToHead: {
     label: "החלפה ראש בראש",
-    description: "נשלחת למשתמש ספציפי בהצעת החלפה ראש בראש.",
+    description:
+      "נשלחת למשתמש ספציפי בהצעת החלפה ראש בראש. {myShifts}/{targetShifts} מפרטים כל משמרת בשורה נפרדת (ניתן להציע כמה משמרות שאינן רצופות).",
     placeholders: [
       "targetUserName",
       "targetShiftOwner",
       "targetShiftDate",
       "myShiftOwner",
       "myShiftDate",
+      "myShifts",
+      "targetShifts",
       "link",
     ],
     default:
-      "היי *{targetUserName}*! 👋🏼\nאני מעוניין להחליף איתך משמרת רז״רתו ראש בראש:\n\n🫡 הצעת החלפה:\n🫵🏼 המשמרת שלך: *{targetShiftOwner}* {targetShiftDate}\n🤞🏼 המשמרת שלי: *{myShiftOwner}* {myShiftDate}\n\n✅ לחץ כאן לאישור ההחלפה בתוך המערכת:\n{link}",
+      "היי *{targetUserName}*! 👋\nאני מעוניין להחליף איתך משמרות ראש בראש:\n\n🔁 המשמרות שלך:\n{targetShifts}\n\n🔄 המשמרות שלי:\n{myShifts}\n\n✅ לאישור ההחלפה בתוך המערכת:\n{link}",
   },
   general: {
     label: "בקשת החלפה כללית (משמרת מלאה)",
     description:
-      "נשלחת לכל הצוות בבקשת החלפה של משמרת מלאה — פתוחה לכולם, ללא נמען מסוים.",
+      "נשלחת לכל הצוות בבקשת החלפה של משמרת מלאה — פתוחה לכולם, ללא נמען מסוים. {shifts} מפרט כל משמרת בשורה נפרדת (ניתן לבקש כמה משמרות שאינן רצופות).",
     placeholders: [
       "ownerName",
       "startDate",
       "startTime",
       "endDate",
       "endTime",
+      "shifts",
       "link",
     ],
     default:
-      "היי לכולם! 📢\nפתחתי בקשת החלפה כללית למשמרת *{ownerName}*\nמתאריך {startDate} בשעה {startTime} ועד תאריך {endDate} בשעה {endTime} ⏰\n\nמישהו זמין לקחת? אפשר לאשר כאן:\n{link}",
+      "היי לכולם! 📢\nפתחתי בקשת החלפה כללית למשמרות של *{ownerName}*:\n\n{shifts}\n\nמישהו זמין לקחת? אפשר לאשר כאן:\n{link}",
   },
   gift: {
     label: "מתנת משמרת",
@@ -591,6 +601,42 @@ export const applyTemplate = (key, vars = {}) => {
 const formatShareDate = (value, fallback = "") =>
   value ? format(new Date(value), "dd/MM/yyyy", { locale: he }) : fallback;
 
+// One human-readable line for a single shift, tolerating either the raw shift
+// shape (start_date/end_date/start_time/end_time) or the share shape
+// (startDate/…). Same-day shifts collapse to one date; overnight/multi-day
+// shifts spell out both ends. Emoji-free on purpose (see the note on the
+// templates below) — a plain "•" bullet renders everywhere.
+const formatShiftLine = (shift = {}) => {
+  const startDate = shift.start_date || shift.startDate;
+  if (!startDate) return "";
+  const endDate = shift.end_date || shift.endDate || startDate;
+  const startTime = shift.start_time || shift.startTime || "09:00";
+  const endTime = shift.end_time || shift.endTime || startTime;
+  const startStr = formatShareDate(startDate);
+  const endStr = formatShareDate(endDate, startStr);
+  if (startStr === endStr) {
+    return `• ${startStr}, ${startTime} עד ${endTime}`;
+  }
+  return `• ${startStr} ${startTime} עד ${endStr} ${endTime}`;
+};
+
+// A general/head-to-head request can bundle SEVERAL of a person's shifts that
+// aren't contiguous — unrelated shifts can sit in the gaps between them — so a
+// single "start → end" span would misrepresent the offer. This lists every
+// bundled shift on its own line instead. Shifts are sorted by their start so
+// the list reads chronologically regardless of selection order.
+export const formatShiftLines = (shifts = []) =>
+  [...shifts]
+    .filter(Boolean)
+    .sort((a, b) => {
+      const ad = `${a.start_date || a.startDate || ""}T${a.start_time || a.startTime || ""}`;
+      const bd = `${b.start_date || b.startDate || ""}T${b.start_time || b.startTime || ""}`;
+      return ad < bd ? -1 : ad > bd ? 1 : 0;
+    })
+    .map(formatShiftLine)
+    .filter(Boolean)
+    .join("\n");
+
 export const buildSwapTemplate = ({
   originalOwnerName,
   employeeName,
@@ -620,15 +666,30 @@ export const buildHeadToHeadTemplate = ({
   myShiftOwner,
   myShiftDate,
   uniqueApprovalUrl,
-}) =>
-  applyTemplate("headToHead", {
+  // Optional full shift lists for each side (the requester's own shifts and the
+  // target's offered shifts). When present, {myShifts}/{targetShifts} expand to
+  // a per-shift bullet list; the single {*ShiftDate} tokens stay filled for any
+  // admin override still using them.
+  myShifts,
+  targetShifts,
+}) => {
+  // Only the array form drives the {myShifts}/{targetShifts} lists; the legacy
+  // {*ShiftDate} tokens are already-formatted "dd/MM" strings, not raw dates, so
+  // they're never fed to the date formatter here.
+  const myList = myShifts && myShifts.length ? formatShiftLines(myShifts) : "";
+  const targetList =
+    targetShifts && targetShifts.length ? formatShiftLines(targetShifts) : "";
+  return applyTemplate("headToHead", {
     targetUserName: targetUserName || "",
     targetShiftOwner: targetShiftOwner || "",
     targetShiftDate: targetShiftDate || "",
     myShiftOwner: myShiftOwner || "",
     myShiftDate: myShiftDate || "",
+    myShifts: myList,
+    targetShifts: targetList,
     link: uniqueApprovalUrl || "",
   });
+};
 
 // A general/open swap request: broadcast to the whole team (no specific
 // recipient), so anyone can take the offered shift or counter-offer.
@@ -640,15 +701,24 @@ export const buildGeneralTemplate = ({
   endTime,
   approvalUrl,
   shiftId,
+  // Optional full list of the bundled shifts. When present, {shifts} expands to
+  // a per-shift bullet list; otherwise it falls back to the single window built
+  // from startDate/startTime/endDate/endTime so a one-shift request still reads.
+  shifts,
 }) => {
   const safeStart = formatShareDate(startDate);
   const safeEnd = formatShareDate(endDate, safeStart);
+  const shiftList =
+    shifts && shifts.length
+      ? formatShiftLines(shifts)
+      : formatShiftLines([{ startDate, endDate, startTime, endTime }]);
   return applyTemplate("general", {
     ownerName: originalOwnerName || "",
     startDate: safeStart,
     startTime: startTime || "",
     endDate: safeEnd,
     endTime: endTime || "",
+    shifts: shiftList,
     link: approvalUrl || buildShiftDeepLink(shiftId) || "",
   });
 };
