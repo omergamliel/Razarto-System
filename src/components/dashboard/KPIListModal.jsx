@@ -434,6 +434,12 @@ export default function KPIListModal({
   onAcceptGeneralRequest,
   onAcceptGift,
   onStartCounterOffer,
+  // Whether the viewer is the active member of their group. Buttons that
+  // acquire someone else's shift (take / counter head-to-head / accept a
+  // head-to-head / accept a gift) are hidden when false; declining (reject) and
+  // own-shift actions stay available. Defaults to true so other callers keep
+  // the full button set.
+  canTakeShifts = true,
   demoMode = false,
 }) {
   const [visibleCount, setVisibleCount] = useState(10);
@@ -1568,7 +1574,7 @@ export default function KPIListModal({
                             </Button>
                           )}
 
-                          {isGeneralRequestForOthers && (
+                          {isGeneralRequestForOthers && canTakeShifts && (
                             <div className="flex flex-col gap-2 items-end">
                               <Button
                                 onClick={() => {
@@ -1619,18 +1625,20 @@ export default function KPIListModal({
 
                           {isIncomingHeadToHead && (
                             <div className="flex flex-col gap-2 items-end">
-                              <Button
-                                onClick={() => {
-                                  if (actionsDisabled) return;
-                                  onAcceptHeadToHead &&
-                                    onAcceptHeadToHead(item);
-                                }}
-                                size="sm"
-                                disabled={actionsDisabled}
-                                className={`bg-green-500 text-white hover:bg-green-600 px-3 h-9 ${actionsDisabled ? "opacity-60 cursor-not-allowed" : ""}`}
-                              >
-                                קבל <CheckCircle2 className="w-4 h-4 mr-1" />
-                              </Button>
+                              {canTakeShifts && (
+                                <Button
+                                  onClick={() => {
+                                    if (actionsDisabled) return;
+                                    onAcceptHeadToHead &&
+                                      onAcceptHeadToHead(item);
+                                  }}
+                                  size="sm"
+                                  disabled={actionsDisabled}
+                                  className={`bg-green-500 text-white hover:bg-green-600 px-3 h-9 ${actionsDisabled ? "opacity-60 cursor-not-allowed" : ""}`}
+                                >
+                                  קבל <CheckCircle2 className="w-4 h-4 mr-1" />
+                                </Button>
+                              )}
                               <Button
                                 variant="outline"
                                 size="icon"
@@ -1646,17 +1654,19 @@ export default function KPIListModal({
 
                           {isIncomingGift && (
                             <div className="flex flex-col gap-2 items-end">
-                              <Button
-                                onClick={() => {
-                                  if (actionsDisabled) return;
-                                  onAcceptGift && onAcceptGift(item);
-                                }}
-                                size="sm"
-                                disabled={actionsDisabled}
-                                className={`bg-pink-500 text-white hover:bg-pink-600 px-3 h-9 ${actionsDisabled ? "opacity-60 cursor-not-allowed" : ""}`}
-                              >
-                                קבל מתנה <Gift className="w-4 h-4 mr-1" />
-                              </Button>
+                              {canTakeShifts && (
+                                <Button
+                                  onClick={() => {
+                                    if (actionsDisabled) return;
+                                    onAcceptGift && onAcceptGift(item);
+                                  }}
+                                  size="sm"
+                                  disabled={actionsDisabled}
+                                  className={`bg-pink-500 text-white hover:bg-pink-600 px-3 h-9 ${actionsDisabled ? "opacity-60 cursor-not-allowed" : ""}`}
+                                >
+                                  קבל מתנה <Gift className="w-4 h-4 mr-1" />
+                                </Button>
+                              )}
                               <Button
                                 variant="outline"
                                 size="icon"
