@@ -31,14 +31,15 @@ export default function KPIHeader({
   });
 
   // --- 1. Swap Requests Count (Red) ---
-  // Count ALL open SwapRequests that are of type 'Full' or 'Head2Head'
-  // (Head2Head is still a full-shift swap, just targeted at one person's shift)
+  // Count ALL open whole-shift SwapRequests — 'General' (open to anyone) and
+  // 'Head2Head' (a targeted trade). Partial (windowed) requests are counted
+  // separately below.
   const fullRequestsCount = useMemo(
     () =>
       swapRequests.filter(
         (r) =>
           r.status === "Open" &&
-          ["Full", "Head2Head", "General"].includes(r.request_type),
+          ["Head2Head", "General"].includes(r.request_type),
       ).length,
     [swapRequests],
   );
