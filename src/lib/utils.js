@@ -63,13 +63,19 @@ export function deriveShiftActionFlags({
   // Offer-to-help is available on an active request that isn't mine and isn't
   // already covered — but NOT on a head-to-head aimed at one specific person
   // (an unrelated viewer can't help with that). A partial request is always
-  // open to helpers, so it stays coverable even if flagged directed.
+  // open to helpers, so it stays coverable even if flagged directed. Covering
+  // means taking on part of someone else's shift, so it's gated on
+  // canTakeShifts (only the active member of a group may acquire shifts).
   const canOfferCover =
+    canTakeShifts &&
     hasActiveRequest &&
     !isOwnShift &&
     !isCoveredOrClosed &&
     (!isDirectedRequest || isPartialRequest);
+  // Proposing a head-to-head is an attempt to take the other person's shift in
+  // exchange, so it too requires canTakeShifts.
   const canHeadToHead =
+    canTakeShifts &&
     !isOwnShift &&
     !isCoveredOrClosed &&
     !isPartialRequest &&
@@ -171,6 +177,11 @@ export function deriveRequestItemButtons({
   currentUser,
   type,
   isFutureShiftsView,
+  // Whether the viewer is the active member of their group. Buttons that
+  // acquire someone else's shift (take/counter/accept) are hidden when false;
+  // declining (reject) and own-shift actions are always available. Defaults to
+  // true so callers/tests that don't pass it keep the active-user button set.
+  canTakeShifts = true,
 }) {
   const flags = deriveRequestItemFlags(item, { currentUser, type });
   const buttons = [];
@@ -185,7 +196,7 @@ export function deriveRequestItemButtons({
     buttons.push("cancelPartialGap");
   }
 
-  if (flags.isGeneralRequestForOthers) {
+  if (flags.isGeneralRequestForOthers && canTakeShifts) {
     buttons.push("takeShifts", "counterHeadToHead");
   }
 
@@ -196,11 +207,13 @@ export function deriveRequestItemButtons({
   }
 
   if (flags.isIncomingHeadToHead) {
-    buttons.push("acceptHeadToHead", "rejectHeadToHead");
+    if (canTakeShifts) buttons.push("acceptHeadToHead");
+    buttons.push("rejectHeadToHead");
   }
 
   if (flags.isIncomingGift) {
-    buttons.push("acceptGift", "rejectGift");
+    if (canTakeShifts) buttons.push("acceptGift");
+    buttons.push("rejectGift");
   }
 
   if (item.is_shift_object || flags.isMyRequest) {
