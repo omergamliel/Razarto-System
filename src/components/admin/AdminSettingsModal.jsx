@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { format } from "date-fns";
 import { distributeShifts } from "../calendar/shiftDistributionAlgorithm";
 import {
@@ -486,14 +492,17 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     queryFn: () => base44.entities.AppSettings.list(),
     enabled: isOpen,
   });
-  const logoUrl = appSettings.find((s) => s.setting_key === "logo")?.logo_url || "";
+  const logoUrl =
+    appSettings.find((s) => s.setting_key === "logo")?.logo_url || "";
   const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
   const updateLogoMutation = useMutation({
     mutationFn: async (url) => {
       const existing = appSettings.find((s) => s.setting_key === "logo");
       if (existing) {
-        return base44.entities.AppSettings.update(existing.id, { logo_url: url });
+        return base44.entities.AppSettings.update(existing.id, {
+          logo_url: url,
+        });
       }
       return base44.entities.AppSettings.create({
         setting_key: "logo",
@@ -568,7 +577,10 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     const supportRow = appSettings.find((s) => s.setting_key === "support");
     if (supportRow?.value) {
       try {
-        setSupportSettings((prev) => ({ ...prev, ...JSON.parse(supportRow.value) }));
+        setSupportSettings((prev) => ({
+          ...prev,
+          ...JSON.parse(supportRow.value),
+        }));
       } catch (error) {
         console.error("Failed to parse saved support settings:", error);
       }
@@ -598,7 +610,8 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   }, [isOpen, appSettings]);
 
   const saveSystemSettingsMutation = useMutation({
-    mutationFn: () => upsertSetting("system", { ...systemSettings, systemStatus }),
+    mutationFn: () =>
+      upsertSetting("system", { ...systemSettings, systemStatus }),
     onSuccess: () => {
       logActivity({
         action: "שמירת הגדרות מערכת",
@@ -1280,7 +1293,6 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     setSupportSettings((prev) => ({ ...prev, [field]: value }));
   };
 
-
   const handleAddUserSubmit = async (e) => {
     e.preventDefault();
     if (!newUser.full_name || !newUser.department || !newUser.email)
@@ -1502,7 +1514,9 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                 className="absolute top-0 right-0 h-full w-72 max-w-[80%] bg-white z-[70] shadow-2xl flex flex-col"
               >
                 <div className="p-4 border-b border-gray-100 flex items-center justify-between shrink-0">
-                  <span className="font-bold text-gray-800">בחר מודול לניהול</span>
+                  <span className="font-bold text-gray-800">
+                    בחר מודול לניהול
+                  </span>
                   <button
                     onClick={() => setIsNavOpen(false)}
                     className="p-1.5 rounded-full hover:bg-gray-100 transition-colors"
@@ -1821,8 +1835,8 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                   </p>
                   <p className="text-xs text-gray-500 mt-1 leading-relaxed">
                     הקבוצות דינמיות — ניתן להוסיף ולהסיר קבוצות. כל משתמש משויך
-                    לקבוצה (השדה "קבוצה"), ובכל קבוצה ניתן לסמן משתמש אחד בלבד
-                    כ<b>פעיל</b> (או אף אחד) — מערכת חלוקת המשמרות תשבץ משמרות אך
+                    לקבוצה (השדה "קבוצה"), ובכל קבוצה ניתן לסמן משתמש אחד בלבד כ
+                    <b>פעיל</b> (או אף אחד) — מערכת חלוקת המשמרות תשבץ משמרות אך
                     ורק למשתמשים הפעילים.
                   </p>
                 </div>
@@ -1871,133 +1885,140 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                   <div className="overflow-y-auto flex-1 min-h-0 custom-scrollbar p-3 md:p-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 content-start">
                       {groupSymbols.map((symbol) => {
-                    const members = membersBySymbol.get(symbol) || [];
-                    const activeSeg = activeGroupBySymbol.get(symbol);
-                    const activeEmail = activeSeg?.active
-                      ? activeSeg.username
-                      : null;
-                    // Only treat the group as "has active" when its active email
-                    // still belongs to a current member of the group.
-                    const hasActiveMember =
-                      !!activeEmail &&
-                      members.some((m) => m.email === activeEmail);
-                    return (
-                      <div
-                        key={symbol}
-                        className="border border-gray-100 rounded-xl p-3 flex flex-col gap-2 bg-gray-50/40"
-                      >
-                        {/* Group header + add button */}
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center text-base font-bold border border-blue-100">
-                              {symbol}
-                            </div>
-                            <div>
-                              <p className="text-sm font-bold text-gray-800">
-                                קבוצה {symbol}
-                              </p>
-                              <p className="text-[11px] text-gray-400">
-                                {members.length} חברים
-                                {hasActiveMember ? " · יש פעיל" : " · אין פעיל"}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="gap-1 text-xs h-8"
-                              onClick={() => {
-                                setGroupPickerSymbol(symbol);
-                                setGroupPickerSelected([]);
-                                setGroupPickerSearch("");
-                              }}
-                            >
-                              <UserPlus className="w-3.5 h-3.5" /> הוסף
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              title="הסר קבוצה"
-                              className="h-8 w-8 text-gray-300 hover:text-red-500"
-                              onClick={() => setGroupToDelete(symbol)}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </div>
-
-                        {/* Members */}
-                        {members.length === 0 ? (
-                          <p className="text-xs text-gray-300 py-3 text-center">
-                            אין חברים בקבוצה
-                          </p>
-                        ) : (
-                          <div className="flex flex-col gap-1">
-                            {members.map((m) => {
-                              const isActive =
-                                activeEmail && m.email === activeEmail;
-                              return (
-                                <div
-                                  key={m.id}
-                                  className={`flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 border ${
-                                    isActive
-                                      ? "bg-amber-50 border-amber-200"
-                                      : "bg-white border-gray-100"
-                                  }`}
-                                >
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <span className="text-sm text-gray-700 truncate">
-                                      {m.full_name}
-                                    </span>
-                                    {isActive && (
-                                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-200 text-amber-800 font-semibold shrink-0">
-                                        פעיל
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="flex items-center gap-1 shrink-0">
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      title={isActive ? "בטל פעיל" : "סמן כפעיל"}
-                                      className={`h-7 w-7 ${
-                                        isActive
-                                          ? "text-amber-500"
-                                          : "text-gray-300 hover:text-amber-500"
-                                      }`}
-                                      onClick={() =>
-                                        setActiveMemberMutation.mutate({
-                                          symbol,
-                                          person: isActive ? null : m,
-                                        })
-                                      }
-                                    >
-                                      <Star
-                                        className={`w-4 h-4 ${
-                                          isActive ? "fill-amber-400" : ""
-                                        }`}
-                                      />
-                                    </Button>
-                                    <Button
-                                      size="icon"
-                                      variant="ghost"
-                                      title="הסר מהקבוצה"
-                                      className="h-7 w-7 text-gray-300 hover:text-red-500"
-                                      onClick={() =>
-                                        setMemberToRemove({ person: m, symbol })
-                                      }
-                                    >
-                                      <UserMinus className="w-4 h-4" />
-                                    </Button>
-                                  </div>
+                        const members = membersBySymbol.get(symbol) || [];
+                        const activeSeg = activeGroupBySymbol.get(symbol);
+                        const activeEmail = activeSeg?.active
+                          ? activeSeg.username
+                          : null;
+                        // Only treat the group as "has active" when its active email
+                        // still belongs to a current member of the group.
+                        const hasActiveMember =
+                          !!activeEmail &&
+                          members.some((m) => m.email === activeEmail);
+                        return (
+                          <div
+                            key={symbol}
+                            className="border border-gray-100 rounded-xl p-3 flex flex-col gap-2 bg-gray-50/40"
+                          >
+                            {/* Group header + add button */}
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <div className="w-9 h-9 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center text-base font-bold border border-blue-100">
+                                  {symbol}
                                 </div>
-                              );
-                            })}
+                                <div>
+                                  <p className="text-sm font-bold text-gray-800">
+                                    קבוצה {symbol}
+                                  </p>
+                                  <p className="text-[11px] text-gray-400">
+                                    {members.length} חברים
+                                    {hasActiveMember
+                                      ? " · יש פעיל"
+                                      : " · אין פעיל"}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="gap-1 text-xs h-8"
+                                  onClick={() => {
+                                    setGroupPickerSymbol(symbol);
+                                    setGroupPickerSelected([]);
+                                    setGroupPickerSearch("");
+                                  }}
+                                >
+                                  <UserPlus className="w-3.5 h-3.5" /> הוסף
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  title="הסר קבוצה"
+                                  className="h-8 w-8 text-gray-300 hover:text-red-500"
+                                  onClick={() => setGroupToDelete(symbol)}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </div>
+
+                            {/* Members */}
+                            {members.length === 0 ? (
+                              <p className="text-xs text-gray-300 py-3 text-center">
+                                אין חברים בקבוצה
+                              </p>
+                            ) : (
+                              <div className="flex flex-col gap-1">
+                                {members.map((m) => {
+                                  const isActive =
+                                    activeEmail && m.email === activeEmail;
+                                  return (
+                                    <div
+                                      key={m.id}
+                                      className={`flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 border ${
+                                        isActive
+                                          ? "bg-amber-50 border-amber-200"
+                                          : "bg-white border-gray-100"
+                                      }`}
+                                    >
+                                      <div className="flex items-center gap-2 min-w-0">
+                                        <span className="text-sm text-gray-700 truncate">
+                                          {m.full_name}
+                                        </span>
+                                        {isActive && (
+                                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-200 text-amber-800 font-semibold shrink-0">
+                                            פעיל
+                                          </span>
+                                        )}
+                                      </div>
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        <Button
+                                          size="icon"
+                                          variant="ghost"
+                                          title={
+                                            isActive ? "בטל פעיל" : "סמן כפעיל"
+                                          }
+                                          className={`h-7 w-7 ${
+                                            isActive
+                                              ? "text-amber-500"
+                                              : "text-gray-300 hover:text-amber-500"
+                                          }`}
+                                          onClick={() =>
+                                            setActiveMemberMutation.mutate({
+                                              symbol,
+                                              person: isActive ? null : m,
+                                            })
+                                          }
+                                        >
+                                          <Star
+                                            className={`w-4 h-4 ${
+                                              isActive ? "fill-amber-400" : ""
+                                            }`}
+                                          />
+                                        </Button>
+                                        <Button
+                                          size="icon"
+                                          variant="ghost"
+                                          title="הסר מהקבוצה"
+                                          className="h-7 w-7 text-gray-300 hover:text-red-500"
+                                          onClick={() =>
+                                            setMemberToRemove({
+                                              person: m,
+                                              symbol,
+                                            })
+                                          }
+                                        >
+                                          <UserMinus className="w-4 h-4" />
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
-                    );
+                        );
                       })}
                     </div>
                   </div>
@@ -2068,8 +2089,8 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                       />
                       {logoUrl && (
                         <p className="text-xs text-gray-400 mt-1">
-                          לוגו נוכחי מוגדר — ניתן גם להחליף אותו בלחיצה על
-                          הלוגו בפינה העליונה של האפליקציה.
+                          לוגו נוכחי מוגדר — ניתן גם להחליף אותו בלחיצה על הלוגו
+                          בפינה העליונה של האפליקציה.
                         </p>
                       )}
                     </div>
@@ -2303,9 +2324,9 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                       הודעות וואטסאפ מוכנות מראש
                     </p>
                     <p className="text-xs text-gray-500">
-                      עריכת ההודעה שנשלחת לכל סוג בקשה. הסמנים בסוגריים
-                      מסולסלים (למשל <span dir="ltr">{"{ownerName}"}</span>)
-                      מוחלפים אוטומטית בערכים האמיתיים בעת השליחה.
+                      עריכת ההודעה שנשלחת לכל סוג בקשה. הסמנים בסוגריים מסולסלים
+                      (למשל <span dir="ltr">{"{ownerName}"}</span>) מוחלפים
+                      אוטומטית בערכים האמיתיים בעת השליחה.
                     </p>
                   </div>
                 </div>
@@ -2321,9 +2342,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                       <p className="text-sm font-semibold text-gray-800">
                         {def.label}
                       </p>
-                      <p className="text-xs text-gray-500">
-                        {def.description}
-                      </p>
+                      <p className="text-xs text-gray-500">{def.description}</p>
                     </div>
                     <Button
                       type="button"
@@ -2356,9 +2375,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                   />
 
                   <div className="flex flex-wrap items-center gap-1.5">
-                    <span className="text-xs text-gray-400">
-                      סמנים זמינים:
-                    </span>
+                    <span className="text-xs text-gray-400">סמנים זמינים:</span>
                     {def.placeholders.map((ph) => (
                       <code
                         key={ph}
@@ -2402,14 +2419,14 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                     <p className="text-xs text-gray-500 max-w-xl">
                       מפזר משמרות רק על ימים פנויים בטווח שנבחר, בלי לגעת
                       במשמרות קיימות: עד שתי משמרות מוקצות לכל אדם בשבוע
-                      (א'-ש'), שישי-שבת תמיד מוקצים יחד לאותו אדם, וכך גם ערב
-                      חג וימי החג (למשל ערב חג שחל בחמישי — המשמרת נשארת אצל
-                      אותו אדם עד שבת). ימי חול המועד (בסוכות ובפסח) לא נכללים
-                      בצירוף הזה ומתחלקים כרגיל בין העובדים, כדי שמשמרת החג לא
-                      תימשך יותר מדי אצל אדם אחד. הפיזור בין המשמרות של כל אדם
-                      נשמר נוח ולא יום אחרי יום בטעות. הבחירה מתבססת על טבלת
-                      "צדק" — עדיפות ניתנת לפי מספר המשמרות הנמוך ביותר שנצבר
-                      בטווח שנבחר.
+                      (א'-ש'), שישי-שבת תמיד מוקצים יחד לאותו אדם, וכך גם ערב חג
+                      וימי החג (למשל ערב חג שחל בחמישי — המשמרת נשארת אצל אותו
+                      אדם עד שבת). ימי חול המועד (בסוכות ובפסח) לא נכללים בצירוף
+                      הזה ומתחלקים כרגיל בין העובדים, כדי שמשמרת החג לא תימשך
+                      יותר מדי אצל אדם אחד. הפיזור בין המשמרות של כל אדם נשמר
+                      נוח ולא יום אחרי יום בטעות. הבחירה מתבססת על טבלת "צדק" —
+                      עדיפות ניתנת לפי מספר המשמרות הנמוך ביותר שנצבר בטווח
+                      שנבחר.
                     </p>
                   </div>
                   <Scale className="w-5 h-5 text-blue-500 shrink-0" />
@@ -2540,9 +2557,9 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                       החלפת משמרות בין משתמשים
                     </p>
                     <p className="text-xs text-gray-500 max-w-xl">
-                      מעביר את כל המשמרות של המשתמש המוחלף אל המשתמש המחליף, בטווח
-                      התאריכים שנבחר (כולל שני התאריכים). משמרות של משתמשים אחרים
-                      לא מושפעות.
+                      מעביר את כל המשמרות של המשתמש המוחלף אל המשתמש המחליף,
+                      בטווח התאריכים שנבחר (כולל שני התאריכים). משמרות של
+                      משתמשים אחרים לא מושפעות.
                     </p>
                   </div>
                   <ArrowLeftRight className="w-5 h-5 text-blue-500 shrink-0" />
@@ -2688,11 +2705,11 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                     </p>
                     <p className="text-xs text-gray-500 max-w-xl">
                       מריץ בדיקות אוטומטיות על תהליכים קריטיים (יצירה/ביטול של
-                      בקשות החלפה, ראש בראש, כיסוי חלקי, בקשה כללית, שיוך
-                      מחדש, וחלוקת משמרות הוגנת) ומציג אם הם עוברים. חלק
-                      מהבדיקות יוצרות משתמשים/משמרות/בקשות זמניים בפועל
-                      במסד הנתונים (מסומנים בקידומת "[TEST]") ומוחקות אותם
-                      אוטומטית בסיום כל בדיקה — נתונים אמיתיים לא נגעים בהם.
+                      בקשות החלפה, ראש בראש, כיסוי חלקי, בקשה כללית, שיוך מחדש,
+                      וחלוקת משמרות הוגנת) ומציג אם הם עוברים. חלק מהבדיקות
+                      יוצרות משתמשים/משמרות/בקשות זמניים בפועל במסד הנתונים
+                      (מסומנים בקידומת "[TEST]") ומוחקות אותם אוטומטית בסיום כל
+                      בדיקה — נתונים אמיתיים לא נגעים בהם.
                     </p>
                   </div>
                   <FlaskConical className="w-5 h-5 text-blue-500 shrink-0" />
@@ -2725,8 +2742,8 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                       <AlertTriangle className="w-5 h-5 text-red-600" />
                     )}
                     <p className="text-sm font-semibold text-gray-800">
-                      {testResults.filter((r) => r.status === "passed").length}
-                      /{testResults.length} עברו בהצלחה
+                      {testResults.filter((r) => r.status === "passed").length}/
+                      {testResults.length} עברו בהצלחה
                     </p>
                   </div>
                   <div className="space-y-1.5 max-h-96 overflow-y-auto pr-1">
@@ -2788,10 +2805,10 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
             </DialogTitle>
             <DialogDescription>
               חלק מהבדיקות (יצירה/ביטול של בקשות החלפה וכד') יוצרות משתמשים,
-              משמרות ובקשות זמניים בפועל במסד הנתונים החי, ומוחקות אותם
-              אוטומטית מיד בסיום כל בדיקה — נתונים אמיתיים לא נגעים בהם.
-              ליתר ביטחון (למשל אם הדפדפן ייסגר באמצע ההרצה), מומלץ לייצא
-              גיבוי של הנתונים לפני שממשיכים.
+              משמרות ובקשות זמניים בפועל במסד הנתונים החי, ומוחקות אותם אוטומטית
+              מיד בסיום כל בדיקה — נתונים אמיתיים לא נגעים בהם. ליתר ביטחון
+              (למשל אם הדפדפן ייסגר באמצע ההרצה), מומלץ לייצא גיבוי של הנתונים
+              לפני שממשיכים.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="flex-col sm:flex-row gap-2">
@@ -3376,7 +3393,8 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
           </DialogHeader>
           <div className="py-4">
             <p className="text-gray-600">
-              להסיר את קבוצה <b>{groupToDelete}</b>? שיוך הקבוצה יימחק מכל חברי הקבוצה
+              להסיר את קבוצה <b>{groupToDelete}</b>? שיוך הקבוצה יימחק מכל חברי
+              הקבוצה
               {(() => {
                 const n = authorizedPeople.filter(
                   (p) => p.sign === groupToDelete,
@@ -3600,8 +3618,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
 
           <div className="py-4">
             <p className="text-gray-600">
-              להעביר{" "}
-              <b>{shiftsInReplaceRange.length} משמרות</b> מ־
+              להעביר <b>{shiftsInReplaceRange.length} משמרות</b> מ־
               <b>
                 {
                   authorizedPeople.find(
