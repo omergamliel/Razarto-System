@@ -490,6 +490,16 @@ export const buildHeadToHeadDeepLink = (targetId, offerId) => {
   return `${PRODUCTION_BASE_URL}?headToHeadTarget=${targetId}&headToHeadOffer=${offerId}`;
 };
 
+// A gift is accepted from the recipient's incoming-requests list (KPI
+// "בקשות להחלפה" ▸ "בקשות אליי"), not from the shift-details modal — so its
+// deep link opens that list focused on the specific gift SwapRequest. The
+// ShiftCalendar deep-link effect reads `openKpi` ("<type>:<tab>") + optional
+// `focusRequestId` and opens KPIListModal accordingly.
+export const buildGiftDeepLink = (requestId) => {
+  if (!requestId) return "";
+  return `${PRODUCTION_BASE_URL}?openKpi=swap_requests:incoming&focusRequestId=${requestId}`;
+};
+
 // --- Editable WhatsApp message templates -----------------------------------
 // The ready-made WhatsApp message offered after opening each kind of request is
 // admin-editable (ניהול מערכת ▸ הודעות וואטסאפ, persisted as the AppSettings row
@@ -549,9 +559,10 @@ export const WHATSAPP_TEMPLATES = {
       "startTime",
       "endDate",
       "endTime",
+      "link",
     ],
     default:
-      "היי *{recipientName}*! 🎁\nרוצה לתת לך מתנה — לקחת על עצמי את המשמרת שלך, בלי תמורה 🙌\n\n📅 המשמרת: מ-{startDate} בשעה {startTime} ועד {endDate} בשעה {endTime} ⏰\n\nכל מה שצריך זה לאשר את ההצעה באפליקציה (בקשות אליי) ✅\n— {giverName}",
+      "היי *{recipientName}*! 🎁\nרוצה לתת לך מתנה — לקחת על עצמי את המשמרת שלך, בלי תמורה 🙌\n\n📅 המשמרת: מ-{startDate} בשעה {startTime} ועד {endDate} בשעה {endTime} ⏰\n\nכל מה שצריך זה לאשר את ההצעה כאן:\n{link} ✅\n— {giverName}",
   },
 };
 
@@ -652,6 +663,8 @@ export const buildGiftTemplate = ({
   startTime,
   endDate,
   endTime,
+  approvalUrl,
+  requestId,
 }) => {
   const safeStart = formatShareDate(startDate);
   const safeEnd = formatShareDate(endDate, safeStart);
@@ -662,5 +675,6 @@ export const buildGiftTemplate = ({
     startTime: startTime || "",
     endDate: safeEnd,
     endTime: endTime || "",
+    link: approvalUrl || buildGiftDeepLink(requestId) || "",
   });
 };
