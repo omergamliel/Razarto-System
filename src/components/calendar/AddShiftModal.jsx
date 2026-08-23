@@ -27,6 +27,19 @@ export default function AddShiftModal({
     enabled: isOpen
   });
 
+  // Group "active member" records (ShiftGroup): only the active member of a
+  // group can be assigned shifts — the same pool shift distribution uses.
+  const { data: shiftGroups = [] } = useQuery({
+    queryKey: ['shift-groups'],
+    queryFn: () => base44.entities.ShiftGroup.list(),
+    enabled: isOpen
+  });
+  const activeMemberEmails = new Set(
+    shiftGroups
+      .filter((group) => group.active && group.username)
+      .map((group) => group.username.toLowerCase())
+  );
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!selectedUserId) return;
@@ -50,9 +63,11 @@ export default function AddShiftModal({
 
   if (!isOpen) return null;
 
-  // Only users with an active role ('RR') can be assigned shifts — users
-  // with role 'None' are excluded from the dropdown.
-  const rrUsers = authorizedUsers.filter(u => u.role === 'RR');
+  // Only the active member of a group can be assigned shifts — non-active
+  // members (and anyone in no group) are excluded from the dropdown.
+  const rrUsers = authorizedUsers.filter(u =>
+    activeMemberEmails.has((u.email || '').toLowerCase())
+  );
 
   // Get unique departments
   const departments = [...new Set(rrUsers.map(u => u.department))].sort();
