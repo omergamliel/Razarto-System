@@ -177,6 +177,10 @@ export default function ShiftCalendar() {
   const [tourDemo, setTourDemo] = useState(false);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [lastUpdatedShift, setLastUpdatedShift] = useState(null);
+  // Whether the just-created request was a whole-shift (now General) swap vs a
+  // Partial one — drives which ready-made WhatsApp template the success modal
+  // shares (general broadcast vs partial-coverage wording).
+  const [lastSwapWasGeneral, setLastSwapWasGeneral] = useState(false);
 
   // Head-to-Head States
   const [showHeadToHeadSelector, setShowHeadToHeadSelector] = useState(false);
@@ -724,7 +728,11 @@ export default function ShiftCalendar() {
       const payload = {
         shift_ids: [shiftId],
         requesting_user_id: authorizedPerson.serial_id,
-        request_type: isFull ? "Full" : "Partial",
+        // A whole-shift swap is an open, permanent-handoff request to the whole
+        // team — i.e. a General request. (The former dedicated "Full" type was
+        // redundant with General and has been removed.) A partial swap keeps the
+        // windowed "Partial" coverage semantics.
+        request_type: isFull ? "General" : "Partial",
         req_start_date,
         req_end_date,
         req_start_time,
@@ -754,7 +762,7 @@ export default function ShiftCalendar() {
       logActivity({
         action:
           variables?.type === "full"
-            ? "יצירת בקשת החלפה מלאה"
+            ? "יצירת בקשת החלפה כללית"
             : "יצירת בקשת החלפה חלקית",
         type: "בקשות החלפה",
         entity: "SwapRequest",
@@ -764,6 +772,7 @@ export default function ShiftCalendar() {
       queryClient.invalidateQueries(["swap-requests"]);
       toast.success("בקשת ההחלפה נשלחה בהצלחה!");
       setLastUpdatedShift(data);
+      setLastSwapWasGeneral(variables?.type === "full");
       setShowSwapRequestModal(false);
       setShowActionModal(false);
       setShowSuccessModal(true);
@@ -2187,6 +2196,7 @@ export default function ShiftCalendar() {
         isOpen={showSuccessModal}
         onClose={closeAllModals}
         shift={lastUpdatedShift}
+        isGeneral={lastSwapWasGeneral}
       />
 
       <HeadToHeadSelectorModal
