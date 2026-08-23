@@ -51,9 +51,9 @@ export default function FairnessMatrixModal({ isOpen, onClose, currentUser }) {
 
   // Group definitions / active-member records — used to group the fairness view
   // by קבוצה and to surface each group's active member first.
-  const { data: shiftSegments = [] } = useQuery({
-    queryKey: ["shift-segments"],
-    queryFn: () => base44.entities.ShiftSegment.list(),
+  const { data: shiftGroups = [] } = useQuery({
+    queryKey: ["shift-groups"],
+    queryFn: () => base44.entities.ShiftGroup.list(),
     enabled: isOpen,
   });
 
@@ -64,10 +64,11 @@ export default function FairnessMatrixModal({ isOpen, onClose, currentUser }) {
       return { users: [], groups: [], maxCount: 0 };
     }
 
-    // Only users with the active 'RR' role are counted (AuthorizedPerson.role,
-    // separate from permissions) — people blocked from taking shifts (role
-    // 'None') are excluded from the fairness picture entirely.
-    const rrPeople = people.filter((p) => (p.role || "RR") === "RR");
+    // Every authorized person is part of the fairness picture. Who actually
+    // takes shifts is governed by the ShiftGroup active-member rule (surfaced
+    // below by ordering each group's active member first), so there is no
+    // longer a separate per-person flag to filter on.
+    const rrPeople = people;
 
     const personBySerial = new Map();
     rrPeople.forEach((p) => {
@@ -75,12 +76,12 @@ export default function FairnessMatrixModal({ isOpen, onClose, currentUser }) {
     });
     const rrSerialIds = new Set(rrPeople.map((p) => p.serial_id));
 
-    // A group's active member (active ShiftSegment whose username matches their
+    // A group's active member (active ShiftGroup whose username matches their
     // email) is listed first for that group.
     const activeEmails = new Set(
-      shiftSegments
-        .filter((seg) => seg.active && seg.username)
-        .map((seg) => seg.username.toLowerCase()),
+      shiftGroups
+        .filter((group) => group.active && group.username)
+        .map((group) => group.username.toLowerCase()),
     );
 
     // The rota has exactly one shift per calendar day, so a day must be counted
@@ -103,7 +104,7 @@ export default function FairnessMatrixModal({ isOpen, onClose, currentUser }) {
     dedupedInRange.forEach((s) => {
       const owner = resolveOwnerId(s, coverages);
       if (owner == null) return;
-      // Skip shifts owned by people who aren't RR.
+      // Skip shifts owned by people not in the authorized list.
       if (!rrSerialIds.has(owner)) return;
       userCounts.set(owner, (userCounts.get(owner) || 0) + 1);
     });
@@ -168,7 +169,7 @@ export default function FairnessMatrixModal({ isOpen, onClose, currentUser }) {
     );
 
     return { users, groups, maxCount };
-  }, [shifts, people, shiftSegments, coverages, startDate, endDate, currentUser]);
+  }, [shifts, people, shiftGroups, coverages, startDate, endDate, currentUser]);
 
   const setRangeToCurrentMonth = () => {
     setStartDate(format(startOfMonth(today), "yyyy-MM-dd"));
