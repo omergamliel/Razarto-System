@@ -857,6 +857,12 @@ export default function ShiftCalendar() {
       // the "הודעות וואטסאפ" tab (setting_key whatsapp_templates).
       const targetShift = shifts.find((s) => s.id === targetShiftIds[0]);
       const ownShift = shifts.find((s) => s.id === ownShiftIds[0]);
+      // Full lists for both sides so the message spells out every bundled shift
+      // (they can be several non-contiguous shifts, not one span).
+      const ownShifts = shifts.filter((s) => ownShiftIds.includes(s.id));
+      const targetShiftsList = shifts.filter((s) =>
+        targetShiftIds.includes(s.id),
+      );
       const targetOwner = allUsers.find(
         (u) =>
           Number(u.serial_id) ===
@@ -874,6 +880,8 @@ export default function ShiftCalendar() {
               targetShiftDate: fmt(targetShift?.start_date),
               myShiftOwner: authorizedPerson.full_name,
               myShiftDate: fmt(ownShift?.start_date),
+              myShifts: ownShifts,
+              targetShifts: targetShiftsList,
               uniqueApprovalUrl: buildHeadToHeadDeepLink(
                 targetShiftIds[0],
                 ownShiftIds[0],
@@ -956,6 +964,9 @@ export default function ShiftCalendar() {
               startTime: ownShifts[0]?.start_time,
               endDate,
               endTime: ownShifts[0]?.end_time,
+              // Every bundled shift, listed per line (they may be several
+              // non-contiguous shifts, not one continuous span).
+              shifts: ownShifts,
               shiftId: ownShiftIds[0],
             });
             window.open(
