@@ -14,6 +14,7 @@ import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { useHolidays } from './useHolidays';
 import { useThemePalette } from '@/hooks/useAuthorizedPerson';
+import { isActiveGroupMember } from '@/lib/utils';
 
 const HEBREW_DAYS = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'];
 const HEBREW_DAYS_FULL = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
@@ -43,13 +44,6 @@ export default function CalendarGrid({
     queryFn: () => base44.entities.ShiftGroup.list(),
   });
 
-  const activeMemberEmails = React.useMemo(() => {
-    const set = new Set();
-    shiftGroups.forEach((group) => {
-      if (group.active && group.username) set.add(group.username);
-    });
-    return set;
-  }, [shiftGroups]);
 
   // Admin-configurable color (תצוגה קלנדרית tab) for a shift assigned to a
   // non-active group member. Shown in the legend and applied to the cell for
@@ -71,10 +65,12 @@ export default function CalendarGrid({
       // Role name can be fetched if we had a RoleDefinition table,
       // but for now we assume original_user_id represents the "role/slot" owner.
       role_name: originalUser ? originalUser.full_name : 'פנוי',
-      // True when this shift's assigned owner is NOT the active member of any
-      // group — an assignment that shouldn't normally happen via distribution.
+      // True when this shift's assigned owner is NOT the active member of THEIR
+      // OWN group — an assignment that shouldn't normally happen via
+      // distribution. Uses the shared, group-scoped rule so a stale/lingering
+      // active row can't mask an inactive assignment.
       assignedToInactiveMember:
-        !!originalUser && !activeMemberEmails.has(originalUser.email),
+        !!originalUser && !isActiveGroupMember(originalUser, shiftGroups),
     };
   };
 
