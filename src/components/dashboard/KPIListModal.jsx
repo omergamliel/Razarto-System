@@ -44,6 +44,9 @@ import {
   buildSwapTemplate,
   buildGiftTemplate,
   buildGeneralTemplate,
+  buildHeadToHeadTemplate,
+  buildHeadToHeadDeepLink,
+  buildShiftDeepLink,
   mergeOverlappingSegments,
   buildDateTime,
   subtractSegments,
@@ -989,10 +992,17 @@ export default function KPIListModal({
     }
   };
 
-  const getApprovalUrl = (item) => {
-    const base = typeof window !== "undefined" ? window.location.origin : "";
-    return `${base}/approve/${item.shift_id || item.shift_ids?.[0] || item.id || ""}`;
-  };
+  // Deep link into the shift the request is about: opens ShiftDetailsModal for
+  // that shift (?openShiftId=…), where a colleague can offer to cover / take it.
+  // (The old `${origin}/approve/<id>` form pointed at a route that doesn't
+  // exist — App.jsx only registers the Home page + a catch-all 404.)
+  const getApprovalUrl = (item) =>
+    buildShiftDeepLink(
+      item.shift_id ||
+        item.shift_ids?.[0] ||
+        item.original_shift?.id ||
+        item.id,
+    );
 
   const handleReshareWhatsapp = (item) => {
     const shared = {
@@ -1003,13 +1013,34 @@ export default function KPIListModal({
         item.end_time || item.req_end_time || item.req_start_time || "09:00",
       approvalUrl: getApprovalUrl(item),
     };
-    // A general/open request broadcasts to everyone, so it gets the dedicated
-    // "general" template; full/partial reuse the swap template. Both are
-    // admin-editable (ניהול מערכת ▸ הודעות וואטסאפ).
-    const message =
-      item.request_type === "General"
-        ? buildGeneralTemplate({ originalOwnerName: item.user_name, ...shared })
-        : buildSwapTemplate({ employeeName: item.user_name, ...shared });
+    // Each request type re-shares the SAME ready-made message as its creation
+    // toast: head-to-head → the h2h template (targeted, with a h2h deep link);
+    // general → the "general" broadcast template; full/partial → the swap
+    // template. All are admin-editable (ניהול מערכת ▸ הודעות וואטסאפ).
+    let message;
+    if (item.request_type === "Head2Head") {
+      const fmt = (d) => (d ? format(new Date(d), "dd/MM") : "");
+      const theirShift = item.offered_shifts?.[0];
+      const myShift = item.original_shifts?.[0];
+      message = buildHeadToHeadTemplate({
+        targetUserName: theirShift?.owner_name,
+        targetShiftOwner: theirShift?.owner_name,
+        targetShiftDate: fmt(theirShift?.start_date),
+        myShiftOwner: item.user_name,
+        myShiftDate: fmt(myShift?.start_date),
+        uniqueApprovalUrl:
+          theirShift?.id && myShift?.id
+            ? buildHeadToHeadDeepLink(theirShift.id, myShift.id)
+            : "",
+      });
+    } else if (item.request_type === "General") {
+      message = buildGeneralTemplate({
+        originalOwnerName: item.user_name,
+        ...shared,
+      });
+    } else {
+      message = buildSwapTemplate({ employeeName: item.user_name, ...shared });
+    }
     const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, "_blank");
   };
@@ -1030,6 +1061,7 @@ export default function KPIListModal({
       endDate: item.end_date || item.shift_date,
       endTime:
         item.end_time || item.req_end_time || item.req_start_time || "09:00",
+      requestId: item.id,
     });
     const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, "_blank");
@@ -1562,16 +1594,28 @@ export default function KPIListModal({
                           )}
 
                           {isPartialGapOwner && hasBackingRequest && (
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              className="rounded-full text-red-600 border-red-200"
-                              onClick={() => requestCancelConfirm(item)}
-                              disabled={actionsDisabled}
-                              title="בטל בקשת החלפה"
-                            >
-                              <XCircle className="w-4 h-4" />
-                            </Button>
+                            <div className="flex flex-col gap-2 items-end">
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="rounded-full text-red-600 border-red-200"
+                                onClick={() => requestCancelConfirm(item)}
+                                disabled={actionsDisabled}
+                                title="בטל בקשת החלפה"
+                              >
+                                <XCircle className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="icon"
+                                className="rounded-full text-green-600 border-green-200"
+                                onClick={() => handleReshareWhatsapp(item)}
+                                disabled={actionsDisabled}
+                                title="שלח בוואטסאפ"
+                              >
+                                <MessageCircle className="w-4 h-4" />
+                              </Button>
+                            </div>
                           )}
 
                           {isGeneralRequestForOthers && canTakeShifts && (
