@@ -28,6 +28,33 @@ export const isOpenStatus = (status) =>
   ["Open", "Partially_Covered"].includes(status);
 
 // ---------------------------------------------------------------------------
+// Group active-member rule — the single source of truth for "may this person
+// take/interact with shifts (and be assigned them by distribution)".
+//
+// A person qualifies iff the ShiftGroup row for THEIR OWN group (`person.sign`)
+// is marked active AND its `username` is their email. This is deliberately
+// scoped to the person's own group, not "does an active row for this email
+// exist anywhere": the `active` flag can linger true on a row whose member was
+// cleared, and stale/duplicate active rows under other groups must never grant
+// standing. Duplicate rows for the same symbol resolve last-write-wins, mirroring
+// AdminSettingsModal's activeGroupBySymbol so the runtime agrees with the star
+// shown in "ניהול קבוצות". Every surface (shift interaction gate, assignment
+// dropdowns, the "assigned to inactive member" marking, fair distribution, the
+// fairness matrix) must go through this so they can't drift apart.
+export function isActiveGroupMember(person, shiftGroups) {
+  const sign = person?.sign;
+  const email = (person?.email || "").toLowerCase();
+  if (!sign || !email) return false;
+  let row = null;
+  for (const group of shiftGroups || []) {
+    if (group?.symbol === sign) row = group; // last write wins, like the admin map
+  }
+  return (
+    Boolean(row?.active) && (row?.username || "").toLowerCase() === email
+  );
+}
+
+// ---------------------------------------------------------------------------
 // ShiftDetailsModal: which action buttons a single shift's detail view shows.
 // Inputs are the intermediates the modal already computes (ownership, request
 // state, coverage state, past/today, role). Returns only booleans.
@@ -83,8 +110,12 @@ export function deriveShiftActionFlags({
     (isWhiteShift || isFullRequest);
   // Gated on !hasAnyRequest (not just !hasActiveRequest) so a Closed request
   // still blocks a redundant new one, and on !isPastShift to close the
-  // request-swap-on-a-past-shift side door.
-  const canRequestSwap = isOwnShift && !hasAnyRequest && !isPastShift;
+  // request-swap-on-a-past-shift side door. Also gated on canTakeShifts: a
+  // non-active group member is out of the swap system entirely and may not open
+  // new swap requests even on their own shifts (they can still cancel an
+  // existing one — see canCancelOwnSwap).
+  const canRequestSwap =
+    canTakeShifts && isOwnShift && !hasAnyRequest && !isPastShift;
   const canWhatsappShare = hasActiveRequest && isRequestOwner;
   const canAddToCalendarOrEmail = isOwnShift;
   // Gift any plain, un-swapped shift from today onward — a colleague's shift
@@ -220,7 +251,10 @@ export function deriveRequestItemButtons({
     // "שמור ביומן" only in the future-shifts (my_shifts) view.
     if (isFutureShiftsView) buttons.push("addToCalendar");
     if (isFutureShiftsView && item.is_shift_object) buttons.push("reshareWhatsapp");
-    if (item.is_shift_object) buttons.push("requestSwap");
+    // Opening a swap request is gated on canTakeShifts too (non-active members
+    // are out of the swap system); addToCalendar/reshare are not — they don't
+    // touch the swap system.
+    if (item.is_shift_object && canTakeShifts) buttons.push("requestSwap");
   }
 
   return buttons;
