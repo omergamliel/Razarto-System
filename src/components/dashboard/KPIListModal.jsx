@@ -839,7 +839,16 @@ export default function KPIListModal({
           is_request_object: true,
         };
       })
-      .filter(Boolean);
+      .filter(Boolean)
+      // One request can back several bundled shifts (e.g. a multi-shift whole-
+      // shift request that's been partially covered — surfaced here relabeled
+      // "Partial"). Each shift produces its own row above, all sharing the same
+      // backing request id, which shows the request twice in the list while the
+      // KPI badge counts it once (it counts requests, not shifts). Collapse to
+      // one row per backing request so the list and the badge agree. Rows with
+      // no backing request use a per-shift `partial-<shiftId>` id, so they stay
+      // distinct.
+      .filter((item, idx, arr) => arr.findIndex((x) => x.id === item.id) === idx);
   }, [
     authorizedUsers,
     coveragesAll,
