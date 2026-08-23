@@ -62,7 +62,6 @@ const TOUR_DEMO_ME = {
   serial_id: 900000,
   full_name: "דוד לוי",
   email: "demo.me@razarto.tour",
-  role: "RR",
   permissions: "User",
 };
 
@@ -193,12 +192,13 @@ export default function ShiftCalendar() {
   const [switchFlowWarning, setSwitchFlowWarning] = useState(null);
   const switchFlowWarningTimeoutRef = useRef(null);
 
-  // Shown at the bottom of the page for 3s whenever a user with role 'None'
-  // (AuthorizedPerson.role — separate from permissions) tries to take a
-  // shift in any way (offer to cover, accept a general/head-to-head
-  // request, propose/approve a head-to-head swap, or select a target shift
-  // in the multi-shift switch flow). Giving away one's OWN shifts is never
-  // blocked by this — only acquiring someone else's is.
+  // Shown at the bottom of the page for 3s whenever a user who is not the
+  // active member of their group (per the ShiftGroup active-member rule —
+  // separate from permissions) tries to take a shift in any way (offer to
+  // cover, accept a general/head-to-head request, propose/approve a
+  // head-to-head swap, or select a target shift in the multi-shift switch
+  // flow). Giving away one's OWN shifts is never blocked by this — only
+  // acquiring someone else's is.
   const [roleError, setRoleError] = useState(null);
   const roleErrorTimeoutRef = useRef(null);
 
@@ -388,25 +388,25 @@ export default function ShiftCalendar() {
     enabled: !!userEmail,
   });
 
-  // Group "active member" records (ShiftSegment): one row per group symbol,
+  // Group "active member" records (ShiftGroup): one row per group symbol,
   // holding that group's active member (username = their email) and an active
   // flag. Only the active member of a group interacts with shifts — the same
   // signal shift distribution uses to pick who gets assigned. Any authorized
-  // user may read these (see ShiftSegment RLS).
-  const { data: shiftSegments = [] } = useQuery({
-    queryKey: ["shift-segments"],
-    queryFn: () => base44.entities.ShiftSegment.list(),
+  // user may read these (see ShiftGroup RLS).
+  const { data: shiftGroups = [] } = useQuery({
+    queryKey: ["shift-groups"],
+    queryFn: () => base44.entities.ShiftGroup.list(),
     enabled: !!authorizedPerson,
   });
 
   const activeMemberEmails = useMemo(
     () =>
       new Set(
-        shiftSegments
-          .filter((seg) => seg.active && seg.username)
-          .map((seg) => seg.username.toLowerCase()),
+        shiftGroups
+          .filter((group) => group.active && group.username)
+          .map((group) => group.username.toLowerCase()),
       ),
-    [shiftSegments],
+    [shiftGroups],
   );
 
   // A user may take/interact with shifts (offer to cover, accept a
@@ -1690,8 +1690,8 @@ export default function ShiftCalendar() {
       if (!isPlainShiftStatus || isPast || !isEligible) return;
 
       // Picking a TARGET shift means taking someone else's shift — blocked
-      // for role 'None'. Picking an OWN shift (giving it away) is always
-      // allowed regardless of role.
+      // for anyone who is not the active member of their group. Picking an OWN
+      // shift (giving it away) is always allowed regardless of that standing.
       if (switchFlow.step === "target" && !canTakeShifts) {
         showRoleError();
         return;
@@ -2185,6 +2185,7 @@ export default function ShiftCalendar() {
         onClose={closeAllModals}
         targetShift={selectedShift}
         currentUser={authorizedPerson}
+        canTakeShifts={tourDemo ? true : canTakeShifts}
         onRoleBlocked={showRoleError}
       />
 
