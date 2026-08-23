@@ -1696,7 +1696,7 @@ export default function KPIListModal({
                                   <CalendarPlus className="w-5 h-5" />
                                 </Button>
                               )}
-                              {item.is_shift_object && (
+                              {item.is_shift_object && canTakeShifts && (
                                 <Button
                                   onClick={() => handleRequestSwap(item)}
                                   size="icon"
