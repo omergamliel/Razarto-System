@@ -731,6 +731,22 @@ function testRequestItemButtons() {
   assert(sameSet(incomingH2H, ["acceptHeadToHead", "rejectHeadToHead"]),
     `an incoming head-to-head shows exactly accept/reject, got ${JSON.stringify(incomingH2H)}`);
 
+  // The "approved" list is read-only history: a closed incoming gift or
+  // head-to-head surfaced there must render NO action buttons (accept/reject
+  // don't otherwise gate on status, so this guards against them leaking in).
+  const historyGift = buttons(
+    { id: "d1", request_type: "Gift", requesting_user_id: 2, original_user_id: 1, status: "Closed" },
+    "approved",
+  );
+  assert(sameSet(historyGift, []),
+    `a closed gift in history shows no buttons, got ${JSON.stringify(historyGift)}`);
+  const historyH2H = buttons(
+    { id: "d2", request_type: "Head2Head", requesting_user_id: 2, offered_shifts: [{ original_user_id: 1 }], status: "Closed" },
+    "approved",
+  );
+  assert(sameSet(historyH2H, []),
+    `a closed head-to-head in history shows no buttons, got ${JSON.stringify(historyH2H)}`);
+
   // A General request by someone else, still open: I can take it or counter it.
   const generalOther = buttons(
     { id: "e", request_type: "General", requesting_user_id: 2, status: "Open" },
