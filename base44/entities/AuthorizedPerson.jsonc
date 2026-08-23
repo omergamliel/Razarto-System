@@ -50,27 +50,11 @@
     "email"
   ],
   "rls": {
+    "read": {},
     "create": {
       "user_condition": {
         "role": "admin"
       }
-    },
-    "read": {
-      "$or": [
-        {
-          "data.email": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "data.is_authorized": true
-          }
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
     },
     "update": {
       "user_condition": {
