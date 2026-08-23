@@ -92,7 +92,9 @@ export default function ShiftCell({
     // members). Colored via the admin-configurable inactiveGroupColor (applied
     // inline below), ahead of the normal "mine"/regular colors. Managers/admins
     // only — regular users fall through to the usual "mine"/regular styling.
-    if (isAdmin && shift.assignedToInactiveMember) {
+    // Past shifts are never flagged: the assignment already happened, so the
+    // out-of-policy warning is no longer actionable.
+    if (isAdmin && shift.assignedToInactiveMember && !isPastDate) {
       return { inactive: true, icon: AlertCircle };
     }
 
