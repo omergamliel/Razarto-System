@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { resolveOwnerId } from "@/components/calendar/whatsappTemplates";
+import { isActiveGroupMember } from "@/lib/utils";
 import {
   format,
   startOfMonth,
@@ -76,14 +77,6 @@ export default function FairnessMatrixModal({ isOpen, onClose, currentUser }) {
     });
     const rrSerialIds = new Set(rrPeople.map((p) => p.serial_id));
 
-    // A group's active member (active ShiftGroup whose username matches their
-    // email) is listed first for that group.
-    const activeEmails = new Set(
-      shiftGroups
-        .filter((group) => group.active && group.username)
-        .map((group) => group.username.toLowerCase()),
-    );
-
     // The rota has exactly one shift per calendar day, so a day must be counted
     // once. Guard against duplicate Shift rows for the same date (which would
     // otherwise inflate the total, e.g. 32 in a 31-day month) by keeping only
@@ -144,7 +137,9 @@ export default function FairnessMatrixModal({ isOpen, onClose, currentUser }) {
           .map((m) => ({
             id: m.id,
             name: m.full_name || "לא ידוע",
-            isActive: activeEmails.has((m.email || "").toLowerCase()),
+            // A group's active member (their own group's ShiftGroup row is
+            // active and its username is theirs) is listed first for the group.
+            isActive: isActiveGroupMember(m, shiftGroups),
           }))
           .sort((a, b) => {
             // Active member first, then by name.
