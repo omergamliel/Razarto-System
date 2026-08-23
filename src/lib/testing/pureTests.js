@@ -4,6 +4,8 @@ import {
   subtractSegments,
   computeCoverageSummary,
   resolveOwnerId,
+  formatShiftLines,
+  buildGeneralTemplate,
 } from "@/components/calendar/whatsappTemplates";
 import { distributeShifts } from "@/components/calendar/shiftDistributionAlgorithm";
 import { computeNotificationEvents } from "@/components/sidebar/notificationEvents";
@@ -958,12 +960,65 @@ function testRequestTabMembership() {
   );
 }
 
+// --------------------------------------------------------------------------
+// whatsappTemplates: a general/head-to-head request can bundle several
+// NON-CONTIGUOUS shifts, so the message must list each one rather than a single
+// misleading start→end span. Also guards that the templates carry no fragile
+// compound emoji (ZWJ sequences / skin-tone modifiers), which break on WhatsApp
+// Web.
+// --------------------------------------------------------------------------
+function testWhatsappShiftLines() {
+  // Three shifts with unrelated dates between them, given OUT of order — the
+  // formatter sorts chronologically and emits one line each.
+  const lines = formatShiftLines([
+    { start_date: "2026-08-12", start_time: "21:00", end_date: "2026-08-13", end_time: "07:00" },
+    { start_date: "2026-08-05", start_time: "09:00", end_date: "2026-08-05", end_time: "17:00" },
+    { start_date: "2026-08-08", start_time: "09:00", end_date: "2026-08-08", end_time: "17:00" },
+  ]);
+  const split = lines.split("\n");
+  assertEqual(split.length, 3, "every bundled shift gets its own line");
+  assert(split[0].includes("05/08/2026"), "lines are sorted: earliest shift first");
+  assert(split[2].includes("12/08/2026"), "lines are sorted: latest shift last");
+  // Same-day shift collapses to one date; overnight shift spells out both ends.
+  assert(split[0].includes("09:00 עד 17:00") && !split[0].includes("06/08"),
+    "a same-day shift shows one date with its time range");
+  assert(split[2].includes("12/08/2026 21:00 עד 13/08/2026 07:00"),
+    "an overnight shift spells out both date-times");
+
+  // The multi-shift list actually reaches the built message.
+  const msg = buildGeneralTemplate({
+    originalOwnerName: "דנה",
+    shifts: [
+      { start_date: "2026-08-05", start_time: "09:00", end_date: "2026-08-05", end_time: "17:00" },
+      { start_date: "2026-08-08", start_time: "09:00", end_date: "2026-08-08", end_time: "17:00" },
+    ],
+    approvalUrl: "https://example.test/x",
+  });
+  assert(msg.includes("05/08/2026") && msg.includes("08/08/2026"),
+    "the general message lists every bundled shift");
+
+  // No compound emoji (ZWJ U+200D or skin-tone modifiers U+1F3FB–U+1F3FF) that
+  // render broken on WhatsApp Web.
+  const emptyOk = buildGeneralTemplate({ originalOwnerName: "x", shifts: [] });
+  const ZWJ = String.fromCharCode(0x200d);
+  const hasCompoundEmoji = (s) =>
+    s.includes(ZWJ) || /[\u{1F3FB}-\u{1F3FF}]/u.test(s);
+  assert(!hasCompoundEmoji(msg) && !hasCompoundEmoji(emptyOk),
+    "templates use no ZWJ/skin-tone emoji that break on WhatsApp Web");
+}
+
 export const pureTests = [
   {
     id: "pure-resolve-swap-type",
     name: "resolveSwapType: full vs. partial detection",
     category: "pure",
     run: testResolveSwapType,
+  },
+  {
+    id: "pure-whatsapp-shift-lines",
+    name: "whatsappTemplates: multi-shift listing (non-contiguous) + WhatsApp-safe emoji",
+    category: "pure",
+    run: testWhatsappShiftLines,
   },
   {
     id: "pure-subtract-segments",
