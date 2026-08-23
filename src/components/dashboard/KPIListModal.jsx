@@ -320,10 +320,10 @@ function buildDemoKpiData() {
       status: "Open",
       ...reqDates(shiftById("demo-sh-mai")),
     },
-    // open — plain full request by someone else
+    // open — plain whole-shift (general) request by someone else
     {
       id: "demo-req-full",
-      request_type: "Full",
+      request_type: "General",
       requesting_user_id: 900003,
       shift_ids: ["demo-sh-ido"],
       offered_shift_ids: [],
@@ -885,11 +885,11 @@ export default function KPIListModal({
 
   const baseData = useMemo(() => {
     const openRequests = swapRequestsAll.filter((r) => isOpenStatus(r.status));
-    // Head2Head requests are still full-shift swaps (just targeted at a
-    // specific person's shift instead of open to anyone), so they belong
-    // in the same "בקשות להחלפה מלאה" bucket as plain Full requests.
+    // Whole-shift swap requests: General (open to anyone), Head2Head (a
+    // targeted trade), and Gift (a one-directional handoff) all belong in this
+    // "בקשות להחלפה" bucket. Partial (windowed) requests get their own list.
     const fullRequests = openRequests.filter((r) =>
-      ["Full", "Head2Head", "General", "Gift"].includes(r.request_type),
+      ["Head2Head", "General", "Gift"].includes(r.request_type),
     );
     const partialRequests = openRequests.filter(
       (r) => r.request_type === "Partial",
@@ -1333,11 +1333,6 @@ export default function KPIListModal({
                             {item.request_type === "Gift" && (
                               <span className="text-[11px] px-2 py-0.5 rounded-full bg-pink-100 text-pink-700 border border-pink-200">
                                 מתנה 🎁
-                              </span>
-                            )}
-                            {item.request_type === "Full" && (
-                              <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-200">
-                                מלאה
                               </span>
                             )}
                             {item.request_type === "Partial" && (
