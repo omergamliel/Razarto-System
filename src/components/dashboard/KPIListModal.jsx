@@ -772,7 +772,19 @@ export default function KPIListModal({
 
         const coverageSegments = mergeOverlappingSegments(
           coveragesAll
-            .filter((c) => c.shift_id === shift.id)
+            // Only real "cover" takeovers count toward the covered window. The
+            // base "assignment" row is ownership (it spans the whole shift), so
+            // including it would mask the gap — the window would read as fully
+            // covered, dropping semi-accepted partials from the list even though
+            // the KPI badge (which excludes assignment) still counts them. Match
+            // the same exclusion used by enrichRequestsWithShiftInfo and the
+            // header's inProgressPartialCount.
+            .filter(
+              (c) =>
+                c.shift_id === shift.id &&
+                c.type !== "assignment" &&
+                c.status !== "Cancelled",
+            )
             .map((c, idx) => {
               const covStart = new Date(
                 `${c.cover_start_date || startDate}T${c.cover_start_time || startTime}`,
