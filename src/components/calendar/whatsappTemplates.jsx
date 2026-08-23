@@ -452,7 +452,7 @@ export const normalizeShiftContext = (
     request_type:
       activeRequest?.request_type ||
       shift.request_type ||
-      (requestType === "partial" ? "Partial" : "Full"),
+      (requestType === "partial" ? "Partial" : "General"),
     original_user_data: originalUser,
     original_user_name: ownerName,
     // Number() guards against original_user_id/covering_user_id occasionally
@@ -508,8 +508,8 @@ export const buildGiftDeepLink = (requestId) => {
 // the original hard-coded wording; an admin override replaces the whole string.
 export const WHATSAPP_TEMPLATES = {
   swap: {
-    label: "בקשת החלפה (מלאה / חלקית)",
-    description: "נשלחת לאחר פתיחת בקשת החלפה מלאה או חלקית על משמרת.",
+    label: "בקשת החלפה חלקית",
+    description: "נשלחת לאחר פתיחת בקשת החלפה חלקית (כיסוי חלון מסוים במשמרת).",
     placeholders: [
       "ownerName",
       "startDate",
@@ -536,8 +536,9 @@ export const WHATSAPP_TEMPLATES = {
       "היי *{targetUserName}*! 👋🏼\nאני מעוניין להחליף איתך משמרת רז״רתו ראש בראש:\n\n🫡 הצעת החלפה:\n🫵🏼 המשמרת שלך: *{targetShiftOwner}* {targetShiftDate}\n🤞🏼 המשמרת שלי: *{myShiftOwner}* {myShiftDate}\n\n✅ לחץ כאן לאישור ההחלפה בתוך המערכת:\n{link}",
   },
   general: {
-    label: "בקשת החלפה כללית",
-    description: "נשלחת לכל הצוות בבקשת החלפה כללית (ללא נמען מסוים).",
+    label: "בקשת החלפה כללית (משמרת מלאה)",
+    description:
+      "נשלחת לכל הצוות בבקשת החלפה של משמרת מלאה — פתוחה לכולם, ללא נמען מסוים.",
     placeholders: [
       "ownerName",
       "startDate",
