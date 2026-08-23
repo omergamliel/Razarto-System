@@ -67,6 +67,7 @@ import {
 } from "@/components/ui/select";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44, logActivity } from "@/api/base44Client";
+import { isActiveGroupMember as isActiveGroupMemberRule } from "@/lib/utils";
 import { toast } from "sonner";
 import {
   DropdownMenu,
@@ -462,13 +463,11 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   // ShiftGroup row is marked active and its active-member email is theirs.
   // Only the active member of each group is assigned shifts by distribution, so
   // the users tab highlights their symbol to make that visible at a glance.
+  // Delegated to the shared rule (src/lib/utils.js) so the star shown here can't
+  // drift from the runtime gate (canTakeShifts) or the assignment dropdowns.
   const isActiveGroupMember = useCallback(
-    (person) => {
-      if (!person?.sign) return false;
-      const seg = activeGroupBySymbol.get(person.sign);
-      return Boolean(seg?.active) && seg?.username === person.email;
-    },
-    [activeGroupBySymbol],
+    (person) => isActiveGroupMemberRule(person, shiftGroups),
+    [shiftGroups],
   );
 
   // Candidates for the "add members to group" dialog: everyone not already in
@@ -1049,19 +1048,17 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   const runDistributionMutation = useMutation({
     mutationFn: async ({ startDate, endDate }) => {
       // Strict active-only rule: a person is assigned shifts only if they are
-      // the active member of their group (a ShiftGroup row with active=true
-      // whose username matches their email), on top of the RR/Manager
-      // permission check. Users in no group, or non-active group members, are
-      // excluded.
-      const activeEmails = new Set(
-        shiftGroups
-          .filter((group) => group.active && group.username)
-          .map((group) => group.username),
-      );
+      // the active member of THEIR OWN group (their group's ShiftGroup row is
+      // active AND its username is theirs), on top of the RR/Manager permission
+      // check. isActiveGroupMember scopes to the person's own group (by sign),
+      // so a stale/duplicate active row under another group — or a row whose
+      // `active` flag lingered true after its member was cleared — can't smuggle
+      // a non-active person into the rotation. Users in no group, or non-active
+      // group members, are excluded.
       const eligiblePeople = authorizedPeople.filter(
         (p) =>
           ["RR", "Manager"].includes(p.permissions) &&
-          activeEmails.has(p.email),
+          isActiveGroupMember(p),
       );
       if (eligiblePeople.length === 0) {
         throw new Error(
