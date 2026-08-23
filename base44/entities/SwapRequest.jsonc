@@ -16,7 +16,6 @@
     "request_type": {
       "type": "string",
       "enum": [
-        "Full",
         "Partial",
         "Head2Head",
         "General"
