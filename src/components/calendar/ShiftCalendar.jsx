@@ -460,9 +460,7 @@ export default function ShiftCalendar() {
   useEffect(() => {
     if (!currentUser?.is_authorized || !authorizedPerson) return;
     if (authorizedPerson.serial_id == null) return;
-    if (
-      Number(currentUser.serial_id) === Number(authorizedPerson.serial_id)
-    )
+    if (Number(currentUser.serial_id) === Number(authorizedPerson.serial_id))
       return;
     base44.auth
       .updateMe({ serial_id: authorizedPerson.serial_id })
@@ -578,8 +576,7 @@ export default function ShiftCalendar() {
       swapRequests.length > 0
         ? coverages.filter(
             (c) =>
-              c.type === "cover" &&
-              !shiftIdsWithBackingRequest.has(c.shift_id),
+              c.type === "cover" && !shiftIdsWithBackingRequest.has(c.shift_id),
           )
         : [];
 
@@ -835,7 +832,8 @@ export default function ShiftCalendar() {
       const ownShift = shifts.find((s) => s.id === ownShiftIds[0]);
       const targetOwner = allUsers.find(
         (u) =>
-          Number(u.serial_id) === Number(resolveOwnerId(targetShift, coverages)),
+          Number(u.serial_id) ===
+          Number(resolveOwnerId(targetShift, coverages)),
       );
       const fmt = (d) => (d ? format(new Date(d), "dd/MM") : "");
       toast.success("בקשות ההחלפה נשלחו בהצלחה!", {
@@ -1594,14 +1592,11 @@ export default function ShiftCalendar() {
       // those referencing rows first so the shift delete can actually go
       // through.
       const relatedRequests = swapRequests.filter(
-        (r) =>
-          r.shift_ids?.includes(id) || r.offered_shift_ids?.includes(id),
+        (r) => r.shift_ids?.includes(id) || r.offered_shift_ids?.includes(id),
       );
       const relatedCoverages = coverages.filter((c) => c.shift_id === id);
       await Promise.all([
-        ...relatedRequests.map((r) =>
-          base44.entities.SwapRequest.delete(r.id),
-        ),
+        ...relatedRequests.map((r) => base44.entities.SwapRequest.delete(r.id)),
         ...relatedCoverages.map((c) =>
           base44.entities.ShiftCoverage.delete(c.id),
         ),
@@ -2285,8 +2280,15 @@ export default function ShiftCalendar() {
           }
           acceptGeneralRequestMutation.mutate(item);
         }}
-        onAcceptGift={(item) => acceptGiftMutation.mutate(item)}
+        onAcceptGift={(item) => {
+          if (!canTakeShifts) {
+            showRoleError();
+            return;
+          }
+          acceptGiftMutation.mutate(item);
+        }}
         onStartCounterOffer={(item) => handleStartCounterOffer(item)}
+        canTakeShifts={tourDemo ? true : canTakeShifts}
         actionsDisabled={tourDemo}
         demoMode={tourDemo}
       />
