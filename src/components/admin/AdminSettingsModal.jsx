@@ -37,7 +37,6 @@ import {
   Globe,
   Scale,
   Loader2,
-  UserCheck,
   FlaskConical,
   XCircle,
   Download,
@@ -274,7 +273,6 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
 
   const [isEditUserOpen, setIsEditUserOpen] = useState(false);
   const [isPermissionsOpen, setIsPermissionsOpen] = useState(false);
-  const [isRoleOpen, setIsRoleOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
 
   // --- DATA STATES ---
@@ -283,14 +281,11 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     department: "",
     email: "",
     permissions: "RR",
-    role: "RR",
     sign: "",
   });
   const [editingUser, setEditingUser] = useState(null);
   const [permissionUser, setPermissionUser] = useState(null);
   const [selectedPermission, setSelectedPermission] = useState("");
-  const [roleUser, setRoleUser] = useState(null);
-  const [selectedRole, setSelectedRole] = useState("");
   const [isSignOpen, setIsSignOpen] = useState(false);
   const [signUser, setSignUser] = useState(null);
   const [signValue, setSignValue] = useState("");
@@ -412,35 +407,35 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     })();
   }, [isOpen, authorizedPeople, queryClient]);
 
-  // Group "active member" records (repurposed ShiftSegment entity): one row per
-  // group symbol that currently has an active member — { symbol, username
-  // (active member's email), active }. Drives the "ניהול קבוצות" tab and gates
-  // shift distribution (only active members are assigned shifts).
-  const { data: shiftSegments = [] } = useQuery({
-    queryKey: ["shift-segments"],
-    queryFn: () => base44.entities.ShiftSegment.list(),
+  // Group "active member" records (ShiftGroup entity): one row per group symbol
+  // that currently has an active member — { symbol, username (active member's
+  // email), active }. Drives the "ניהול קבוצות" tab and gates shift
+  // distribution (only active members are assigned shifts).
+  const { data: shiftGroups = [] } = useQuery({
+    queryKey: ["shift-groups"],
+    queryFn: () => base44.entities.ShiftGroup.list(),
     enabled: isOpen,
   });
 
-  // symbol -> the ShiftSegment row for that group (holds its active member, if
-  // any). Each ShiftSegment row now IS a group definition.
-  const activeSegmentBySymbol = useMemo(() => {
+  // symbol -> the ShiftGroup row for that group (holds its active member, if
+  // any). Each ShiftGroup row now IS a group definition.
+  const activeGroupBySymbol = useMemo(() => {
     const map = new Map();
-    shiftSegments.forEach((seg) => {
-      if (seg.symbol) map.set(seg.symbol, seg);
+    shiftGroups.forEach((group) => {
+      if (group.symbol) map.set(group.symbol, group);
     });
     return map;
-  }, [shiftSegments]);
+  }, [shiftGroups]);
 
-  // The live list of groups: every ShiftSegment symbol, plus any symbol already
+  // The live list of groups: every ShiftGroup symbol, plus any symbol already
   // referenced by a user's `sign` (so pre-existing groups without a row still
   // appear). Sorted with Hebrew collation. This replaces the old fixed list.
   const groupSymbols = useMemo(() => {
     const set = new Set();
-    shiftSegments.forEach((seg) => seg.symbol && set.add(seg.symbol));
+    shiftGroups.forEach((group) => group.symbol && set.add(group.symbol));
     authorizedPeople.forEach((p) => p.sign && set.add(p.sign));
     return Array.from(set).sort((a, b) => a.localeCompare(b, "he"));
-  }, [shiftSegments, authorizedPeople]);
+  }, [shiftGroups, authorizedPeople]);
 
   // symbol -> that group's members (people whose `sign` is the symbol),
   // sorted by name; drives the "ניהול קבוצות" tab.
@@ -458,16 +453,16 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   }, [authorizedPeople]);
 
   // Whether a person is the *active* member of their group — i.e. their group's
-  // ShiftSegment row is marked active and its active-member email is theirs.
+  // ShiftGroup row is marked active and its active-member email is theirs.
   // Only the active member of each group is assigned shifts by distribution, so
   // the users tab highlights their symbol to make that visible at a glance.
   const isActiveGroupMember = useCallback(
     (person) => {
       if (!person?.sign) return false;
-      const seg = activeSegmentBySymbol.get(person.sign);
+      const seg = activeGroupBySymbol.get(person.sign);
       return Boolean(seg?.active) && seg?.username === person.email;
     },
-    [activeSegmentBySymbol],
+    [activeGroupBySymbol],
   );
 
   // Candidates for the "add members to group" dialog: everyone not already in
@@ -698,10 +693,6 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         0,
       );
       const created = await base44.entities.AuthorizedPerson.create({
-        // Every user entering the system defaults to role 'RR' (allowed to
-        // take shifts) — managers can flip individuals to 'None' afterwards
-        // via "ניהול תפקיד".
-        role: "RR",
         ...userData,
         serial_id: maxId + 1,
       });
@@ -739,7 +730,6 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         department: "",
         email: "",
         permissions: "RR",
-        role: "RR",
         sign: "",
       }); // Reset form
     },
@@ -762,7 +752,6 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       toast.success("הפרטים עודכנו בהצלחה!");
       setIsEditUserOpen(false);
       setIsPermissionsOpen(false);
-      setIsRoleOpen(false);
       setIsSignOpen(false);
     },
     onError: () => toast.error("שגיאה בעדכון הפרטים."),
@@ -789,14 +778,14 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   });
 
   // 3b. Groups — set a group's active member. Only one member per group may be
-  // active (or none): the group's single ShiftSegment row points its `username`
+  // active (or none): the group's single ShiftGroup row points its `username`
   // at the active member's email. Passing person=null (or clicking the
   // already-active member) clears the active member WITHOUT deleting the row —
   // the row is the group definition itself, so it must survive. The active
   // member must belong to the group already.
   const setActiveMemberMutation = useMutation({
     mutationFn: async ({ symbol, person }) => {
-      const existing = activeSegmentBySymbol.get(symbol);
+      const existing = activeGroupBySymbol.get(symbol);
       // The email of the active member being replaced (if any), captured before
       // we overwrite the row, so onSuccess can offer to migrate their shifts.
       const previousActiveEmail =
@@ -805,7 +794,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         !person || (existing?.active && existing?.username === person.email);
       if (clearing) {
         if (existing) {
-          await base44.entities.ShiftSegment.update(existing.id, {
+          await base44.entities.ShiftGroup.update(existing.id, {
             username: null,
             active: false,
           });
@@ -813,13 +802,13 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         return { previousActiveEmail, cleared: true };
       }
       if (existing) {
-        await base44.entities.ShiftSegment.update(existing.id, {
+        await base44.entities.ShiftGroup.update(existing.id, {
           username: person.email,
           active: true,
         });
       } else {
         // Group referenced only by members' `sign` and no row yet — create it.
-        await base44.entities.ShiftSegment.create({
+        await base44.entities.ShiftGroup.create({
           symbol,
           username: person.email,
           active: true,
@@ -833,9 +822,9 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
           ? `ניקוי משתמש פעיל בקבוצה ${symbol}`
           : `עדכון משתמש פעיל בקבוצה ${symbol}`,
         type: "עדכון מערכת",
-        entity: "ShiftSegment",
+        entity: "ShiftGroup",
       });
-      queryClient.invalidateQueries(["shift-segments"]);
+      queryClient.invalidateQueries(["shift-groups"]);
       offerFutureShiftMigration(result, person);
     },
     onError: () => toast.error("שגיאה בעדכון המשתמש הפעיל בקבוצה."),
@@ -908,13 +897,13 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     });
   };
 
-  // 3b-i. Groups — add a new group (a ShiftSegment row with just a symbol).
+  // 3b-i. Groups — add a new group (a ShiftGroup row with just a symbol).
   const addGroupMutation = useMutation({
     mutationFn: async (symbol) => {
       const trimmed = (symbol || "").trim();
       if (!trimmed) throw new Error("empty");
       if (groupSymbols.includes(trimmed)) throw new Error("duplicate");
-      await base44.entities.ShiftSegment.create({
+      await base44.entities.ShiftGroup.create({
         symbol: trimmed,
         active: false,
       });
@@ -923,9 +912,9 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       logActivity({
         action: `הוספת קבוצה: ${(symbol || "").trim()}`,
         type: "עדכון מערכת",
-        entity: "ShiftSegment",
+        entity: "ShiftGroup",
       });
-      queryClient.invalidateQueries(["shift-segments"]);
+      queryClient.invalidateQueries(["shift-groups"]);
       toast.success("הקבוצה נוספה.");
       setNewGroupSymbol("");
     },
@@ -936,12 +925,12 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     },
   });
 
-  // 3b-ii. Groups — remove a group entirely: delete its ShiftSegment row (if
+  // 3b-ii. Groups — remove a group entirely: delete its ShiftGroup row (if
   // any) and clear `sign` from every member so no user points at a dead group.
   const removeGroupMutation = useMutation({
     mutationFn: async (symbol) => {
-      const seg = activeSegmentBySymbol.get(symbol);
-      if (seg) await base44.entities.ShiftSegment.delete(seg.id);
+      const seg = activeGroupBySymbol.get(symbol);
+      if (seg) await base44.entities.ShiftGroup.delete(seg.id);
       const members = authorizedPeople.filter((p) => p.sign === symbol);
       await Promise.all(
         members.map((m) =>
@@ -953,9 +942,9 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       logActivity({
         action: `הסרת קבוצה: ${symbol}`,
         type: "עדכון מערכת",
-        entity: "ShiftSegment",
+        entity: "ShiftGroup",
       });
-      queryClient.invalidateQueries(["shift-segments"]);
+      queryClient.invalidateQueries(["shift-groups"]);
       queryClient.invalidateQueries(["authorized-people"]);
       toast.success("הקבוצה הוסרה.");
       setGroupToDelete(null);
@@ -972,7 +961,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       );
       await Promise.all(
         missing.map((s) =>
-          base44.entities.ShiftSegment.create({ symbol: s, active: false }),
+          base44.entities.ShiftGroup.create({ symbol: s, active: false }),
         ),
       );
     },
@@ -980,9 +969,9 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       logActivity({
         action: "יצירת קבוצות ברירת המחדל",
         type: "עדכון מערכת",
-        entity: "ShiftSegment",
+        entity: "ShiftGroup",
       });
-      queryClient.invalidateQueries(["shift-segments"]);
+      queryClient.invalidateQueries(["shift-groups"]);
       toast.success("קבוצות ברירת המחדל נוצרו.");
     },
     onError: () => toast.error("שגיאה ביצירת קבוצות ברירת המחדל."),
@@ -1019,9 +1008,9 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   const removeFromGroupMutation = useMutation({
     mutationFn: async ({ person }) => {
       await base44.entities.AuthorizedPerson.update(person.id, { sign: null });
-      const seg = person.sign ? activeSegmentBySymbol.get(person.sign) : null;
+      const seg = person.sign ? activeGroupBySymbol.get(person.sign) : null;
       if (seg && seg.active && seg.username === person.email) {
-        await base44.entities.ShiftSegment.update(seg.id, {
+        await base44.entities.ShiftGroup.update(seg.id, {
           username: null,
           active: false,
         });
@@ -1035,7 +1024,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         entityId: person?.id,
       });
       queryClient.invalidateQueries(["authorized-people"]);
-      queryClient.invalidateQueries(["shift-segments"]);
+      queryClient.invalidateQueries(["shift-groups"]);
       toast.success("המשתמש הוסר מהקבוצה.");
     },
     onError: () => toast.error("שגיאה בהסרת המשתמש מהקבוצה."),
@@ -1047,24 +1036,23 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   const runDistributionMutation = useMutation({
     mutationFn: async ({ startDate, endDate }) => {
       // Strict active-only rule: a person is assigned shifts only if they are
-      // the active member of their group (a ShiftSegment row with active=true
-      // whose username matches their email), on top of the existing RR/Manager
-      // + role check. Users in no group, or non-active group members, are
+      // the active member of their group (a ShiftGroup row with active=true
+      // whose username matches their email), on top of the RR/Manager
+      // permission check. Users in no group, or non-active group members, are
       // excluded.
       const activeEmails = new Set(
-        shiftSegments
-          .filter((seg) => seg.active && seg.username)
-          .map((seg) => seg.username),
+        shiftGroups
+          .filter((group) => group.active && group.username)
+          .map((group) => group.username),
       );
       const eligiblePeople = authorizedPeople.filter(
         (p) =>
           ["RR", "Manager"].includes(p.permissions) &&
-          (p.role || "RR") !== "None" &&
           activeEmails.has(p.email),
       );
       if (eligiblePeople.length === 0) {
         throw new Error(
-          "אין עובדים זכאים לחלוקה — נדרש משתמש פעיל בקבוצה (RR או Manager, עם תפקיד RR). הגדירו משתמשים פעילים בלשונית 'ניהול קבוצות'.",
+          "אין עובדים זכאים לחלוקה — נדרש משתמש פעיל בקבוצה (RR או Manager, פעיל בקבוצה). הגדירו משתמשים פעילים בלשונית 'ניהול קבוצות'.",
         );
       }
 
@@ -1336,19 +1324,6 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       await updateUserMutation.mutateAsync({
         id: permissionUser.id,
         data: { permissions: selectedPermission },
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleSaveRole = async () => {
-    if (!roleUser || !selectedRole) return;
-    setIsSubmitting(true);
-    try {
-      await updateUserMutation.mutateAsync({
-        id: roleUser.id,
-        data: { role: selectedRole },
       });
     } finally {
       setIsSubmitting(false);
@@ -1636,8 +1611,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                   <div className="col-span-2">מחלקה</div>
                   <div className="col-span-2">אימייל</div>
                   <div className="col-span-2">הרשאות</div>
-                  <div className="col-span-1">תפקיד</div>
-                  <div className="col-span-1">קבוצה</div>
+                  <div className="col-span-2">קבוצה</div>
                   <div className="col-span-1 text-center">קישוריות</div>
                   <div className="col-span-1 text-center">פעולות</div>
                 </div>
@@ -1674,16 +1648,6 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                               <span>{`מחלקה ${person.department}`}</span> •{" "}
                               <span style={{ color: permStyle.text }}>
                                 {person.permissions}
-                              </span>{" "}
-                              •{" "}
-                              <span
-                                className={
-                                  (person.role || "RR") === "RR"
-                                    ? "text-emerald-600"
-                                    : "text-gray-400"
-                                }
-                              >
-                                {person.role || "RR"}
                               </span>
                               {person.sign && (
                                 <>
@@ -1731,22 +1695,12 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                             </span>
                           </div>
 
-                          {/* Role (Styled: emerald for RR, gray for None) */}
-                          <div className="hidden md:block col-span-1">
-                            <span
-                              className={`inline-flex items-center px-2.5 py-0.5 rounded-lg text-xs font-bold border shadow-sm ${
-                                (person.role || "RR") === "RR"
-                                  ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                                  : "bg-gray-100 text-gray-500 border-gray-200"
-                              }`}
-                            >
-                              {person.role || "RR"}
-                            </span>
-                          </div>
-
                           {/* Sign — highlighted (amber + star) when this user is
-                              the active member of their group. */}
-                          <div className="hidden md:block col-span-1">
+                              the active member of their group. This standing (a
+                              ShiftGroup active member) is what now determines
+                              whether the person takes shifts, replacing the old
+                              per-person role flag. */}
+                          <div className="hidden md:block col-span-2">
                             <span
                               className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-xs font-bold border shadow-sm font-mono ${
                                 isActiveGroupMember(person)
@@ -1809,17 +1763,6 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                                 >
                                   <span>ניהול הרשאות</span>
                                   <Shield className="w-4 h-4" />
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={() => {
-                                    setRoleUser(person);
-                                    setSelectedRole(person.role || "RR");
-                                    setIsRoleOpen(true);
-                                  }}
-                                  className="flex items-center justify-end gap-2 cursor-pointer text-gray-700"
-                                >
-                                  <span>ניהול תפקיד</span>
-                                  <UserCheck className="w-4 h-4" />
                                 </DropdownMenuItem>
                                 <DropdownMenuItem
                                   onClick={() => {
@@ -1929,7 +1872,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 content-start">
                       {groupSymbols.map((symbol) => {
                     const members = membersBySymbol.get(symbol) || [];
-                    const activeSeg = activeSegmentBySymbol.get(symbol);
+                    const activeSeg = activeGroupBySymbol.get(symbol);
                     const activeEmail = activeSeg?.active
                       ? activeSeg.username
                       : null;
@@ -2994,25 +2937,6 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                     </SelectContent>
                   </Select>
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="new_user_role" className="text-right">
-                    תפקיד
-                  </Label>
-                  <Select
-                    value={newUser.role}
-                    onValueChange={(val) =>
-                      setNewUser({ ...newUser, role: val })
-                    }
-                  >
-                    <SelectTrigger className="w-full text-right" dir="rtl">
-                      <SelectValue placeholder="בחר תפקיד" />
-                    </SelectTrigger>
-                    <SelectContent dir="rtl">
-                      <SelectItem value="RR">RR — ניתן לקחת משמרות</SelectItem>
-                      <SelectItem value="None">None — לא ניתן לקחת משמרות</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
               </form>
               <DialogFooter className="flex-col sm:flex-row gap-2">
                 <Button variant="outline" onClick={handleCloseAddUser}>
@@ -3258,83 +3182,6 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
               className="bg-purple-600 hover:bg-purple-700 text-white"
             >
               {isSubmitting ? "מעדכן..." : "שמור הרשאות"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* --- 3B. ROLE MODAL (can this person take shifts?) --- */}
-      <Dialog open={isRoleOpen} onOpenChange={setIsRoleOpen}>
-        <DialogContent className="sm:max-w-[500px] text-right" dir="rtl">
-          <DialogHeader className="text-right">
-            <DialogTitle className="flex items-center gap-2 text-xl">
-              <div className="bg-orange-100 p-2 rounded-full">
-                <UserCheck className="w-5 h-5 text-orange-600" />
-              </div>
-              ניהול תפקיד
-            </DialogTitle>
-            <DialogDescription className="text-right">
-              בחר האם קיים אצל <b>{roleUser?.full_name}</b> תפקיד המאפשר לקחת
-              משמרות. משמרות (החלפות, כיסויים וחלוקה הוגנת) ניתנות לקיחה רק
-              כאשר תפקיד RR מוגדר למשתמש — שדה זה נפרד מהרשאות המשתמש ואינו
-              משנה אותן.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 py-4">
-            {/* RR Option */}
-            <div
-              onClick={() => setSelectedRole("RR")}
-              className={`cursor-pointer rounded-xl border-2 p-4 transition-all relative overflow-hidden group
-                ${selectedRole === "RR" ? "border-emerald-400 bg-emerald-50" : "border-gray-200 hover:border-emerald-200 hover:bg-gray-50"}
-              `}
-            >
-              <div className="flex flex-col items-center text-center gap-3">
-                <UserCheck className="w-10 h-10 text-emerald-500" />
-                <h3 className="font-bold text-gray-800">RR</h3>
-                <p className="text-xs text-gray-500 leading-tight">
-                  משמרות ניתנות לקיחה — החלפות, כיסויים וחלוקה הוגנת
-                </p>
-              </div>
-              {selectedRole === "RR" && (
-                <div className="absolute top-2 right-2 text-emerald-600">
-                  <Check className="w-5 h-5" />
-                </div>
-              )}
-            </div>
-
-            {/* None Option */}
-            <div
-              onClick={() => setSelectedRole("None")}
-              className={`cursor-pointer rounded-xl border-2 p-4 transition-all relative overflow-hidden group
-                ${selectedRole === "None" ? "border-red-400 bg-red-50" : "border-gray-200 hover:border-red-200 hover:bg-gray-50"}
-              `}
-            >
-              <div className="flex flex-col items-center text-center gap-3">
-                <UserX className="w-10 h-10 text-red-500" />
-                <h3 className="font-bold text-gray-800">None</h3>
-                <p className="text-xs text-gray-500 leading-tight">
-                  משמרות אינן ניתנות לקיחה בשום צורה
-                </p>
-              </div>
-              {selectedRole === "None" && (
-                <div className="absolute top-2 right-2 text-red-600">
-                  <Check className="w-5 h-5" />
-                </div>
-              )}
-            </div>
-          </div>
-
-          <DialogFooter className="flex-col sm:flex-row gap-2">
-            <Button variant="outline" onClick={() => setIsRoleOpen(false)}>
-              ביטול
-            </Button>
-            <Button
-              onClick={handleSaveRole}
-              disabled={isSubmitting}
-              className="bg-orange-600 hover:bg-orange-700 text-white"
-            >
-              {isSubmitting ? "מעדכן..." : "שמור תפקיד"}
             </Button>
           </DialogFooter>
         </DialogContent>
