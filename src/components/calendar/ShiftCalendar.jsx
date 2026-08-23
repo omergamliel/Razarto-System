@@ -431,13 +431,17 @@ export default function ShiftCalendar() {
   const linkUserMutation = useMutation({
     mutationFn: async () => {
       if (!authorizedPerson || !currentUser) return;
-      // Server-side onboarding: the backend function verifies the user's
-      // email is in the AuthorizedPerson whitelist (bypassing RLS with the
-      // service role), sets is_authorized: true on the platform User, and
-      // links the AuthorizedPerson record. This cannot be bypassed by
-      // client-side code changes — the verification happens on the server.
-      const res = await base44.functions.invoke("completeOnboarding", {});
-      return res.data;
+      // Client-side onboarding: the user's email was already verified against
+      // the AuthorizedPerson whitelist (the onboarding screen only renders
+      // when `authorizedPerson` resolved by email match), so here we flip
+      // is_authorized on the platform User — the flag every entity RLS read
+      // rule checks — and sync serial_id in the same call. (Backend functions
+      // require a Builder+ plan, so this runs from the client; the whitelist
+      // gate in AuthorizedRoute is the first layer of access control.)
+      return base44.auth.updateMe({
+        is_authorized: true,
+        serial_id: authorizedPerson.serial_id,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries();
@@ -450,14 +454,11 @@ export default function ShiftCalendar() {
   });
 
   // --- SYNC serial_id to the platform User entity ---
-  // inviteUser creates the platform User without a serial_id, and the
-  // completeOnboarding backend function links the AuthorizedPerson but
-  // doesn't copy serial_id onto the User. This keeps the two in sync: on
-  // mount (for users who already onboarded) and after onboarding resolves
-  // (new users), if the AuthorizedPerson has a serial_id the User entity
-  // doesn't yet reflect, push it over with updateMe.
+  // onboarding sets is_authorized + serial_id together, but as a safety net
+  // this reconciles serial_id for any authorized user whose User entity
+  // doesn't yet match their AuthorizedPerson.serial_id.
   useEffect(() => {
-    if (!authorizedPerson?.linked_user_id || !currentUser) return;
+    if (!currentUser?.is_authorized || !authorizedPerson) return;
     if (authorizedPerson.serial_id == null) return;
     if (
       Number(currentUser.serial_id) === Number(authorizedPerson.serial_id)
@@ -1877,8 +1878,8 @@ export default function ShiftCalendar() {
     );
   }
 
-  // 3. First Time Onboarding (User authorized but not linked)
-  if (!authorizedPerson.linked_user_id) {
+  // 3. First Time Onboarding (User authorized but not yet activated)
+  if (!currentUser?.is_authorized) {
     return (
       <OnboardingModal
         isOpen={true}
