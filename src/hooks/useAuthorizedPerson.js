@@ -114,3 +114,29 @@ export function useSystemSettings() {
   const { data: rows = [] } = useAppSettings();
   return useMemo(() => parseGroup(rows, "system") || {}, [rows]);
 }
+
+// The AppSettings setting_key that stores the global "treat RR users as
+// read-only viewers" switch (a JSON blob { rrAsViewer: boolean }). Admin-toggled
+// in AdminSettingsModal ▸ settings; read app-wide so every client reacts at once
+// through the shared ["app-settings"] cache.
+export const VIEWER_MODE_KEY = "viewer_mode";
+
+// True while the admin "RR ⇒ viewer" switch is on. When on, an RR user is
+// treated as a read-only viewer: they still see everything an RR user sees, but
+// cannot create swap requests or change any data. Their stored `permissions`
+// are NOT modified — this is a runtime overlay only.
+export function useViewerMode() {
+  const { data: rows = [] } = useAppSettings();
+  return useMemo(
+    () => Boolean(parseGroup(rows, VIEWER_MODE_KEY)?.rrAsViewer),
+    [rows],
+  );
+}
+
+// The single rule for "is THIS user currently a read-only viewer": the global
+// switch is on AND their real permission level is the base "RR" role. Managers
+// and Admins are never downgraded. Kept here so every consumer derives it the
+// same way and the overlay can't drift between call sites.
+export function isViewerFor(permissions, viewerModeOn) {
+  return Boolean(viewerModeOn) && permissions === "RR";
+}
