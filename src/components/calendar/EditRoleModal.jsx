@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
+import { isActiveGroupMember } from '@/lib/utils';
 
 export default function EditRoleModal({ 
   isOpen, 
@@ -34,12 +35,6 @@ export default function EditRoleModal({
     queryFn: () => base44.entities.ShiftGroup.list(),
     enabled: isOpen
   });
-  const activeMemberEmails = new Set(
-    shiftGroups
-      .filter((group) => group.active && group.username)
-      .map((group) => group.username.toLowerCase())
-  );
-
   // 2. Pre-fill data from existing shift
   useEffect(() => {
     if (shift && authorizedPeople.length > 0) {
@@ -75,9 +70,10 @@ export default function EditRoleModal({
   if (!isOpen || !shift) return null;
 
   // Only the active member of a group can be assigned shifts — non-active
-  // members (and anyone in no group) are excluded from the dropdown.
+  // members (and anyone in no group) are excluded from the dropdown. Uses the
+  // shared, group-scoped rule (a lingering active row can't reinstate someone).
   const rrPeople = authorizedPeople.filter(u =>
-    activeMemberEmails.has((u.email || '').toLowerCase())
+    isActiveGroupMember(u, shiftGroups)
   );
 
   // Get unique departments from AuthorizedPerson list
