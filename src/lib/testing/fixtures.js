@@ -41,7 +41,6 @@ export function createTestContext() {
       email: `qa-test-${serial_id}@qa-test.local`,
       department: "א",
       permissions: "RR",
-      role: "RR",
       ...overrides,
       serial_id,
     });
