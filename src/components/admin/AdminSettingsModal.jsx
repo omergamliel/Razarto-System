@@ -1882,11 +1882,21 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                   <div className="overflow-y-auto flex-1 min-h-0 custom-scrollbar p-3 md:p-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 content-start">
                       {groupSymbols.map((symbol) => {
-                        const members = membersBySymbol.get(symbol) || [];
                         const activeSeg = activeGroupBySymbol.get(symbol);
                         const activeEmail = activeSeg?.active
                           ? activeSeg.username
                           : null;
+                        // Order the active member first, keeping everyone else in
+                        // the existing name-sorted order (membersBySymbol is
+                        // already sorted by full_name).
+                        const members = [...(membersBySymbol.get(symbol) || [])].sort(
+                          (a, b) => {
+                            const aActive = activeEmail && a.email === activeEmail;
+                            const bActive = activeEmail && b.email === activeEmail;
+                            if (aActive !== bActive) return aActive ? -1 : 1;
+                            return 0;
+                          },
+                        );
                         // Only treat the group as "has active" when its active email
                         // still belongs to a current member of the group.
                         const hasActiveMember =
