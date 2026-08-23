@@ -680,6 +680,26 @@ function testShiftActionFlags() {
     "the owner of an active request can share it on WhatsApp");
   assert(!flags({ hasActiveRequest: true, isRequestOwner: false }).canWhatsappShare,
     "a non-owner can't share someone else's request on WhatsApp");
+
+  // Read-only viewer overlay (admin "RR ⇒ viewer" switch): every data-mutating
+  // action is stripped, INCLUDING both cancels (which canTakeShifts=false leaves
+  // intact), while the non-mutating exports survive.
+  const viewerOwn = flags({
+    isViewer: true,
+    isOwnShift: true,
+    hasAnyRequest: true,
+    hasActiveRequest: true,
+    isRequestOwner: true,
+  });
+  assert(!viewerOwn.canRequestSwap, "a viewer can't open a swap request");
+  assert(!viewerOwn.canCancelOwnSwap, "a viewer can't cancel their own swap");
+  assert(!viewerOwn.canGift, "a viewer can't gift");
+  assert(!viewerOwn.canOfferCover, "a viewer can't offer to cover");
+  assert(!viewerOwn.canHeadToHead, "a viewer can't propose a head-to-head");
+  assert(viewerOwn.canAddToCalendarOrEmail, "a viewer keeps the calendar/email export");
+  assert(viewerOwn.canWhatsappShare, "a viewer keeps the WhatsApp share export");
+  const viewerCoverage = flags({ isViewer: true, hasMyCoverageEntry: true });
+  assert(!viewerCoverage.canCancelCoverage, "a viewer can't cancel a coverage they hold");
 }
 
 // --------------------------------------------------------------------------
@@ -848,6 +868,36 @@ function testRequestItemButtons() {
   );
   assert(activeOwnShift.includes("requestSwap"),
     "an active viewer can request a swap on their own shift");
+
+  // Read-only viewer overlay (admin "RR ⇒ viewer" switch): even an ACTIVE member
+  // keeps only the non-mutating exports — every cancel/decline/take/accept/
+  // request button is stripped.
+  const asViewer = (item, type) =>
+    deriveRequestItemButtons({ item, currentUser, type, canTakeShifts: true, isViewer: true });
+  const viewerMyRequest = asViewer(
+    { id: "v1", request_type: "General", requesting_user_id: 1, status: "Open" },
+    "swap_requests",
+  );
+  assert(sameSet(viewerMyRequest, ["whatsapp"]),
+    `a viewer keeps only the share button on their own request, got ${JSON.stringify(viewerMyRequest)}`);
+  const viewerIncomingGift = asViewer(
+    { id: "v2", request_type: "Gift", requesting_user_id: 2, original_user_id: 1, status: "Open" },
+    "swap_requests",
+  );
+  assert(sameSet(viewerIncomingGift, []),
+    `a viewer can't even decline an incoming gift, got ${JSON.stringify(viewerIncomingGift)}`);
+  const viewerOwnShift = deriveRequestItemButtons({
+    item: { id: "v3", is_shift_object: true, requesting_user_id: 1 },
+    currentUser,
+    type: "my_shifts",
+    isFutureShiftsView: true,
+    canTakeShifts: true,
+    isViewer: true,
+  });
+  assert(!viewerOwnShift.includes("requestSwap"),
+    "a viewer can't request a swap on their own shift");
+  assert(viewerOwnShift.includes("addToCalendar"),
+    "a viewer keeps the add-to-calendar export on their own future shift");
 }
 
 // --------------------------------------------------------------------------
