@@ -17,6 +17,7 @@ export default function HeadToHeadSelectorModal({
   onClose,
   targetShift,
   currentUser,
+  canTakeShifts,
   onRoleBlocked,
 }) {
   const [selectedShift, setSelectedShift] = useState(null);
@@ -176,9 +177,12 @@ export default function HeadToHeadSelectorModal({
       return;
     }
     // Sending this proposal is ultimately an attempt to take targetShift in
-    // exchange — blocked for role 'None' (separate from permissions), shown
-    // via the shared bottom-of-page banner rather than the inline error here.
-    if ((currentUser?.role || "RR") === "None") {
+    // exchange — blocked for anyone who is not the active member of their group
+    // (per the ShiftGroup active-member rule, passed in as canTakeShifts;
+    // separate from permissions), shown via the shared bottom-of-page banner
+    // rather than the inline error here. Defaults to allowed when the prop is
+    // absent (e.g. isolated/unit-test rendering).
+    if (canTakeShifts === false) {
       onClose();
       onRoleBlocked?.();
       return;
