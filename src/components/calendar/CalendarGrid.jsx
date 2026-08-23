@@ -34,22 +34,22 @@ export default function CalendarGrid({
     queryFn: () => base44.entities.AuthorizedPerson.list(),
   });
 
-  // Group definitions (ShiftSegment): each row that is `active` names the one
+  // Group definitions (ShiftGroup): each row that is `active` names the one
   // active member of a group by email. Distribution only ever assigns shifts to
   // these active members, so a shift owned by anyone NOT in this set is flagged
   // (rendered orange in ShiftCell) to surface an out-of-policy assignment.
-  const { data: shiftSegments = [] } = useQuery({
-    queryKey: ['shift-segments'],
-    queryFn: () => base44.entities.ShiftSegment.list(),
+  const { data: shiftGroups = [] } = useQuery({
+    queryKey: ['shift-groups'],
+    queryFn: () => base44.entities.ShiftGroup.list(),
   });
 
   const activeMemberEmails = React.useMemo(() => {
     const set = new Set();
-    shiftSegments.forEach((seg) => {
-      if (seg.active && seg.username) set.add(seg.username);
+    shiftGroups.forEach((group) => {
+      if (group.active && group.username) set.add(group.username);
     });
     return set;
-  }, [shiftSegments]);
+  }, [shiftGroups]);
 
   // Admin-configurable color (תצוגה קלנדרית tab) for a shift assigned to a
   // non-active group member. Shown in the legend and applied to the cell for
