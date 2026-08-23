@@ -152,9 +152,15 @@ export function deriveRequestItemFlags(item, { currentUser, type }) {
   const isMyRequest = item.requesting_user_id === myId;
   const isPartial = (item.request_type || "").toLowerCase() === "partial";
 
+  // The "approved" KPI is read-only history (החלפות שבוצעו); a closed request
+  // surfaced there must never offer accept/decline actions. These two flags
+  // don't otherwise key off request status, so an already-closed incoming
+  // h2h/gift could leak its action buttons into the history list — gate them.
+  const isHistoryView = type === "approved";
   // Head2Head where one of the offered/target shifts is mine — someone is
   // proposing to trade with me specifically; I can accept/decline.
   const isIncomingHeadToHead =
+    !isHistoryView &&
     item.request_type === "Head2Head" &&
     !isMyRequest &&
     Boolean(
@@ -162,6 +168,7 @@ export function deriveRequestItemFlags(item, { currentUser, type }) {
     );
   // Gift offer addressed to me: someone offered to take one of my shifts.
   const isIncomingGift =
+    !isHistoryView &&
     item.request_type === "Gift" &&
     !isMyRequest &&
     item.original_user_id === myId;
@@ -224,7 +231,7 @@ export function deriveRequestItemButtons({
   }
 
   if (flags.isPartialGapOwner && flags.hasBackingRequest) {
-    buttons.push("cancelPartialGap");
+    buttons.push("cancelPartialGap", "whatsapp");
   }
 
   if (flags.isGeneralRequestForOthers && canTakeShifts) {
