@@ -68,6 +68,9 @@ export default function ShiftDetailsModal({
   onGoToRequest,
   currentUser,
   canTakeShifts: canTakeShiftsProp,
+  // Global read-only overlay (admin "RR ⇒ viewer" switch): suppresses every
+  // data-mutating action button, leaving only the non-mutating exports.
+  isViewer = false,
   isAdmin,
   // Guided walkthrough: render a passed-in demo shift as a clean "white" shift
   // (its real per-shift queries are disabled so nothing is fetched) purely so
@@ -554,6 +557,7 @@ export default function ShiftDetailsModal({
     canTakeShifts,
     hasMyCoverageEntry: Boolean(myCoverageEntry),
     isDirectedRequest,
+    isViewer,
   });
 
   const handleGiftConfirm = () => {
