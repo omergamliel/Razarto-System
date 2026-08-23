@@ -584,10 +584,22 @@ function testShiftActionFlags() {
   assert(!closed.canGift, "a covered/closed shift can't be gifted");
 
   // Gift reach: a future white shift is giftable too (not just today's), while
-  // a role that can't take shifts and any past shift both block gifting.
+  // a viewer who can't take shifts and any past shift both block gifting.
   assert(flags({ isPastShift: false }).canGift, "a future white shift is giftable, not only today's");
   assert(!flags({ canTakeShifts: false }).canGift, "a viewer who can't take shifts can't gift");
   assert(!flags({ isPastShift: true }).canGift, "a past shift isn't giftable");
+
+  // Acquiring someone else's shift — offering to cover or proposing a
+  // head-to-head — is likewise gated on canTakeShifts (only the active member
+  // of a group may take on shifts).
+  assert(
+    !flags({ hasAnyRequest: true, hasActiveRequest: true, isFullRequest: true, isWhiteShift: false, canTakeShifts: false }).canOfferCover,
+    "a viewer who can't take shifts can't offer to cover",
+  );
+  assert(
+    !flags({ canTakeShifts: false }).canHeadToHead,
+    "a viewer who can't take shifts can't propose a head-to-head",
+  );
 
   // WhatsApp share is only for the owner of an active request.
   assert(flags({ hasActiveRequest: true, isRequestOwner: true }).canWhatsappShare,
@@ -707,6 +719,38 @@ function testRequestItemButtons() {
   );
   assert(!gapCoverer.includes("cancelPartialGap"),
     "a covering user must not be able to cancel someone else's partial gap");
+
+  // A non-active viewer (not the active member of their group, canTakeShifts
+  // false) may not acquire anyone else's shift: the take / counter / accept
+  // buttons are hidden, but declining stays available.
+  const inactive = (item, type) =>
+    deriveRequestItemButtons({ item, currentUser, type, canTakeShifts: false });
+  const inactiveGeneral = inactive(
+    { id: "l", request_type: "General", requesting_user_id: 2, status: "Open" },
+    "swap_requests",
+  );
+  assert(sameSet(inactiveGeneral, []),
+    `a non-active viewer sees no take/counter on a general request, got ${JSON.stringify(inactiveGeneral)}`);
+  const inactiveGift = inactive(
+    { id: "m", request_type: "Gift", requesting_user_id: 2, original_user_id: 1, status: "Open" },
+    "swap_requests",
+  );
+  assert(sameSet(inactiveGift, ["rejectGift"]),
+    `a non-active viewer can only decline an incoming gift, got ${JSON.stringify(inactiveGift)}`);
+  const inactiveH2H = inactive(
+    { id: "n", request_type: "Head2Head", requesting_user_id: 2, offered_shifts: [{ original_user_id: 1 }], status: "Open" },
+    "swap_requests",
+  );
+  assert(sameSet(inactiveH2H, ["rejectHeadToHead"]),
+    `a non-active viewer can only decline an incoming head-to-head, got ${JSON.stringify(inactiveH2H)}`);
+  // Own-shift actions are unaffected by active standing (giving a shift away is
+  // always allowed).
+  const inactiveOwnShift = inactive(
+    { id: "o", is_shift_object: true, requesting_user_id: 1 },
+    "approved",
+  );
+  assert(inactiveOwnShift.includes("requestSwap"),
+    "a non-active viewer can still request a swap on their own shift");
 }
 
 // --------------------------------------------------------------------------
