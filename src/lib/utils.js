@@ -79,6 +79,12 @@ export function deriveShiftActionFlags({
   // it, so an unrelated viewer must not be offered to help. Partial requests
   // are never directed, so this never suppresses the partial-coverage path.
   isDirectedRequest,
+  // Global read-only overlay (admin "RR ⇒ viewer" switch). When true this user
+  // may see everything an RR user sees but must not change any data — every
+  // write action (offer, head-to-head, request, gift, and BOTH cancels) is
+  // suppressed. Only the non-mutating exports (WhatsApp share, add-to-calendar)
+  // survive. Their stored permission is untouched — this is a runtime overlay.
+  isViewer = false,
 }) {
   // A helper who committed to a partial gap can no longer self-cancel (only the
   // owner undoes the whole request); backing out of a full-swap takeover is ok.
@@ -128,6 +134,21 @@ export function deriveShiftActionFlags({
     !isPastShift &&
     isWhiteShift &&
     !isCoveredOrClosed;
+
+  // Read-only viewer: strip every data-mutating action, keep only the exports
+  // (share / add-to-calendar don't touch app data).
+  if (isViewer) {
+    return {
+      canCancelCoverage: false,
+      canCancelOwnSwap: false,
+      canOfferCover: false,
+      canHeadToHead: false,
+      canRequestSwap: false,
+      canWhatsappShare,
+      canAddToCalendarOrEmail,
+      canGift: false,
+    };
+  }
 
   return {
     canCancelCoverage,
@@ -220,6 +241,10 @@ export function deriveRequestItemButtons({
   // declining (reject) and own-shift actions are always available. Defaults to
   // true so callers/tests that don't pass it keep the active-user button set.
   canTakeShifts = true,
+  // Global read-only overlay (admin "RR ⇒ viewer" switch). When true, every
+  // button that writes data is removed and only the non-mutating share/calendar
+  // exports remain. See deriveShiftActionFlags for the same rule on the calendar.
+  isViewer = false,
 }) {
   const flags = deriveRequestItemFlags(item, { currentUser, type });
   const buttons = [];
@@ -262,6 +287,17 @@ export function deriveRequestItemButtons({
     // are out of the swap system); addToCalendar/reshare are not — they don't
     // touch the swap system.
     if (item.is_shift_object && canTakeShifts) buttons.push("requestSwap");
+  }
+
+  // Read-only viewer: keep only the non-mutating exports; drop every button
+  // that would create/cancel/accept/decline anything.
+  if (isViewer) {
+    const readOnlyButtons = new Set([
+      "whatsapp",
+      "addToCalendar",
+      "reshareWhatsapp",
+    ]);
+    return buttons.filter((b) => readOnlyButtons.has(b));
   }
 
   return buttons;
