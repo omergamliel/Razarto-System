@@ -619,6 +619,10 @@ export default function ShiftCalendar() {
     const openShiftId = params.get("openShiftId");
     const headToHeadTarget = params.get("headToHeadTarget");
     const headToHeadOffer = params.get("headToHeadOffer");
+    // Gift links (and any KPI deep link) open a KPI list on a specific tab,
+    // optionally focused on one request — "<type>:<tab>" + focusRequestId.
+    const openKpi = params.get("openKpi");
+    const focusRequestId = params.get("focusRequestId");
 
     if (headToHeadTarget && headToHeadOffer) {
       setDeepLinkShiftId(null);
@@ -627,6 +631,14 @@ export default function ShiftCalendar() {
       setShowDetailsModal(false);
       setShowHeadToHeadSelector(false);
       setShowHeadToHeadApproval(true);
+    } else if (openKpi) {
+      const [kpiType, kpiTab] = openKpi.split(":");
+      setDeepLinkShiftId(null);
+      setKpiListType(kpiType || "swap_requests");
+      setKpiInitialTab(kpiTab || "all");
+      setKpiFocusRequestId(focusRequestId || null);
+      setKpiOpenSeq((n) => n + 1);
+      setShowKPIListModal(true);
     } else if (openShiftId) {
       setDeepLinkShiftId(openShiftId);
     } else {
@@ -1302,6 +1314,7 @@ export default function ShiftCalendar() {
               startTime: shift.start_time,
               endDate: shift.end_date,
               endTime: shift.end_time,
+              requestId: _data?.id,
             });
             window.open(
               `https://wa.me/?text=${encodeURIComponent(message)}`,
