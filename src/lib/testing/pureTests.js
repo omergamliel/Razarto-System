@@ -32,11 +32,11 @@ function testResolveSwapType() {
   );
   assertEqual(
     resolveSwapType(
-      { start_time: "09:00", end_time: "17:00" },
-      { request_type: "Full" },
+      { start_time: "09:00", end_time: "17:00", swap_type: "full" },
+      null,
     ),
     "full",
-    "an explicit request_type should override the inferred type",
+    "an explicit full swap_type should override the inferred type",
   );
   assertEqual(
     resolveSwapType({}, { request_type: "Partial" }),
@@ -385,10 +385,10 @@ function testComputeNotificationEvents() {
       requesting_user_id: 3,
       shift_ids: ["s3"],
     },
-    // My own open Full request → sr-pending, swap_requests 'mine' tab.
+    // My own open whole-shift (General) request → sr-pending, swap_requests 'mine' tab.
     {
       id: "rMineFull",
-      request_type: "Full",
+      request_type: "General",
       status: "Open",
       requesting_user_id: 1,
       shift_ids: ["s4"],
@@ -695,9 +695,9 @@ function testRequestItemButtons() {
   const sameSet = (a, b) =>
     JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
 
-  // My own Full request in the swap_requests list: cancel + whatsapp, nothing else.
+  // My own whole-shift (General) request in the swap_requests list: cancel + whatsapp, nothing else.
   const myFull = buttons(
-    { id: "a", request_type: "Full", requesting_user_id: 1, status: "Open" },
+    { id: "a", request_type: "General", requesting_user_id: 1, status: "Open" },
     "swap_requests",
   );
   assert(sameSet(myFull, ["cancelMyRequest", "whatsapp"]),
@@ -858,8 +858,8 @@ function testRequestItemButtons() {
 function testRequestTabMembership() {
   const currentUser = { serial_id: 1 };
 
-  const myFull = { id: "a", request_type: "Full", requesting_user_id: 1 };
-  const otherFull = { id: "b", request_type: "Full", requesting_user_id: 2 };
+  const myFull = { id: "a", request_type: "General", requesting_user_id: 1 };
+  const otherFull = { id: "b", request_type: "General", requesting_user_id: 2 };
   const myGift = { id: "c", request_type: "Gift", requesting_user_id: 1, original_user_id: 2 };
   const incomingGift = { id: "d", request_type: "Gift", requesting_user_id: 2, original_user_id: 1 };
   const strangerGift = { id: "e", request_type: "Gift", requesting_user_id: 2, original_user_id: 3 };
