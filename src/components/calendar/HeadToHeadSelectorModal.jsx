@@ -125,6 +125,10 @@ export default function HeadToHeadSelectorModal({
       targetShiftDate: targetDate,
       myShiftOwner: currentUser?.full_name,
       myShiftDate: offerDate,
+      // Single shift on each side here, but pass them as lists so the template's
+      // {myShifts}/{targetShifts} render (they'd be blank otherwise).
+      myShifts: [selectedShift],
+      targetShifts: [targetShift],
       uniqueApprovalUrl: approvalLink,
     });
 
