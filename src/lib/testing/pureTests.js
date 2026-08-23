@@ -12,6 +12,7 @@ import {
   deriveRequestItemButtons,
   filterRequestsForSwapTab,
   filterPartialGapsForTab,
+  isActiveGroupMember,
 } from "@/lib/utils";
 import { assert, assertEqual } from "./assert";
 
@@ -485,6 +486,68 @@ function testComputeNotificationEvents() {
 }
 
 // --------------------------------------------------------------------------
+// groupRules: the shared "active member of their own group" rule that gates
+// every shift interaction, assignment dropdown, and the inactive-assignment
+// marking. Scoped to the person's OWN group (by sign), matched on username,
+// robust to a lingering `active` flag and to stale/duplicate rows.
+// --------------------------------------------------------------------------
+function testActiveGroupMember() {
+  const person = { sign: "A", email: "me@x.com" };
+
+  // The happy path: the person's own group's row is active and points at them.
+  assert(
+    isActiveGroupMember(person, [{ symbol: "A", active: true, username: "me@x.com" }]),
+    "active member of their own group qualifies",
+  );
+
+  // Case-insensitive email match.
+  assert(
+    isActiveGroupMember(person, [{ symbol: "A", active: true, username: "ME@X.COM" }]),
+    "email match is case-insensitive",
+  );
+
+  // The reported bug: the row stays active but its member was cleared
+  // (username null) — nobody is really active, so the person must NOT qualify.
+  assert(
+    !isActiveGroupMember(person, [{ symbol: "A", active: true, username: null }]),
+    "a lingering active flag with no member does not grant standing",
+  );
+
+  // Their email is the active member of ANOTHER group, but their own group's row
+  // is inactive — a stale/other-group active row must never grant standing.
+  assert(
+    !isActiveGroupMember(person, [
+      { symbol: "A", active: false, username: "me@x.com" },
+      { symbol: "B", active: true, username: "me@x.com" },
+    ]),
+    "an active row under another group does not grant standing in one's own group",
+  );
+
+  // Someone else is the active member of the person's group.
+  assert(
+    !isActiveGroupMember(person, [{ symbol: "A", active: true, username: "other@x.com" }]),
+    "a non-active member (someone else is starred) does not qualify",
+  );
+
+  // Duplicate rows for the same symbol resolve last-write-wins, matching the
+  // admin map: the last row (inactive) is authoritative here.
+  assert(
+    !isActiveGroupMember(person, [
+      { symbol: "A", active: true, username: "me@x.com" },
+      { symbol: "A", active: false, username: null },
+    ]),
+    "duplicate rows resolve last-write-wins (last row inactive → not active)",
+  );
+
+  // No group / no email → never active.
+  assert(!isActiveGroupMember({ email: "me@x.com" }, [{ symbol: "A", active: true, username: "me@x.com" }]),
+    "a person with no group is never active");
+  assert(!isActiveGroupMember({ sign: "A" }, [{ symbol: "A", active: true, username: "" }]),
+    "a person with no email is never active");
+  assert(!isActiveGroupMember(null, []), "a null person is never active");
+}
+
+// --------------------------------------------------------------------------
 // interactionRules: which action buttons a shift's detail view shows, at every
 // stage of every process. Each case is a full boolean snapshot so a button
 // that MUST be hidden is asserted absent, not just the ones that show.
@@ -599,6 +662,17 @@ function testShiftActionFlags() {
   assert(
     !flags({ canTakeShifts: false }).canHeadToHead,
     "a viewer who can't take shifts can't propose a head-to-head",
+  );
+  // Opening a swap request on one's OWN shift is also gated on canTakeShifts: a
+  // non-active group member is out of the swap system entirely (they can still
+  // cancel an existing request — see canCancelOwnSwap below).
+  assert(
+    !flags({ isOwnShift: true, canTakeShifts: false }).canRequestSwap,
+    "a non-active member can't open a swap request even on their own shift",
+  );
+  assert(
+    flags({ isOwnShift: true, hasAnyRequest: true, canTakeShifts: false }).canCancelOwnSwap,
+    "a non-active member can still cancel a swap request they already opened",
   );
 
   // WhatsApp share is only for the owner of an active request.
@@ -743,14 +817,21 @@ function testRequestItemButtons() {
   );
   assert(sameSet(inactiveH2H, ["rejectHeadToHead"]),
     `a non-active viewer can only decline an incoming head-to-head, got ${JSON.stringify(inactiveH2H)}`);
-  // Own-shift actions are unaffected by active standing (giving a shift away is
-  // always allowed).
+  // Opening a swap request on one's own shift is ALSO gated on canTakeShifts: a
+  // non-active member is out of the swap system, so requestSwap is absent for
+  // them even on their own shift.
   const inactiveOwnShift = inactive(
     { id: "o", is_shift_object: true, requesting_user_id: 1 },
     "approved",
   );
-  assert(inactiveOwnShift.includes("requestSwap"),
-    "a non-active viewer can still request a swap on their own shift");
+  assert(!inactiveOwnShift.includes("requestSwap"),
+    "a non-active viewer can't open a swap request even on their own shift");
+  // But an ACTIVE member can, on the same own shift.
+  const activeOwnShift = deriveRequestItemButtons(
+    { item: { id: "o2", is_shift_object: true, requesting_user_id: 1 }, currentUser, type: "approved", canTakeShifts: true },
+  );
+  assert(activeOwnShift.includes("requestSwap"),
+    "an active viewer can request a swap on their own shift");
 }
 
 // --------------------------------------------------------------------------
@@ -847,6 +928,12 @@ export const pureTests = [
     name: "computeNotificationEvents: relevant-to-me detection + fingerprint stability",
     category: "pure",
     run: testComputeNotificationEvents,
+  },
+  {
+    id: "pure-active-group-member",
+    name: "isActiveGroupMember: own-group-scoped active rule (lingering/stale/duplicate rows)",
+    category: "pure",
+    run: testActiveGroupMember,
   },
   {
     id: "pure-shift-action-flags",
