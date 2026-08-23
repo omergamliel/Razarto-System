@@ -10,10 +10,10 @@ export const MONITOR_CHECKS = [
 ];
 
 // Default seed group names ("קבוצות"), Hebrew ordinals 1–24 using standard
-// gematria (15=טו, 16=טז). Groups are now DYNAMIC — each group is a ShiftSegment
+// gematria (15=טו, 16=טז). Groups are now DYNAMIC — each group is a ShiftGroup
 // row (symbol + optional active member), and admins add/remove them from the
 // "ניהול קבוצות" tab. This list is only the one-click default set offered when
-// no groups exist yet; AuthorizedPerson.sign and ShiftSegment.symbol are plain
+// no groups exist yet; AuthorizedPerson.sign and ShiftGroup.symbol are plain
 // strings with no fixed enum.
 export const DEFAULT_GROUP_SYMBOLS = [
   "א",
