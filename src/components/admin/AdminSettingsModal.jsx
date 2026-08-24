@@ -241,6 +241,57 @@ async function runThrottled(
   }
 }
 
+// The "הוסף קבוצה" flow: a sonner toast (duration: Infinity) with its own
+// controlled input, so adding a group no longer needs a persistent field in the
+// toolbar row. Manages its own text state and dismisses itself on submit/cancel.
+function AddGroupToast({ toastId, onSubmit }) {
+  const [value, setValue] = useState("");
+  const submit = () => {
+    const trimmed = value.trim();
+    if (!trimmed) return;
+    onSubmit(trimmed);
+    toast.dismiss(toastId);
+  };
+  return (
+    <div
+      dir="rtl"
+      className="flex flex-col gap-3 w-72 bg-white p-4 rounded-2xl shadow-lg border border-gray-100"
+    >
+      <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+        <Plus className="w-4 h-4 text-blue-600" /> הוספת קבוצה חדשה
+      </p>
+      <Input
+        autoFocus
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") submit();
+        }}
+        placeholder="שם קבוצה חדשה..."
+        className="h-9"
+      />
+      <div className="flex items-center gap-2 justify-end">
+        <Button
+          size="sm"
+          variant="ghost"
+          className="h-8"
+          onClick={() => toast.dismiss(toastId)}
+        >
+          ביטול
+        </Button>
+        <Button
+          size="sm"
+          disabled={!value.trim()}
+          onClick={submit}
+          className="h-8 gap-1 bg-blue-600 hover:bg-blue-700 text-white"
+        >
+          <Plus className="w-4 h-4" /> הוסף
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminSettingsModal({ isOpen, onClose }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedDepartments, setSelectedDepartments] = useState([]);
@@ -306,8 +357,9 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   const [groupPickerSymbol, setGroupPickerSymbol] = useState(null);
   const [groupPickerSelected, setGroupPickerSelected] = useState([]);
   const [groupPickerSearch, setGroupPickerSearch] = useState("");
-  // Add-group input, and the group pending a delete confirmation.
-  const [newGroupSymbol, setNewGroupSymbol] = useState("");
+  // Groups tab search (filters by group name or member name/email), and the
+  // group pending a delete confirmation.
+  const [groupSearch, setGroupSearch] = useState("");
   const [groupToDelete, setGroupToDelete] = useState(null);
   // Member pending a "remove from group" confirmation: { person, symbol } | null.
   const [memberToRemove, setMemberToRemove] = useState(null);
@@ -460,6 +512,22 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     );
     return map;
   }, [authorizedPeople]);
+
+  // Groups tab search: keep a group when the term matches its name (symbol) OR
+  // any of its members' name/email — so admins can find a group by who's in it.
+  const filteredGroupSymbols = useMemo(() => {
+    const term = groupSearch.trim().toLowerCase();
+    if (!term) return groupSymbols;
+    return groupSymbols.filter((symbol) => {
+      if (symbol.toLowerCase().includes(term)) return true;
+      const members = membersBySymbol.get(symbol) || [];
+      return members.some(
+        (m) =>
+          (m.full_name || "").toLowerCase().includes(term) ||
+          (m.email || "").toLowerCase().includes(term),
+      );
+    });
+  }, [groupSymbols, membersBySymbol, groupSearch]);
 
   // Whether a person is the *active* member of their group — i.e. their group's
   // ShiftGroup row is marked active and its active-member email is theirs.
@@ -971,7 +1039,6 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       });
       queryClient.invalidateQueries(["shift-groups"]);
       toast.success("הקבוצה נוספה.");
-      setNewGroupSymbol("");
     },
     onError: (err) => {
       if (err?.message === "duplicate") toast.error("קבוצה בשם זה כבר קיימת.");
@@ -1884,30 +1951,36 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                     ורק למשתמשים הפעילים.
                   </p>
                 </div>
-                <form
-                  className="flex items-center gap-2"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    addGroupMutation.mutate(newGroupSymbol);
-                  }}
-                >
-                  <Input
-                    value={newGroupSymbol}
-                    onChange={(e) => setNewGroupSymbol(e.target.value)}
-                    placeholder="שם קבוצה חדשה..."
-                    className="h-9 max-w-xs"
-                  />
+                <div className="flex items-center gap-2 justify-between">
+                  <div className="relative w-full max-w-xs">
+                    <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Input
+                      value={groupSearch}
+                      onChange={(e) => setGroupSearch(e.target.value)}
+                      placeholder="חיפוש לפי שם קבוצה או משתמש..."
+                      className="pr-10 h-9 bg-gray-50 border-gray-200 focus:bg-white rounded-xl text-sm"
+                    />
+                  </div>
                   <Button
-                    type="submit"
+                    type="button"
                     size="sm"
-                    disabled={
-                      !newGroupSymbol.trim() || addGroupMutation.isPending
+                    disabled={addGroupMutation.isPending}
+                    onClick={() =>
+                      toast.custom(
+                        (t) => (
+                          <AddGroupToast
+                            toastId={t}
+                            onSubmit={(name) => addGroupMutation.mutate(name)}
+                          />
+                        ),
+                        { duration: Infinity },
+                      )
                     }
-                    className="gap-1 bg-blue-600 hover:bg-blue-700 text-white h-9"
+                    className="gap-1 bg-blue-600 hover:bg-blue-700 text-white h-9 shrink-0"
                   >
                     <Plus className="w-4 h-4" /> הוסף קבוצה
                   </Button>
-                </form>
+                </div>
               </div>
 
               <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex-1 overflow-hidden flex flex-col">
@@ -1927,8 +2000,14 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                   </div>
                 ) : (
                   <div className="overflow-y-auto flex-1 min-h-0 custom-scrollbar p-3 md:p-4">
+                    {filteredGroupSymbols.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-2 py-8 text-center">
+                        <Search className="w-8 h-8 opacity-20" />
+                        <span>לא נמצאו קבוצות התואמות לחיפוש</span>
+                      </div>
+                    ) : (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 content-start">
-                      {groupSymbols.map((symbol) => {
+                      {filteredGroupSymbols.map((symbol) => {
                         const activeSeg = activeGroupBySymbol.get(symbol);
                         const activeSerialId =
                           activeSeg?.active && activeSeg?.serial_id != null
@@ -2078,6 +2157,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                         );
                       })}
                     </div>
+                    )}
                   </div>
                 )}
               </div>
