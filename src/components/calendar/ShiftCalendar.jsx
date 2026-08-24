@@ -399,7 +399,7 @@ export default function ShiftCalendar() {
   });
 
   // Group "active member" records (ShiftGroup): one row per group symbol,
-  // holding that group's active member (username = their email) and an active
+  // holding that group's active member (serial_id = their serial_id) and an active
   // flag. Only the active member of a group interacts with shifts — the same
   // signal shift distribution uses to pick who gets assigned. Any authorized
   // user may read these (see ShiftGroup RLS).
