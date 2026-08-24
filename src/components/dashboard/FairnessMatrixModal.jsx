@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Scale } from "lucide-react";
+import { X, Scale, Star } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
@@ -385,8 +385,8 @@ export default function FairnessMatrixModal({ isOpen, onClose, currentUser }) {
                         {g.members.length > 0 && (
                           <span className="text-[11px] text-gray-400 flex items-center gap-1 min-w-0">
                             {g.hasActive && (
-                              <span
-                                className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0"
+                              <Star
+                                className="w-3 h-3 text-amber-400 fill-amber-400 shrink-0"
                                 title="המשתמש הפעיל (ראשון ברשימה)"
                               />
                             )}
