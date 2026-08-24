@@ -85,6 +85,11 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
+import {
+  Popover,
+  PopoverTrigger,
+  PopoverContent,
+} from "@/components/ui/popover";
 import { runPureTests, runLiveTests } from "@/lib/testing/testRunner";
 import { exportAllData } from "@/lib/testing/exportData";
 import FaqManager from "@/components/admin/FaqManager";
@@ -241,57 +246,6 @@ async function runThrottled(
   }
 }
 
-// The "הוסף קבוצה" flow: a sonner toast (duration: Infinity) with its own
-// controlled input, so adding a group no longer needs a persistent field in the
-// toolbar row. Manages its own text state and dismisses itself on submit/cancel.
-function AddGroupToast({ toastId, onSubmit }) {
-  const [value, setValue] = useState("");
-  const submit = () => {
-    const trimmed = value.trim();
-    if (!trimmed) return;
-    onSubmit(trimmed);
-    toast.dismiss(toastId);
-  };
-  return (
-    <div
-      dir="rtl"
-      className="flex flex-col gap-3 w-72 bg-white p-4 rounded-2xl shadow-lg border border-gray-100"
-    >
-      <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-        <Plus className="w-4 h-4 text-blue-600" /> הוספת קבוצה חדשה
-      </p>
-      <Input
-        autoFocus
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") submit();
-        }}
-        placeholder="שם קבוצה חדשה..."
-        className="h-9"
-      />
-      <div className="flex items-center gap-2 justify-end">
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-8"
-          onClick={() => toast.dismiss(toastId)}
-        >
-          ביטול
-        </Button>
-        <Button
-          size="sm"
-          disabled={!value.trim()}
-          onClick={submit}
-          className="h-8 gap-1 bg-blue-600 hover:bg-blue-700 text-white"
-        >
-          <Plus className="w-4 h-4" /> הוסף
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 export default function AdminSettingsModal({ isOpen, onClose }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedDepartments, setSelectedDepartments] = useState([]);
@@ -360,6 +314,9 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   // Groups tab search (filters by group name or member name/email), and the
   // group pending a delete confirmation.
   const [groupSearch, setGroupSearch] = useState("");
+  // Add-group popover: open state + the name being typed inside it.
+  const [addGroupOpen, setAddGroupOpen] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
   const [groupToDelete, setGroupToDelete] = useState(null);
   // Member pending a "remove from group" confirmation: { person, symbol } | null.
   const [memberToRemove, setMemberToRemove] = useState(null);
@@ -528,6 +485,26 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       );
     });
   }, [groupSymbols, membersBySymbol, groupSearch]);
+
+  // Add-group popover derived state + submit. Validation is inline (empty /
+  // duplicate) so the popover gives immediate feedback without relying on a
+  // toast surface; the popover only closes on a successful create.
+  const trimmedNewGroup = newGroupName.trim();
+  const newGroupDuplicate =
+    trimmedNewGroup !== "" &&
+    groupSymbols.some(
+      (s) => s.toLowerCase() === trimmedNewGroup.toLowerCase(),
+    );
+  const submitAddGroup = () => {
+    if (!trimmedNewGroup || newGroupDuplicate || addGroupMutation.isPending)
+      return;
+    addGroupMutation.mutate(trimmedNewGroup, {
+      onSuccess: () => {
+        setAddGroupOpen(false);
+        setNewGroupName("");
+      },
+    });
+  };
 
   // Whether a person is the *active* member of their group — i.e. their group's
   // ShiftGroup row is marked active and its active-member email is theirs.
@@ -1961,25 +1938,74 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                       className="pr-10 h-9 bg-gray-50 border-gray-200 focus:bg-white rounded-xl text-sm"
                     />
                   </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={addGroupMutation.isPending}
-                    onClick={() =>
-                      toast.custom(
-                        (t) => (
-                          <AddGroupToast
-                            toastId={t}
-                            onSubmit={(name) => addGroupMutation.mutate(name)}
-                          />
-                        ),
-                        { duration: Infinity },
-                      )
-                    }
-                    className="gap-1 bg-blue-600 hover:bg-blue-700 text-white h-9 shrink-0"
+                  <Popover
+                    open={addGroupOpen}
+                    onOpenChange={(open) => {
+                      setAddGroupOpen(open);
+                      if (!open) setNewGroupName("");
+                    }}
                   >
-                    <Plus className="w-4 h-4" /> הוסף קבוצה
-                  </Button>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={addGroupMutation.isPending}
+                        className="gap-1 bg-blue-600 hover:bg-blue-700 text-white h-9 shrink-0"
+                      >
+                        <Plus className="w-4 h-4" /> הוסף קבוצה
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      align="start"
+                      dir="rtl"
+                      className="z-[70] w-72 flex flex-col gap-3"
+                    >
+                      <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                        <Plus className="w-4 h-4 text-blue-600" /> הוספת קבוצה
+                        חדשה
+                      </p>
+                      <Input
+                        autoFocus
+                        value={newGroupName}
+                        onChange={(e) => setNewGroupName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") submitAddGroup();
+                        }}
+                        placeholder="שם קבוצה חדשה..."
+                        className="h-9"
+                      />
+                      {newGroupDuplicate && (
+                        <p className="text-xs text-red-500">
+                          קבוצה בשם זה כבר קיימת.
+                        </p>
+                      )}
+                      <div className="flex items-center gap-2 justify-end">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-8"
+                          onClick={() => {
+                            setAddGroupOpen(false);
+                            setNewGroupName("");
+                          }}
+                        >
+                          ביטול
+                        </Button>
+                        <Button
+                          size="sm"
+                          disabled={
+                            !trimmedNewGroup ||
+                            newGroupDuplicate ||
+                            addGroupMutation.isPending
+                          }
+                          onClick={submitAddGroup}
+                          className="h-8 gap-1 bg-blue-600 hover:bg-blue-700 text-white"
+                        >
+                          <Plus className="w-4 h-4" /> הוסף
+                        </Button>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                 </div>
               </div>
 
