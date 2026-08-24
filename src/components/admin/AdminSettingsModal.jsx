@@ -3415,7 +3415,11 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
           if (!o) setNewGroupName("");
         }}
       >
-        <DialogContent className="sm:max-w-[420px] text-right" dir="rtl">
+        <DialogContent
+          className="sm:max-w-[420px] text-right"
+          dir="rtl"
+          closePosition="left-4 top-4"
+        >
           <DialogHeader className="text-right">
             <DialogTitle className="flex items-center gap-2 text-xl">
               <div className="bg-blue-100 p-2 rounded-full">
@@ -3480,7 +3484,11 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
           }
         }}
       >
-        <DialogContent className="sm:max-w-[480px] text-right" dir="rtl">
+        <DialogContent
+          className="sm:max-w-[480px] text-right"
+          dir="rtl"
+          closePosition="left-4 top-4"
+        >
           <DialogHeader className="text-right">
             <DialogTitle className="flex items-center gap-2 text-xl">
               <div className="bg-blue-100 p-2 rounded-full">
