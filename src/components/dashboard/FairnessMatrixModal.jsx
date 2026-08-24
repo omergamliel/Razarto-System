@@ -138,7 +138,7 @@ export default function FairnessMatrixModal({ isOpen, onClose, currentUser }) {
             id: m.id,
             name: m.full_name || "לא ידוע",
             // A group's active member (their own group's ShiftGroup row is
-            // active and its username is theirs) is listed first for the group.
+            // active and its serial_id is theirs) is listed first for the group.
             isActive: isActiveGroupMember(m, shiftGroups),
           }))
           .sort((a, b) => {
