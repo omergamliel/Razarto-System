@@ -417,8 +417,8 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   }, [isOpen, authorizedPeople, queryClient]);
 
   // Group "active member" records (ShiftGroup entity): one row per group symbol
-  // that currently has an active member — { symbol, username (active member's
-  // email), active }. Drives the "ניהול קבוצות" tab and gates shift
+  // that currently has an active member — { symbol, serial_id (active member's
+  // serial_id), active }. Drives the "ניהול קבוצות" tab and gates shift
   // distribution (only active members are assigned shifts).
   const { data: shiftGroups = [] } = useQuery({
     queryKey: ["shift-groups"],
@@ -828,43 +828,48 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   });
 
   // 3b. Groups — set a group's active member. Only one member per group may be
-  // active (or none): the group's single ShiftGroup row points its `username`
-  // at the active member's email. Passing person=null (or clicking the
+  // active (or none): the group's single ShiftGroup row points its `serial_id`
+  // at the active member's serial_id. Passing person=null (or clicking the
   // already-active member) clears the active member WITHOUT deleting the row —
   // the row is the group definition itself, so it must survive. The active
   // member must belong to the group already.
   const setActiveMemberMutation = useMutation({
     mutationFn: async ({ symbol, person }) => {
       const existing = activeGroupBySymbol.get(symbol);
-      // The email of the active member being replaced (if any), captured before
-      // we overwrite the row, so onSuccess can offer to migrate their shifts.
-      const previousActiveEmail =
-        existing?.active && existing?.username ? existing.username : null;
+      // The serial_id of the active member being replaced (if any), captured
+      // before we overwrite the row, so onSuccess can offer to migrate their
+      // shifts.
+      const previousActiveSerialId =
+        existing?.active && existing?.serial_id != null
+          ? existing.serial_id
+          : null;
       const clearing =
-        !person || (existing?.active && existing?.username === person.email);
+        !person ||
+        (existing?.active &&
+          Number(existing?.serial_id) === Number(person.serial_id));
       if (clearing) {
         if (existing) {
           await base44.entities.ShiftGroup.update(existing.id, {
-            username: null,
+            serial_id: null,
             active: false,
           });
         }
-        return { previousActiveEmail, cleared: true };
+        return { previousActiveSerialId, cleared: true };
       }
       if (existing) {
         await base44.entities.ShiftGroup.update(existing.id, {
-          username: person.email,
+          serial_id: person.serial_id,
           active: true,
         });
       } else {
         // Group referenced only by members' `sign` and no row yet — create it.
         await base44.entities.ShiftGroup.create({
           symbol,
-          username: person.email,
+          serial_id: person.serial_id,
           active: true,
         });
       }
-      return { previousActiveEmail, cleared: false };
+      return { previousActiveSerialId, cleared: false };
     },
     onSuccess: (result, { symbol, person }) => {
       logActivity({
@@ -914,7 +919,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   });
 
   const offerFutureShiftMigration = (result, person) => {
-    const previousEmail = result?.previousActiveEmail;
+    const previousSerialId = result?.previousActiveSerialId;
     // Only when we replaced an existing, different active member with a real
     // newcomer — clearing the active member, or setting the first one, has
     // nothing to migrate.
@@ -922,13 +927,13 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       !result ||
       result.cleared ||
       !person ||
-      !previousEmail ||
-      previousEmail === person.email
+      previousSerialId == null ||
+      Number(previousSerialId) === Number(person.serial_id)
     ) {
       return;
     }
     const previousPerson = authorizedPeople.find(
-      (p) => p.email === previousEmail,
+      (p) => Number(p.serial_id) === Number(previousSerialId),
     );
     if (!previousPerson) return;
 
@@ -1059,9 +1064,13 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     mutationFn: async ({ person }) => {
       await base44.entities.AuthorizedPerson.update(person.id, { sign: null });
       const seg = person.sign ? activeGroupBySymbol.get(person.sign) : null;
-      if (seg && seg.active && seg.username === person.email) {
+      if (
+        seg &&
+        seg.active &&
+        Number(seg.serial_id) === Number(person.serial_id)
+      ) {
         await base44.entities.ShiftGroup.update(seg.id, {
-          username: null,
+          serial_id: null,
           active: false,
         });
       }
@@ -1087,7 +1096,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     mutationFn: async ({ startDate, endDate }) => {
       // Strict active-only rule: a person is assigned shifts only if they are
       // the active member of THEIR OWN group (their group's ShiftGroup row is
-      // active AND its username is theirs), on top of the RR/Manager permission
+      // active AND its serial_id is theirs), on top of the RR/Manager permission
       // check. isActiveGroupMember scopes to the person's own group (by sign),
       // so a stale/duplicate active row under another group — or a row whose
       // `active` flag lingered true after its member was cleared — can't smuggle
@@ -1921,25 +1930,29 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 content-start">
                       {groupSymbols.map((symbol) => {
                         const activeSeg = activeGroupBySymbol.get(symbol);
-                        const activeEmail = activeSeg?.active
-                          ? activeSeg.username
-                          : null;
+                        const activeSerialId =
+                          activeSeg?.active && activeSeg?.serial_id != null
+                            ? activeSeg.serial_id
+                            : null;
+                        const isActiveSerial = (m) =>
+                          activeSerialId != null &&
+                          Number(m.serial_id) === Number(activeSerialId);
                         // Order the active member first, keeping everyone else in
                         // the existing name-sorted order (membersBySymbol is
                         // already sorted by full_name).
                         const members = [...(membersBySymbol.get(symbol) || [])].sort(
                           (a, b) => {
-                            const aActive = activeEmail && a.email === activeEmail;
-                            const bActive = activeEmail && b.email === activeEmail;
+                            const aActive = isActiveSerial(a);
+                            const bActive = isActiveSerial(b);
                             if (aActive !== bActive) return aActive ? -1 : 1;
                             return 0;
                           },
                         );
-                        // Only treat the group as "has active" when its active email
-                        // still belongs to a current member of the group.
+                        // Only treat the group as "has active" when its active
+                        // serial_id still belongs to a current member of the group.
                         const hasActiveMember =
-                          !!activeEmail &&
-                          members.some((m) => m.email === activeEmail);
+                          activeSerialId != null &&
+                          members.some((m) => isActiveSerial(m));
                         return (
                           <div
                             key={symbol}
@@ -1996,8 +2009,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                             ) : (
                               <div className="flex flex-col gap-1">
                                 {members.map((m) => {
-                                  const isActive =
-                                    activeEmail && m.email === activeEmail;
+                                  const isActive = isActiveSerial(m);
                                   return (
                                     <div
                                       key={m.id}
