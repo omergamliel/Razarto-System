@@ -131,8 +131,8 @@ export default function ShiftDetailsModal({
   });
 
   // Group "active member" records — a manager may hand a shift only to the
-  // active member of a group (active ShiftGroup whose username matches their
-  // email), the same pool shift distribution assigns to.
+  // active member of a group (active ShiftGroup whose serial_id matches their
+  // serial_id), the same pool shift distribution assigns to.
   const { data: reassignGroups = [] } = useQuery({
     queryKey: ["shift-groups"],
     queryFn: () => base44.entities.ShiftGroup.list(),
