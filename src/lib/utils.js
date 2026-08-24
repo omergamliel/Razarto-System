@@ -32,8 +32,8 @@ export const isOpenStatus = (status) =>
 // take/interact with shifts (and be assigned them by distribution)".
 //
 // A person qualifies iff the ShiftGroup row for THEIR OWN group (`person.sign`)
-// is marked active AND its `username` is their email. This is deliberately
-// scoped to the person's own group, not "does an active row for this email
+// is marked active AND its `serial_id` is theirs. This is deliberately
+// scoped to the person's own group, not "does an active row for this user
 // exist anywhere": the `active` flag can linger true on a row whose member was
 // cleared, and stale/duplicate active rows under other groups must never grant
 // standing. Duplicate rows for the same symbol resolve last-write-wins, mirroring
@@ -43,14 +43,16 @@ export const isOpenStatus = (status) =>
 // fairness matrix) must go through this so they can't drift apart.
 export function isActiveGroupMember(person, shiftGroups) {
   const sign = person?.sign;
-  const email = (person?.email || "").toLowerCase();
-  if (!sign || !email) return false;
+  const serialId = person?.serial_id;
+  if (!sign || serialId == null) return false;
   let row = null;
   for (const group of shiftGroups || []) {
     if (group?.symbol === sign) row = group; // last write wins, like the admin map
   }
   return (
-    Boolean(row?.active) && (row?.username || "").toLowerCase() === email
+    Boolean(row?.active) &&
+    row?.serial_id != null &&
+    Number(row.serial_id) === Number(serialId)
   );
 }
 
