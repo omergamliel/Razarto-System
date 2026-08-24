@@ -490,44 +490,45 @@ function testComputeNotificationEvents() {
 // --------------------------------------------------------------------------
 // groupRules: the shared "active member of their own group" rule that gates
 // every shift interaction, assignment dropdown, and the inactive-assignment
-// marking. Scoped to the person's OWN group (by sign), matched on username,
+// marking. Scoped to the person's OWN group (by sign), matched on serial_id,
 // robust to a lingering `active` flag and to stale/duplicate rows.
 // --------------------------------------------------------------------------
 function testActiveGroupMember() {
-  const person = { sign: "A", email: "me@x.com" };
+  const person = { sign: "A", serial_id: 7 };
 
   // The happy path: the person's own group's row is active and points at them.
   assert(
-    isActiveGroupMember(person, [{ symbol: "A", active: true, username: "me@x.com" }]),
+    isActiveGroupMember(person, [{ symbol: "A", active: true, serial_id: 7 }]),
     "active member of their own group qualifies",
   );
 
-  // Case-insensitive email match.
+  // serial_id match tolerates number/string coercion (base44 may store it as a
+  // string) — 7 matches "7".
   assert(
-    isActiveGroupMember(person, [{ symbol: "A", active: true, username: "ME@X.COM" }]),
-    "email match is case-insensitive",
+    isActiveGroupMember(person, [{ symbol: "A", active: true, serial_id: "7" }]),
+    "serial_id match coerces number/string",
   );
 
   // The reported bug: the row stays active but its member was cleared
-  // (username null) — nobody is really active, so the person must NOT qualify.
+  // (serial_id null) — nobody is really active, so the person must NOT qualify.
   assert(
-    !isActiveGroupMember(person, [{ symbol: "A", active: true, username: null }]),
+    !isActiveGroupMember(person, [{ symbol: "A", active: true, serial_id: null }]),
     "a lingering active flag with no member does not grant standing",
   );
 
-  // Their email is the active member of ANOTHER group, but their own group's row
-  // is inactive — a stale/other-group active row must never grant standing.
+  // Their serial_id is the active member of ANOTHER group, but their own group's
+  // row is inactive — a stale/other-group active row must never grant standing.
   assert(
     !isActiveGroupMember(person, [
-      { symbol: "A", active: false, username: "me@x.com" },
-      { symbol: "B", active: true, username: "me@x.com" },
+      { symbol: "A", active: false, serial_id: 7 },
+      { symbol: "B", active: true, serial_id: 7 },
     ]),
     "an active row under another group does not grant standing in one's own group",
   );
 
   // Someone else is the active member of the person's group.
   assert(
-    !isActiveGroupMember(person, [{ symbol: "A", active: true, username: "other@x.com" }]),
+    !isActiveGroupMember(person, [{ symbol: "A", active: true, serial_id: 99 }]),
     "a non-active member (someone else is starred) does not qualify",
   );
 
@@ -535,17 +536,17 @@ function testActiveGroupMember() {
   // admin map: the last row (inactive) is authoritative here.
   assert(
     !isActiveGroupMember(person, [
-      { symbol: "A", active: true, username: "me@x.com" },
-      { symbol: "A", active: false, username: null },
+      { symbol: "A", active: true, serial_id: 7 },
+      { symbol: "A", active: false, serial_id: null },
     ]),
     "duplicate rows resolve last-write-wins (last row inactive → not active)",
   );
 
-  // No group / no email → never active.
-  assert(!isActiveGroupMember({ email: "me@x.com" }, [{ symbol: "A", active: true, username: "me@x.com" }]),
+  // No group / no serial_id → never active.
+  assert(!isActiveGroupMember({ serial_id: 7 }, [{ symbol: "A", active: true, serial_id: 7 }]),
     "a person with no group is never active");
-  assert(!isActiveGroupMember({ sign: "A" }, [{ symbol: "A", active: true, username: "" }]),
-    "a person with no email is never active");
+  assert(!isActiveGroupMember({ sign: "A" }, [{ symbol: "A", active: true, serial_id: null }]),
+    "a person with no serial_id is never active");
   assert(!isActiveGroupMember(null, []), "a null person is never active");
 }
 
