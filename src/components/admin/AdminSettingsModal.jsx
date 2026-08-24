@@ -85,7 +85,6 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
-import { useToast } from "@/components/ui/use-toast";
 import { runPureTests, runLiveTests } from "@/lib/testing/testRunner";
 import { exportAllData } from "@/lib/testing/exportData";
 import FaqManager from "@/components/admin/FaqManager";
@@ -242,52 +241,6 @@ async function runThrottled(
   }
 }
 
-// Body of the "הוסף קבוצה" toast: a self-contained controlled form so the toast
-// (rendered by the shadcn <Toaster/> mounted in App.jsx) can host a live input.
-// Manages its own text + inline validation; the parent passes onAdd/onCancel and
-// dismisses the toast on success.
-function AddGroupForm({ existingSymbols, onAdd, onCancel }) {
-  const [value, setValue] = useState("");
-  const trimmed = value.trim();
-  const duplicate =
-    trimmed !== "" &&
-    existingSymbols.some((s) => s.toLowerCase() === trimmed.toLowerCase());
-  const submit = () => {
-    if (!trimmed || duplicate) return;
-    onAdd(trimmed);
-  };
-  return (
-    <div dir="rtl" className="flex flex-col gap-2 mt-2 w-full">
-      <Input
-        autoFocus
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") submit();
-        }}
-        placeholder="שם קבוצה חדשה..."
-        className="h-9"
-      />
-      {duplicate && (
-        <span className="text-xs text-red-500">קבוצה בשם זה כבר קיימת.</span>
-      )}
-      <div className="flex items-center gap-2 justify-end">
-        <Button size="sm" variant="ghost" className="h-8" onClick={onCancel}>
-          ביטול
-        </Button>
-        <Button
-          size="sm"
-          disabled={!trimmed || duplicate}
-          onClick={submit}
-          className="h-8 gap-1 bg-blue-600 hover:bg-blue-700 text-white"
-        >
-          <Plus className="w-4 h-4" /> הוסף
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 export default function AdminSettingsModal({ isOpen, onClose }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedDepartments, setSelectedDepartments] = useState([]);
@@ -359,10 +312,10 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   const [groupToDelete, setGroupToDelete] = useState(null);
   // Member pending a "remove from group" confirmation: { person, symbol } | null.
   const [memberToRemove, setMemberToRemove] = useState(null);
-  // The shadcn toast (mounted via <Toaster/> in App.jsx) — used for the
-  // interactive "הוסף קבוצה" input toast. Aliased so it doesn't shadow the
-  // sonner `toast` used for the plain success/error notices elsewhere.
-  const { toast: uiToast } = useToast();
+  // Add-group dialog (mirrors the "add members to group" dialog): open state and
+  // the name being typed.
+  const [addGroupOpen, setAddGroupOpen] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
 
   // Archive Logic States
   const [isArchiveMode, setIsArchiveMode] = useState(false);
@@ -529,21 +482,21 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     });
   }, [groupSymbols, membersBySymbol, groupSearch]);
 
-  // Open the interactive "הוסף קבוצה" toast: an input form hosted inside a
-  // shadcn toast. The toast persists (no auto-dismiss here) until the user adds
-  // a group (dismissed on success) or cancels/closes it.
-  const handleOpenAddGroup = () => {
-    const t = uiToast({
-      title: "הוספת קבוצה חדשה",
-      description: (
-        <AddGroupForm
-          existingSymbols={groupSymbols}
-          onAdd={(name) =>
-            addGroupMutation.mutate(name, { onSuccess: () => t.dismiss() })
-          }
-          onCancel={() => t.dismiss()}
-        />
-      ),
+  // Add-group dialog derived state + submit. Inline validation (empty /
+  // duplicate) mirrors the "add members to group" dialog; the dialog only
+  // closes on a successful create.
+  const trimmedNewGroup = newGroupName.trim();
+  const newGroupDuplicate =
+    trimmedNewGroup !== "" &&
+    groupSymbols.some((s) => s.toLowerCase() === trimmedNewGroup.toLowerCase());
+  const submitAddGroup = () => {
+    if (!trimmedNewGroup || newGroupDuplicate || addGroupMutation.isPending)
+      return;
+    addGroupMutation.mutate(trimmedNewGroup, {
+      onSuccess: () => {
+        setAddGroupOpen(false);
+        setNewGroupName("");
+      },
     });
   };
 
@@ -1983,7 +1936,10 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                     type="button"
                     size="sm"
                     disabled={addGroupMutation.isPending}
-                    onClick={handleOpenAddGroup}
+                    onClick={() => {
+                      setNewGroupName("");
+                      setAddGroupOpen(true);
+                    }}
                     className="gap-1 bg-blue-600 hover:bg-blue-700 text-white h-9 shrink-0"
                   >
                     <Plus className="w-4 h-4" /> הוסף קבוצה
@@ -3446,6 +3402,68 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
               className="bg-gray-700 hover:bg-gray-800 text-white"
             >
               {isSubmitting ? "שומר..." : "שמור קבוצה"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* --- 3C-i. ADD GROUP MODAL --- */}
+      <Dialog
+        open={addGroupOpen}
+        onOpenChange={(o) => {
+          setAddGroupOpen(o);
+          if (!o) setNewGroupName("");
+        }}
+      >
+        <DialogContent className="sm:max-w-[420px] text-right" dir="rtl">
+          <DialogHeader className="text-right">
+            <DialogTitle className="flex items-center gap-2 text-xl">
+              <div className="bg-blue-100 p-2 rounded-full">
+                <Plus className="w-5 h-5 text-blue-600" />
+              </div>
+              הוספת קבוצה חדשה
+            </DialogTitle>
+            <DialogDescription className="text-right">
+              הזינו שם ייחודי לקבוצה חדשה.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-2">
+            <Input
+              autoFocus
+              value={newGroupName}
+              onChange={(e) => setNewGroupName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") submitAddGroup();
+              }}
+              placeholder="שם קבוצה חדשה..."
+            />
+            {newGroupDuplicate && (
+              <p className="text-xs text-red-500 mt-2">
+                קבוצה בשם זה כבר קיימת.
+              </p>
+            )}
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setAddGroupOpen(false);
+                setNewGroupName("");
+              }}
+            >
+              ביטול
+            </Button>
+            <Button
+              disabled={
+                !trimmedNewGroup ||
+                newGroupDuplicate ||
+                addGroupMutation.isPending
+              }
+              onClick={submitAddGroup}
+              className="gap-1 bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              <Plus className="w-4 h-4" />
+              {addGroupMutation.isPending ? "מוסיף..." : "הוסף קבוצה"}
             </Button>
           </DialogFooter>
         </DialogContent>
