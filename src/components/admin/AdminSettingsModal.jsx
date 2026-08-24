@@ -85,11 +85,7 @@ import {
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
-import {
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
-} from "@/components/ui/popover";
+import { useToast } from "@/components/ui/use-toast";
 import { runPureTests, runLiveTests } from "@/lib/testing/testRunner";
 import { exportAllData } from "@/lib/testing/exportData";
 import FaqManager from "@/components/admin/FaqManager";
@@ -246,6 +242,52 @@ async function runThrottled(
   }
 }
 
+// Body of the "הוסף קבוצה" toast: a self-contained controlled form so the toast
+// (rendered by the shadcn <Toaster/> mounted in App.jsx) can host a live input.
+// Manages its own text + inline validation; the parent passes onAdd/onCancel and
+// dismisses the toast on success.
+function AddGroupForm({ existingSymbols, onAdd, onCancel }) {
+  const [value, setValue] = useState("");
+  const trimmed = value.trim();
+  const duplicate =
+    trimmed !== "" &&
+    existingSymbols.some((s) => s.toLowerCase() === trimmed.toLowerCase());
+  const submit = () => {
+    if (!trimmed || duplicate) return;
+    onAdd(trimmed);
+  };
+  return (
+    <div dir="rtl" className="flex flex-col gap-2 mt-2 w-full">
+      <Input
+        autoFocus
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") submit();
+        }}
+        placeholder="שם קבוצה חדשה..."
+        className="h-9"
+      />
+      {duplicate && (
+        <span className="text-xs text-red-500">קבוצה בשם זה כבר קיימת.</span>
+      )}
+      <div className="flex items-center gap-2 justify-end">
+        <Button size="sm" variant="ghost" className="h-8" onClick={onCancel}>
+          ביטול
+        </Button>
+        <Button
+          size="sm"
+          disabled={!trimmed || duplicate}
+          onClick={submit}
+          className="h-8 gap-1 bg-blue-600 hover:bg-blue-700 text-white"
+        >
+          <Plus className="w-4 h-4" /> הוסף
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 export default function AdminSettingsModal({ isOpen, onClose }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedDepartments, setSelectedDepartments] = useState([]);
@@ -314,12 +356,13 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   // Groups tab search (filters by group name or member name/email), and the
   // group pending a delete confirmation.
   const [groupSearch, setGroupSearch] = useState("");
-  // Add-group popover: open state + the name being typed inside it.
-  const [addGroupOpen, setAddGroupOpen] = useState(false);
-  const [newGroupName, setNewGroupName] = useState("");
   const [groupToDelete, setGroupToDelete] = useState(null);
   // Member pending a "remove from group" confirmation: { person, symbol } | null.
   const [memberToRemove, setMemberToRemove] = useState(null);
+  // The shadcn toast (mounted via <Toaster/> in App.jsx) — used for the
+  // interactive "הוסף קבוצה" input toast. Aliased so it doesn't shadow the
+  // sonner `toast` used for the plain success/error notices elsewhere.
+  const { toast: uiToast } = useToast();
 
   // Archive Logic States
   const [isArchiveMode, setIsArchiveMode] = useState(false);
@@ -486,23 +529,21 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     });
   }, [groupSymbols, membersBySymbol, groupSearch]);
 
-  // Add-group popover derived state + submit. Validation is inline (empty /
-  // duplicate) so the popover gives immediate feedback without relying on a
-  // toast surface; the popover only closes on a successful create.
-  const trimmedNewGroup = newGroupName.trim();
-  const newGroupDuplicate =
-    trimmedNewGroup !== "" &&
-    groupSymbols.some(
-      (s) => s.toLowerCase() === trimmedNewGroup.toLowerCase(),
-    );
-  const submitAddGroup = () => {
-    if (!trimmedNewGroup || newGroupDuplicate || addGroupMutation.isPending)
-      return;
-    addGroupMutation.mutate(trimmedNewGroup, {
-      onSuccess: () => {
-        setAddGroupOpen(false);
-        setNewGroupName("");
-      },
+  // Open the interactive "הוסף קבוצה" toast: an input form hosted inside a
+  // shadcn toast. The toast persists (no auto-dismiss here) until the user adds
+  // a group (dismissed on success) or cancels/closes it.
+  const handleOpenAddGroup = () => {
+    const t = uiToast({
+      title: "הוספת קבוצה חדשה",
+      description: (
+        <AddGroupForm
+          existingSymbols={groupSymbols}
+          onAdd={(name) =>
+            addGroupMutation.mutate(name, { onSuccess: () => t.dismiss() })
+          }
+          onCancel={() => t.dismiss()}
+        />
+      ),
     });
   };
 
@@ -1938,74 +1979,15 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                       className="pr-10 h-9 bg-gray-50 border-gray-200 focus:bg-white rounded-xl text-sm"
                     />
                   </div>
-                  <Popover
-                    open={addGroupOpen}
-                    onOpenChange={(open) => {
-                      setAddGroupOpen(open);
-                      if (!open) setNewGroupName("");
-                    }}
+                  <Button
+                    type="button"
+                    size="sm"
+                    disabled={addGroupMutation.isPending}
+                    onClick={handleOpenAddGroup}
+                    className="gap-1 bg-blue-600 hover:bg-blue-700 text-white h-9 shrink-0"
                   >
-                    <PopoverTrigger asChild>
-                      <Button
-                        type="button"
-                        size="sm"
-                        disabled={addGroupMutation.isPending}
-                        className="gap-1 bg-blue-600 hover:bg-blue-700 text-white h-9 shrink-0"
-                      >
-                        <Plus className="w-4 h-4" /> הוסף קבוצה
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent
-                      align="start"
-                      dir="rtl"
-                      className="z-[70] w-72 flex flex-col gap-3"
-                    >
-                      <p className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-                        <Plus className="w-4 h-4 text-blue-600" /> הוספת קבוצה
-                        חדשה
-                      </p>
-                      <Input
-                        autoFocus
-                        value={newGroupName}
-                        onChange={(e) => setNewGroupName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") submitAddGroup();
-                        }}
-                        placeholder="שם קבוצה חדשה..."
-                        className="h-9"
-                      />
-                      {newGroupDuplicate && (
-                        <p className="text-xs text-red-500">
-                          קבוצה בשם זה כבר קיימת.
-                        </p>
-                      )}
-                      <div className="flex items-center gap-2 justify-end">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-8"
-                          onClick={() => {
-                            setAddGroupOpen(false);
-                            setNewGroupName("");
-                          }}
-                        >
-                          ביטול
-                        </Button>
-                        <Button
-                          size="sm"
-                          disabled={
-                            !trimmedNewGroup ||
-                            newGroupDuplicate ||
-                            addGroupMutation.isPending
-                          }
-                          onClick={submitAddGroup}
-                          className="h-8 gap-1 bg-blue-600 hover:bg-blue-700 text-white"
-                        >
-                          <Plus className="w-4 h-4" /> הוסף
-                        </Button>
-                      </div>
-                    </PopoverContent>
-                  </Popover>
+                    <Plus className="w-4 h-4" /> הוסף קבוצה
+                  </Button>
                 </div>
               </div>
 
