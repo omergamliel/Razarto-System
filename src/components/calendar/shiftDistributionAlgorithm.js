@@ -179,6 +179,7 @@ function pickTogetherCandidate(people, justice, weekly, weekKey, excludeIds, { l
  * @param {string} params.endDate - 'yyyy-MM-dd'
  * @param {Set<string>} [params.holidayDates] - Set of 'yyyy-MM-dd' holiday dates (chag days AND erev-chag days)
  * @param {Set<string>} [params.cholHamoedDates] - Set of 'yyyy-MM-dd' Chol HaMoed dates (subset of holidayDates that should NOT be treated as togetherness-worthy)
+ * @param {Map<number, Set<string>>} [params.protectedDates] - Map of serial_id -> Set of 'yyyy-MM-dd' dates the person has an ACCEPTED consideration request for; they are never assigned a shift on those dates.
  * @returns {{assignments: Array<{date: string, personId: number}>, skipped: Array<{date: string, reason: string}>, justiceTable: Array<{personId: number, name: string, totalShifts: number}>}}
  */
 export function distributeShifts({
@@ -188,7 +189,21 @@ export function distributeShifts({
   endDate,
   holidayDates = new Set(),
   cholHamoedDates = new Set(),
+  protectedDates = new Map(),
 }) {
+  // A person with an accepted consideration for a date must not be assigned a
+  // shift on it. `protectedOnDate` gives everyone protected on a given day (to
+  // exclude from candidate selection); `isProtected` checks one person/day (to
+  // stop a multi-day chunk from spilling onto a protected day).
+  const isProtected = (serialId, dateKey) =>
+    !!protectedDates.get(serialId)?.has(dateKey);
+  const protectedOnDate = (dateKey) => {
+    const ids = new Set();
+    protectedDates.forEach((dates, serialId) => {
+      if (dates.has(dateKey)) ids.add(serialId);
+    });
+    return ids;
+  };
   const start = new Date(startDate);
   const end = new Date(endDate);
   const totalDays = differenceInCalendarDays(end, start) + 1;
@@ -277,13 +292,21 @@ export function distributeShifts({
         anchorId != null ? people.find((p) => p.serial_id === anchorId) : null;
       const segmentAnchorDate = emptyDays[0].date;
 
+      // Anyone with an accepted consideration on a day in this segment is
+      // excluded from picking it. For a "together" block (one person takes
+      // every day) that means anyone protected on ANY day of the segment.
+      const togetherExcluded = new Set();
+      emptyDays.forEach((d) =>
+        protectedOnDate(d.key).forEach((id) => togetherExcluded.add(id)),
+      );
+
       if (bundle.kind === "together") {
         // Togetherness block: always goes to ONE person for every day in
         // this segment — rule (a)'s weekly cap yields to "not split" here
         // (see pickTogetherCandidate). Only fails if there's truly nobody.
         const chosen =
           anchorPerson ||
-          pickTogetherCandidate(people, justice, weekly, segment.weekKey, new Set(), {
+          pickTogetherCandidate(people, justice, weekly, segment.weekKey, togetherExcluded, {
             lastAssignedDate,
             anchorDate: segmentAnchorDate,
           });
@@ -302,48 +325,54 @@ export function distributeShifts({
         return;
       }
 
-      // Ordinary day, or a Chol HaMoed run: strict weekly cap applies. A
-      // Chol HaMoed segment longer than the cap doesn't go to one person —
-      // it's assigned in cap-sized (~2 day) consecutive chunks, each to the
-      // next fairest available person, so the chag doesn't pin anyone down
-      // for its whole span but people still aren't rotated one day at a time.
-      let chosen =
-        anchorPerson &&
-        remainingCapacity(weekly, anchorId, segment.weekKey) >= emptyDays.length
-          ? anchorPerson
-          : pickCandidate(people, justice, weekly, segment.weekKey, emptyDays.length, new Set(), {
-              lastAssignedDate,
-              anchorDate: segmentAnchorDate,
-            }) ||
-            pickCandidate(people, justice, weekly, segment.weekKey, 1, new Set(), {
-              lastAssignedDate,
-              anchorDate: segmentAnchorDate,
-            });
-
-      if (!chosen) {
-        emptyDays.forEach((d) =>
-          skipped.push({ date: d.key, reason: "לא אותר אדם זמין עם מכסה שבועית פנויה" }),
-        );
-        return;
-      }
-
+      // Ordinary day, or a Chol HaMoed run: strict weekly cap applies. The
+      // segment is assigned in cap-sized (~2 day) consecutive chunks to a
+      // sequence of the fairest available people, so a long Chol HaMoed run
+      // doesn't pin one person down yet people aren't rotated one day at a
+      // time either. Each chunk re-evaluates availability for its first open
+      // day, excluding anyone protected there (accepted consideration) or who
+      // already took an earlier chunk; a chosen person's run is cut short
+      // before any day they are themselves protected on.
       let remaining = emptyDays;
       const tried = new Set();
-      while (remaining.length > 0 && chosen) {
+      while (remaining.length > 0) {
+        const anchorDay = remaining[0];
+        const excludeIds = new Set(tried);
+        protectedOnDate(anchorDay.key).forEach((id) => excludeIds.add(id));
+
+        // Keep the bundle with its pre-existing owner when they still have room
+        // and aren't protected on this day; otherwise pick the fairest eligible.
+        const anchorUsable =
+          anchorPerson &&
+          !excludeIds.has(anchorPerson.serial_id) &&
+          remainingCapacity(weekly, anchorPerson.serial_id, segment.weekKey) >= 1;
+
+        const chosen = anchorUsable
+          ? anchorPerson
+          : pickCandidate(people, justice, weekly, segment.weekKey, 1, excludeIds, {
+              lastAssignedDate,
+              anchorDate: anchorDay.date,
+            });
+
+        if (!chosen) break;
+
         const capacity = remainingCapacity(weekly, chosen.serial_id, segment.weekKey);
-        const toAssign = remaining.slice(0, capacity);
+        let take = Math.min(capacity, remaining.length);
+        for (let i = 0; i < take; i++) {
+          if (isProtected(chosen.serial_id, remaining[i].key)) {
+            take = i;
+            break;
+          }
+        }
+        // `chosen` is never protected on remaining[0] (picked with that exclusion),
+        // so `take` is at least 1 and the loop always makes progress.
+        const toAssign = remaining.slice(0, take);
         toAssign.forEach((d) => {
           assignments.push({ date: d.key, personId: chosen.serial_id });
           recordAssignment(justice, weekly, lastAssignedDate, chosen.serial_id, segment.weekKey, d.date);
         });
-        remaining = remaining.slice(capacity);
+        remaining = remaining.slice(take);
         tried.add(chosen.serial_id);
-        chosen = remaining.length > 0
-          ? pickCandidate(people, justice, weekly, segment.weekKey, 1, tried, {
-              lastAssignedDate,
-              anchorDate: remaining[0].date,
-            })
-          : null;
       }
       remaining.forEach((d) =>
         skipped.push({ date: d.key, reason: "לא אותר אדם זמין עם מכסה שבועית פנויה" }),
