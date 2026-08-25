@@ -1185,6 +1185,17 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         action: `חלוקת ${result?.assignments?.length || 0} משמרות (${startDate} — ${endDate})`,
         type: "הוספת משמרות",
         entity: "Shift",
+        details: {
+          count: result?.assignments?.length || 0,
+          start_date: startDate,
+          end_date: endDate,
+          shifts: (result?.assignments || []).map((a) => ({
+            date: a.date,
+            owner: authorizedPeople.find(
+              (p) => Number(p.serial_id) === Number(a.personId),
+            )?.full_name,
+          })),
+        },
       });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["coverages"]);
@@ -1232,6 +1243,19 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         action: `מחיקת ${count} משמרות בטווח תאריכים`,
         type: "מחיקת משמרות",
         entity: "Shift",
+        details: {
+          count,
+          start_date: deleteShiftsRange.startDate,
+          end_date: deleteShiftsRange.endDate,
+          shifts: shiftsInDeleteRange.map((s) => ({
+            date: s.start_date,
+            start_time: s.start_time,
+            end_time: s.end_time,
+            owner: authorizedPeople.find(
+              (p) => Number(p.serial_id) === Number(s.original_user_id),
+            )?.full_name,
+          })),
+        },
       });
       queryClient.invalidateQueries(["shifts"]);
       toast.success(`נמחקו ${count} משמרות בהצלחה`);
@@ -1292,6 +1316,23 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         action: `החלפת ${count} משמרות בין משתמשים`,
         type: "שינויים בהרשאות",
         entity: "ShiftCoverage",
+        details: {
+          count,
+          from: authorizedPeople.find(
+            (p) =>
+              Number(p.serial_id) === Number(replaceShiftsForm.fromUserId),
+          )?.full_name,
+          to: authorizedPeople.find(
+            (p) => Number(p.serial_id) === Number(replaceShiftsForm.toUserId),
+          )?.full_name,
+          start_date: replaceShiftsForm.startDate,
+          end_date: replaceShiftsForm.endDate,
+          shifts: shiftsInReplaceRange.map((s) => ({
+            date: s.start_date,
+            start_time: s.start_time,
+            end_time: s.end_time,
+          })),
+        },
       });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["coverages"]);
