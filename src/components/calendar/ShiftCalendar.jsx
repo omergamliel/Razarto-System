@@ -781,6 +781,18 @@ export default function ShiftCalendar() {
         type: "בקשות החלפה",
         entity: "SwapRequest",
         entityId: variables?.shiftId,
+        details: {
+          request_type: variables?.type === "full" ? "כללית" : "חלקית",
+          requester: authorizedPerson?.full_name,
+          shifts: [
+            {
+              date: data?.start_date,
+              start_time:
+                variables?.dates?.startTime || data?.start_time,
+              end_time: variables?.dates?.endTime || data?.end_time,
+            },
+          ],
+        },
       });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["swap-requests"]);
@@ -843,10 +855,32 @@ export default function ShiftCalendar() {
       // Shift "requested" state is derived from these open requests (Phase 4).
     },
     onSuccess: (_data, { ownShiftIds, targetShiftIds }) => {
+      const ownShiftsSnap = shifts.filter((s) => ownShiftIds.includes(s.id));
+      const targetShiftsSnap = shifts.filter((s) =>
+        targetShiftIds.includes(s.id),
+      );
+      const targetOwnerId = targetShiftsSnap[0]
+        ? resolveOwnerId(targetShiftsSnap[0], coverages)
+        : null;
+      const toOwner = allUsers.find(
+        (u) => Number(u.serial_id) === Number(targetOwnerId),
+      );
+      const shiftSnap = (s) => ({
+        date: s.start_date,
+        start_time: s.start_time,
+        end_time: s.end_time,
+      });
       logActivity({
         action: "יצירת בקשת החלפה ראש-בראש",
         type: "בקשות החלפה",
         entity: "SwapRequest",
+        details: {
+          request_type: "ראש-בראש",
+          requester: authorizedPerson?.full_name,
+          to: toOwner?.full_name,
+          offered_shifts: ownShiftsSnap.map(shiftSnap),
+          requested_shifts: targetShiftsSnap.map(shiftSnap),
+        },
       });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["swap-requests"]);
@@ -940,6 +974,17 @@ export default function ShiftCalendar() {
         action: "יצירת בקשת החלפה כללית",
         type: "בקשות החלפה",
         entity: "SwapRequest",
+        details: {
+          request_type: "כללית",
+          requester: authorizedPerson?.full_name,
+          shifts: shifts
+            .filter((s) => ownShiftIds.includes(s.id))
+            .map((s) => ({
+              date: s.start_date,
+              start_time: s.start_time,
+              end_time: s.end_time,
+            })),
+        },
       });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["swap-requests"]);
@@ -1028,6 +1073,21 @@ export default function ShiftCalendar() {
         type: "בקשות החלפה",
         entity: "SwapRequest",
         entityId: request?.id,
+        details: {
+          request_type: "לקיחת בקשה כללית",
+          taker: authorizedPerson?.full_name,
+          from: allUsers.find(
+            (u) =>
+              Number(u.serial_id) === Number(request?.requesting_user_id),
+          )?.full_name,
+          shifts: shifts
+            .filter((s) => (request?.shift_ids || []).includes(s.id))
+            .map((s) => ({
+              date: s.start_date,
+              start_time: s.start_time,
+              end_time: s.end_time,
+            })),
+        },
       });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["swap-requests"]);
@@ -1101,11 +1161,25 @@ export default function ShiftCalendar() {
       );
     },
     onSuccess: (_data, shiftId) => {
+      const shift = shifts.find((s) => s.id === shiftId);
       logActivity({
         action: "ביטול בקשת החלפה של המשמרת",
         type: "בקשות החלפה",
         entity: "SwapRequest",
         entityId: shiftId,
+        details: {
+          request_type: "ביטול בקשת החלפה",
+          requester: authorizedPerson?.full_name,
+          shifts: shift
+            ? [
+                {
+                  date: shift.start_date,
+                  start_time: shift.start_time,
+                  end_time: shift.end_time,
+                },
+              ]
+            : [],
+        },
       });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["swap-requests"]);
@@ -1156,6 +1230,17 @@ export default function ShiftCalendar() {
         type: "בקשות החלפה",
         entity: "ShiftCoverage",
         entityId: shift?.id,
+        details: {
+          shifts: shift
+            ? [
+                {
+                  date: shift.start_date,
+                  start_time: shift.start_time,
+                  end_time: shift.end_time,
+                },
+              ]
+            : [],
+        },
       });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["swap-requests"]);
@@ -1210,6 +1295,19 @@ export default function ShiftCalendar() {
         type: "בקשות החלפה",
         entity: "SwapRequest",
         entityId: request?.id,
+        details: {
+          requester: allUsers.find(
+            (u) =>
+              Number(u.serial_id) === Number(request?.requesting_user_id),
+          )?.full_name,
+          shifts: shifts
+            .filter((s) => (request?.shift_ids || []).includes(s.id))
+            .map((s) => ({
+              date: s.start_date,
+              start_time: s.start_time,
+              end_time: s.end_time,
+            })),
+        },
       });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["swap-requests"]);
@@ -1267,11 +1365,29 @@ export default function ShiftCalendar() {
       );
     },
     onSuccess: (_data, request) => {
+      const snap = (ids) =>
+        shifts
+          .filter((s) => (ids || []).includes(s.id))
+          .map((s) => ({
+            date: s.start_date,
+            start_time: s.start_time,
+            end_time: s.end_time,
+          }));
       logActivity({
         action: "קבלת בקשת החלפה ראש-בראש",
         type: "בקשות החלפה",
         entity: "SwapRequest",
         entityId: request?.id,
+        details: {
+          request_type: "ראש-בראש",
+          from: allUsers.find(
+            (u) =>
+              Number(u.serial_id) === Number(request?.requesting_user_id),
+          )?.full_name,
+          to: authorizedPerson?.full_name,
+          requested_shifts: snap(request?.shift_ids),
+          offered_shifts: snap(request?.offered_shift_ids),
+        },
       });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["swap-requests"]);
@@ -1326,6 +1442,23 @@ export default function ShiftCalendar() {
         type: "בקשות החלפה",
         entity: "SwapRequest",
         entityId: shift?.id,
+        details: {
+          request_type: "מתנה",
+          giver: authorizedPerson?.full_name,
+          to:
+            allUsers.find(
+              (u) => Number(u.serial_id) === Number(shift?.original_user_id),
+            )?.full_name || shift?.original_user_name,
+          shifts: shift
+            ? [
+                {
+                  date: shift.start_date,
+                  start_time: shift.start_time,
+                  end_time: shift.end_time,
+                },
+              ]
+            : [],
+        },
       });
       queryClient.invalidateQueries(["swap-requests"]);
       const recipientName =
@@ -1404,6 +1537,21 @@ export default function ShiftCalendar() {
         type: "בקשות החלפה",
         entity: "SwapRequest",
         entityId: request?.id,
+        details: {
+          request_type: "מתנה",
+          giver: allUsers.find(
+            (u) =>
+              Number(u.serial_id) === Number(request?.requesting_user_id),
+          )?.full_name,
+          taker: authorizedPerson?.full_name,
+          shifts: shifts
+            .filter((s) => (request?.shift_ids || []).includes(s.id))
+            .map((s) => ({
+              date: s.start_date,
+              start_time: s.start_time,
+              end_time: s.end_time,
+            })),
+        },
       });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["swap-requests"]);
@@ -1491,6 +1639,18 @@ export default function ShiftCalendar() {
         type: "בקשות החלפה",
         entity: "ShiftCoverage",
         entityId: shift?.id,
+        details: {
+          request_type: "כיסוי משמרת",
+          shifts: shift
+            ? [
+                {
+                  date: shift.start_date,
+                  start_time: shift.start_time,
+                  end_time: shift.end_time,
+                },
+              ]
+            : [],
+        },
       });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["swap-requests"]);
@@ -1522,6 +1682,16 @@ export default function ShiftCalendar() {
         type: "בקשות החלפה",
         entity: "ShiftCoverage",
         entityId: h2hTargetId,
+        details: {
+          request_type: "ראש-בראש",
+          shifts: shifts
+            .filter((s) => [h2hTargetId, h2hOfferId].includes(s.id))
+            .map((s) => ({
+              date: s.start_date,
+              start_time: s.start_time,
+              end_time: s.end_time,
+            })),
+        },
       });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["coverages"]);
@@ -1560,6 +1730,17 @@ export default function ShiftCalendar() {
         type: "בקשות החלפה",
         entity: "Shift",
         entityId: shift?.id,
+        details: {
+          shifts: shift
+            ? [
+                {
+                  date: shift.start_date,
+                  start_time: shift.start_time,
+                  end_time: shift.end_time,
+                },
+              ]
+            : [],
+        },
       });
       queryClient.invalidateQueries(["shifts"]);
       toast.success("ההחלפה אושרה והלוח עודכן!");
@@ -1580,12 +1761,27 @@ export default function ShiftCalendar() {
       await createAssignmentForShift(shift, newShiftData.original_user_id);
       return shift;
     },
-    onSuccess: (shift) => {
+    onSuccess: (shift, newShiftData) => {
       logActivity({
         action: "הוספת משמרת",
         type: "הוספת משמרות",
         entity: "Shift",
         entityId: shift?.id,
+        details: {
+          owner: allUsers.find(
+            (u) =>
+              Number(u.serial_id) === Number(newShiftData?.original_user_id),
+          )?.full_name,
+          shifts: shift
+            ? [
+                {
+                  date: shift.start_date,
+                  start_time: shift.start_time,
+                  end_time: shift.end_time,
+                },
+              ]
+            : [],
+        },
       });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["coverages"]);
@@ -1608,11 +1804,31 @@ export default function ShiftCalendar() {
       return null;
     },
     onSuccess: (_data, variables) => {
+      const editedShift = shifts.find((s) => s.id === variables?.id);
       logActivity({
         action: "עריכת תפקיד / בעלות על משמרת",
         type: "שינויים בהרשאות",
         entity: "Shift",
         entityId: variables?.id,
+        details: {
+          new_owner:
+            variables?.original_user_id != null
+              ? allUsers.find(
+                  (u) =>
+                    Number(u.serial_id) ===
+                    Number(variables.original_user_id),
+                )?.full_name
+              : undefined,
+          shifts: editedShift
+            ? [
+                {
+                  date: editedShift.start_date,
+                  start_time: editedShift.start_time,
+                  end_time: editedShift.end_time,
+                },
+              ]
+            : [],
+        },
       });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["coverages"]);
@@ -1643,11 +1859,29 @@ export default function ShiftCalendar() {
       return await base44.entities.Shift.delete(id);
     },
     onSuccess: (_data, id) => {
+      const deletedShift = shifts.find((s) => s.id === id);
+      const deletedOwnerId = deletedShift
+        ? resolveOwnerId(deletedShift, coverages)
+        : null;
       logActivity({
         action: "מחיקת משמרת",
         type: "מחיקת משמרות",
         entity: "Shift",
         entityId: id,
+        details: {
+          owner: allUsers.find(
+            (u) => Number(u.serial_id) === Number(deletedOwnerId),
+          )?.full_name,
+          shifts: deletedShift
+            ? [
+                {
+                  date: deletedShift.start_date,
+                  start_time: deletedShift.start_time,
+                  end_time: deletedShift.end_time,
+                },
+              ]
+            : [],
+        },
       });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["swap-requests"]);
