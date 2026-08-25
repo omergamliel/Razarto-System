@@ -65,15 +65,19 @@ export default function ConsiderationPanel({ currentUser, isAdmin }) {
 
   const remaining = Math.max(maxDates - myPending.length, 0);
 
+  const sortByDateThenName = (a, b) =>
+    (a.date || "").localeCompare(b.date || "") ||
+    (a.user_name || "").localeCompare(b.user_name || "", "he");
+
   const pendingForManager = useMemo(
-    () =>
-      requests
-        .filter((r) => r.status === "pending")
-        .sort(
-          (a, b) =>
-            (a.date || "").localeCompare(b.date || "") ||
-            (a.user_name || "").localeCompare(b.user_name || "", "he"),
-        ),
+    () => requests.filter((r) => r.status === "pending").sort(sortByDateThenName),
+    [requests],
+  );
+
+  // Already-approved requests a manager may still revert to "pending" (unapprove)
+  // — e.g. plans changed and the date can no longer be protected.
+  const acceptedForManager = useMemo(
+    () => requests.filter((r) => r.status === "accepted").sort(sortByDateThenName),
     [requests],
   );
 
@@ -123,17 +127,23 @@ export default function ConsiderationPanel({ currentUser, isAdmin }) {
         decided_by: currentUser?.full_name || "",
       }),
     onSuccess: (_data, { req, status }) => {
+      const labels = {
+        accepted: { verb: "אישור", log: "אושר", noun: "אושרה" },
+        rejected: { verb: "דחיית", log: "נדחה", noun: "נדחתה" },
+        pending: { verb: "ביטול אישור", log: "בוטל", noun: "הוחזרה להמתנה" },
+      };
+      const l = labels[status] || labels.pending;
       logActivity({
-        action: `${status === "accepted" ? "אישור" : "דחיית"} בקשת התחשבות (${fmtHe(req.date)})`,
+        action: `${l.verb} בקשת התחשבות (${fmtHe(req.date)})`,
         type: "בקשת התחשבות",
         actor: currentUser,
-        status: status === "accepted" ? "אושר" : "נדחה",
+        status: l.log,
         entity: "ConsiderationRequest",
         entityId: req.id,
         details: {
           requester: req.user_name,
           date: req.date,
-          new_status: status === "accepted" ? "אושרה" : "נדחתה",
+          new_status: l.noun,
         },
       });
       invalidate();
@@ -355,6 +365,45 @@ export default function ConsiderationPanel({ currentUser, isAdmin }) {
                       <X className="w-3.5 h-3.5" /> דחייה
                     </button>
                   </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Approved requests — still revertible: a manager can unapprove one
+              (send it back to "ממתינה") if plans changed. */}
+          {acceptedForManager.length > 0 && (
+            <div className="space-y-1.5 pt-2">
+              <h4 className="font-bold text-gray-800 text-sm">
+                בקשות שאושרו ({acceptedForManager.length})
+              </h4>
+              {acceptedForManager.map((r) => (
+                <div
+                  key={r.id}
+                  className="flex items-center justify-between gap-2 rounded-xl border border-green-200 bg-green-50 px-3 py-2"
+                >
+                  <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                    <span className="font-semibold text-gray-800 text-sm">
+                      {r.user_name || "לא ידוע"}
+                    </span>
+                    <span className="text-gray-500 text-sm">
+                      {fmtHe(r.date)}
+                    </span>
+                    {r.note && (
+                      <span className="text-[11px] text-gray-400 truncate">
+                        {r.note}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() =>
+                      decideMutation.mutate({ req: r, status: "pending" })
+                    }
+                    disabled={decideMutation.isPending}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-amber-700 bg-amber-100 hover:bg-amber-200 transition-colors shrink-0"
+                  >
+                    <X className="w-3.5 h-3.5" /> ביטול אישור
+                  </button>
                 </div>
               ))}
             </div>
