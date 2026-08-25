@@ -231,7 +231,7 @@ export default function FairnessMatrixModal({
                   טבלת צדק
                 </h2>
                 <p className="text-white/90 text-xs md:text-sm">
-                  כמות משמרות לכל משתמש וקבוצה בטווח שנבחר
+                  בקשות התחשבות בתאריכים ואיזון חלוקת המשמרות
                 </p>
               </div>
             </div>
@@ -260,7 +260,7 @@ export default function FairnessMatrixModal({
                 }`}
               >
                 <CalendarHeart className="w-4 h-4" />
-                התחשבות
+                התחשבויות
               </button>
             </div>
           </div>
