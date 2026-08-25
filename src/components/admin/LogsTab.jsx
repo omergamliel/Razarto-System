@@ -54,6 +54,8 @@ const FIELD_LABELS = {
   start_date: "תאריך התחלה",
   end_date: "תאריך סיום",
   date: "תאריך",
+  start_time: "שעת התחלה",
+  end_time: "שעת סיום",
   shift_type: "סוג משמרת",
   role: "תפקיד",
   notes: "הערות",
@@ -71,6 +73,18 @@ const FIELD_LABELS = {
   is_partial_in_progress: "בתהליך כיסוי חלקי",
   created_date: "נוצר בתאריך",
   updated_date: "עודכן בתאריך",
+  created_by: "נוצר על ידי",
+  // Keys used by the self-contained snapshot stored on the log itself.
+  requester: "מבקש ההחלפה",
+  owner: "בעל המשמרת",
+  shifts: "משמרות",
+  count: "כמות",
+  from: "מ",
+  to: "אל",
+  group: "קבוצה",
+  giver: "נותן המשמרת",
+  taker: "לוקח המשמרת",
+  new_owner: "בעלים חדש",
 };
 
 // Keys whose value is a single person's serial_id.
@@ -83,8 +97,12 @@ const PERSON_KEYS = new Set([
 ]);
 // Keys whose value is an array of person serial_ids.
 const PERSON_ARRAY_KEYS = new Set(["covering_user_ids"]);
+// Keys whose value is an email of a person (resolve to a name).
+const EMAIL_PERSON_KEYS = new Set(["created_by"]);
 // Keys whose value is a system timestamp (show date + time).
 const DATETIME_KEYS = new Set(["created_date", "updated_date"]);
+// Fields that don't interest a manager and are hidden from the detail view.
+const HIDDEN_KEYS = new Set(["id", "is_sample"]);
 
 const labelFor = (key) => FIELD_LABELS[key] || key;
 
@@ -95,6 +113,18 @@ function toEntry(log) {
   const ts = log.created_date || log.updated_date;
   const parsed = ts ? new Date(ts) : null;
   const valid = parsed && !isNaN(parsed);
+  // The self-contained data snapshot, stored as a JSON string on the log.
+  let details = null;
+  if (log.details) {
+    try {
+      details =
+        typeof log.details === "string"
+          ? JSON.parse(log.details)
+          : log.details;
+    } catch {
+      details = null;
+    }
+  }
   return {
     id: log.id,
     user: log.actor_name || "לא ידוע",
@@ -104,6 +134,7 @@ function toEntry(log) {
     status: log.status || "ok",
     entity: log.entity || "",
     entityId: log.entity_id || "",
+    details,
     date: valid ? format(parsed, "yyyy-MM-dd") : "",
     displayDate: valid ? format(parsed, "dd/MM/yyyy") : "",
     time: valid ? format(parsed, "HH:mm") : "",
@@ -121,8 +152,14 @@ function LogDetailModal({ entry, onClose }) {
   const open = !!entry;
   const entity = entry?.entity;
   const entityId = entry?.entityId;
+  // A self-contained snapshot captured when the log was written. When present
+  // it's the source of truth, so the referenced record is NOT fetched — the
+  // log stays readable even if that record was later deleted. Live-fetching is
+  // only a fallback for legacy logs written before snapshots existed.
+  const snapshot =
+    entry?.details && typeof entry.details === "object" ? entry.details : null;
   const canFetchEntity =
-    open && !!entity && !!base44.entities?.[entity] && !!entityId;
+    open && !snapshot && !!entity && !!base44.entities?.[entity] && !!entityId;
 
   const { data: people = [] } = useQuery({
     queryKey: ["authorized-people-log-detail"],
@@ -143,16 +180,31 @@ function LogDetailModal({ entry, onClose }) {
     return m;
   }, [people]);
 
+  const personByEmail = useMemo(() => {
+    const m = new Map();
+    people.forEach((p) => {
+      if (p.email) m.set(String(p.email).toLowerCase(), p);
+    });
+    return m;
+  }, [people]);
+
   const resolvePerson = (id) => {
     if (id == null || id === "") return "—";
     const p = personBySerial.get(String(id));
     return p ? `${p.full_name} (#${id})` : `#${id}`;
   };
 
+  const resolveEmailPerson = (email) => {
+    if (!email) return "—";
+    const p = personByEmail.get(String(email).toLowerCase());
+    return p ? p.full_name : String(email);
+  };
+
   const record = useMemo(() => {
+    if (snapshot) return snapshot;
     if (!canFetchEntity) return null;
     return records.find((r) => String(r.id) === String(entityId)) || null;
-  }, [records, entityId, canFetchEntity]);
+  }, [snapshot, records, entityId, canFetchEntity]);
 
   // Render one field value, resolving people, timestamps, arrays and nested
   // objects into readable text.
@@ -161,6 +213,8 @@ function LogDetailModal({ entry, onClose }) {
       return <span className="text-gray-400">—</span>;
 
     if (PERSON_KEYS.has(key)) return resolvePerson(value);
+
+    if (EMAIL_PERSON_KEYS.has(key)) return resolveEmailPerson(value);
 
     if (PERSON_ARRAY_KEYS.has(key)) {
       const arr = Array.isArray(value) ? value : [];
@@ -186,7 +240,9 @@ function LogDetailModal({ entry, onClose }) {
                 key={i}
                 className="rounded-lg border border-gray-100 bg-gray-50 p-2 flex flex-col gap-1"
               >
-                {Object.entries(obj).map(([k, v]) => (
+                {Object.entries(obj)
+                  .filter(([k]) => !k.startsWith("$") && !HIDDEN_KEYS.has(k))
+                  .map(([k, v]) => (
                   <div key={k} className="flex gap-2 text-xs">
                     <span className="text-gray-500 shrink-0">
                       {labelFor(k)}:
@@ -207,7 +263,9 @@ function LogDetailModal({ entry, onClose }) {
     if (typeof value === "object") {
       return (
         <div className="rounded-lg border border-gray-100 bg-gray-50 p-2 flex flex-col gap-1">
-          {Object.entries(value).map(([k, v]) => (
+          {Object.entries(value)
+            .filter(([k]) => !k.startsWith("$") && !HIDDEN_KEYS.has(k))
+            .map(([k, v]) => (
             <div key={k} className="flex gap-2 text-xs">
               <span className="text-gray-500 shrink-0">{labelFor(k)}:</span>
               <span className="text-gray-800 break-all">
@@ -229,9 +287,11 @@ function LogDetailModal({ entry, onClose }) {
         dir="rtl"
         closePosition="left-4 top-4"
       >
-        <DialogHeader className="text-right">
-          <DialogTitle className="text-lg">פרטי רשומת לוג</DialogTitle>
-          <DialogDescription className="text-right">
+        <DialogHeader className="text-right sm:text-right">
+          <DialogTitle className="text-lg text-right" dir="rtl">
+            פרטי רשומת לוג
+          </DialogTitle>
+          <DialogDescription className="text-right" dir="rtl">
             {entry?.action}
           </DialogDescription>
         </DialogHeader>
@@ -266,28 +326,24 @@ function LogDetailModal({ entry, onClose }) {
             )}
           </p>
 
-          {!entity && (
-            <p className="text-sm text-gray-400">
-              לפעולה זו אין רשומת נתונים מקושרת.
-            </p>
-          )}
-
-          {entity && recordLoading && (
+          {!record && canFetchEntity && recordLoading && (
             <div className="py-6 text-center text-gray-400">
               <Loader2 className="w-5 h-5 animate-spin inline-block" />
             </div>
           )}
 
-          {entity && !recordLoading && !record && (
+          {!record && !recordLoading && (
             <p className="text-sm text-gray-400">
-              הרשומה אינה זמינה עוד (ייתכן שנמחקה).
+              {canFetchEntity
+                ? "הרשומה אינה זמינה עוד (ייתכן שנמחקה)."
+                : "לפעולה זו אין רשומת נתונים מקושרת."}
             </p>
           )}
 
-          {entity && !recordLoading && record && (
+          {record && (
             <div className="flex flex-col divide-y divide-gray-100 border border-gray-100 rounded-xl overflow-hidden">
               {Object.entries(record)
-                .filter(([k]) => !k.startsWith("$"))
+                .filter(([k]) => !k.startsWith("$") && !HIDDEN_KEYS.has(k))
                 .map(([k, v]) => (
                   <div
                     key={k}
