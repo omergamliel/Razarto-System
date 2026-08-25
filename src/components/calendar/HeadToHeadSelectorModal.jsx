@@ -162,6 +162,29 @@ export default function HeadToHeadSelectorModal({
         type: "בקשות החלפה",
         entity: "SwapRequest",
         entityId: selectedShift?.id,
+        details: {
+          request_type: "ראש-בראש",
+          requester: currentUser?.full_name,
+          to: targetShift?.user_name,
+          offered_shifts: selectedShift
+            ? [
+                {
+                  date: selectedShift.start_date,
+                  start_time: selectedShift.start_time,
+                  end_time: selectedShift.end_time,
+                },
+              ]
+            : [],
+          requested_shifts: targetShift
+            ? [
+                {
+                  date: targetShift.start_date,
+                  start_time: targetShift.start_time,
+                  end_time: targetShift.end_time,
+                },
+              ]
+            : [],
+        },
       });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["swap-requests"]);
