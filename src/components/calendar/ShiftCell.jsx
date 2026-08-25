@@ -1,7 +1,13 @@
 import React from "react";
 import { format, isToday, isSameMonth, startOfDay } from "date-fns";
 import { motion } from "framer-motion";
-import { Clock, CheckCircle2, AlertCircle, ArrowLeftRight } from "lucide-react";
+import {
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  ArrowLeftRight,
+  CalendarHeart,
+} from "lucide-react";
 
 // #rrggbb -> rgba() with the given alpha, for a light tint of the configurable
 // "assigned to inactive member" color (used as the cell background).
@@ -23,10 +29,20 @@ export default function ShiftCell({
   holidayName,
   switchFlow = null,
   inactiveGroupColor = "#f97316",
+  considerations = null,
+  onConsiderationClick = null,
 }) {
   const handleClick = () => {
     onClick(date, shift);
   };
+
+  // Manager-only highlight: this date has consideration request(s). Amber when
+  // any are still pending, green when all have been accepted.
+  const considerationItems =
+    isAdmin && considerations?.length ? considerations : null;
+  const considerationAllAccepted =
+    considerationItems &&
+    considerationItems.every((c) => c.status === "accepted");
 
   const isCurrentMonth = isSameMonth(date, currentMonth);
   const today = isToday(date);
@@ -164,7 +180,7 @@ export default function ShiftCell({
         min-h-[85px] md:min-h-[110px] p-1 md:p-3
         ${bgBorderClass}
         ${!isCurrentMonth ? "opacity-40" : ""}
-        ${today ? "ring-2 ring-[#64B5F6] ring-offset-2" : ""}
+        ${today ? "ring-2 ring-[#64B5F6] ring-offset-2" : considerationItems ? (considerationAllAccepted ? "ring-2 ring-green-400" : "ring-2 ring-amber-400") : ""}
         ${isSwitchDimmed ? "opacity-30 grayscale pointer-events-none" : ""}
         hover:shadow-lg
         group
@@ -237,6 +253,26 @@ export default function ShiftCell({
         <p className="md:hidden absolute bottom-1 left-1 right-1 text-center text-[9px] font-semibold text-purple-700 truncate px-1">
           {holidayName}
         </p>
+      )}
+
+      {/* Manager-only consideration badge — click to see who asked */}
+      {considerationItems && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onConsiderationClick?.(format(date, "yyyy-MM-dd"), considerationItems);
+          }}
+          title="בקשות התחשבות — לחצו לפרטים"
+          className={`absolute bottom-1 left-1 z-10 inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold shadow-sm transition-transform hover:scale-110 ${
+            considerationAllAccepted
+              ? "bg-green-100 text-green-700 border border-green-300"
+              : "bg-amber-100 text-amber-700 border border-amber-300"
+          }`}
+        >
+          <CalendarHeart className="w-3 h-3" />
+          {considerationItems.length}
+        </button>
       )}
     </motion.div>
   );
