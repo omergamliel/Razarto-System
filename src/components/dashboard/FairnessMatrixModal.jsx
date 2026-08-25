@@ -227,9 +227,13 @@ export default function FairnessMatrixModal({
                 <Scale className="w-6 h-6 md:w-7 md:h-7" />
               </div>
               <div>
-                <h2 className="text-2xl md:text-3xl font-bold">
+                <h2 className="text-2xl md:text-3xl font-bold mb-0.5">
                   התחשבויות
                 </h2>
+                <p className="text-white/90 text-xs md:text-sm">
+                  בקשות התחשבות בתאריכים ואיזון חלוקת המשמרות
+                </p>
+
               </div>
             </div>
           </div>
