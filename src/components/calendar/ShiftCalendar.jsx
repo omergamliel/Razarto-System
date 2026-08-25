@@ -155,6 +155,8 @@ export default function ShiftCalendar() {
   const [showAdminSettings, setShowAdminSettings] = useState(false);
   const [showHallOfFame, setShowHallOfFame] = useState(false);
   const [showFairnessMatrix, setShowFairnessMatrix] = useState(false);
+  // Manager-only: { date, items } of consideration requests for a clicked cell.
+  const [considerationDetail, setConsiderationDetail] = useState(null);
   const [showHelpSupport, setShowHelpSupport] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [deepLinkShiftId, setDeepLinkShiftId] = useState(null);
@@ -549,6 +551,35 @@ export default function ShiftCalendar() {
     queryFn: () => base44.entities.ShiftCoverage.list(),
     enabled: !!authorizedPerson,
   });
+
+  // Consideration requests power the manager-only calendar highlight: dates a
+  // user asked to be protected on. Only fetched for managers/admins (the only
+  // ones who see the badge and its detail). `isAdmin` proper is derived far
+  // below, so recompute the manager/admin check locally here.
+  const isManagerOrAdmin =
+    authorizedPerson?.permissions === "Manager" ||
+    authorizedPerson?.permissions === "Admin";
+  const { data: considerationRequests = [] } = useQuery({
+    queryKey: ["consideration-requests"],
+    queryFn: () => base44.entities.ConsiderationRequest.list(),
+    enabled: !!authorizedPerson && isManagerOrAdmin,
+  });
+
+  // date 'yyyy-MM-dd' -> [{ name, status, serial_id }] for non-rejected
+  // requests, so a marked cell can show who asked and whether it was accepted.
+  const considerationsByDate = useMemo(() => {
+    const map = new Map();
+    considerationRequests.forEach((r) => {
+      if (!r.date || r.status === "rejected") return;
+      if (!map.has(r.date)) map.set(r.date, []);
+      map.get(r.date).push({
+        name: r.user_name || "לא ידוע",
+        status: r.status,
+        serial_id: r.serial_id,
+      });
+    });
+    return map;
+  }, [considerationRequests]);
 
   // --- LAZY CLEANUP: remove SwapRequests whose date has already passed, and ---
   // reconcile shifts left stuck in a swap-related status with no live request
@@ -2297,6 +2328,10 @@ export default function ShiftCalendar() {
             currentUserRole={authorizedPerson.full_name}
             isAdmin={isAdmin}
             switchFlow={switchFlow}
+            considerationsByDate={considerationsByDate}
+            onConsiderationClick={(date, items) =>
+              setConsiderationDetail({ date, items })
+            }
           />
         </div>
       </div>
@@ -2522,7 +2557,64 @@ export default function ShiftCalendar() {
         isOpen={showFairnessMatrix}
         onClose={closeAllModals}
         currentUser={authorizedPerson}
+        isAdmin={isAdmin}
       />
+
+      {/* Manager-only: which users asked for consideration on a marked date */}
+      {considerationDetail && (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center p-4"
+          dir="rtl"
+        >
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setConsiderationDetail(null)}
+          />
+          <div
+            className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6"
+            role="dialog"
+            aria-modal="true"
+          >
+            <h3 className="text-lg font-bold text-gray-800 mb-1">
+              בקשות התחשבות
+            </h3>
+            <p className="text-sm text-gray-500 mb-4">
+              לתאריך{" "}
+              <span className="font-semibold text-gray-700">
+                {String(considerationDetail.date).split("-").reverse().join("/")}
+              </span>{" "}
+              — יש לקחת בחשבון בבחירת בעל המשמרת
+            </p>
+            <div className="space-y-1.5 max-h-64 overflow-y-auto">
+              {considerationDetail.items.map((it, i) => (
+                <div
+                  key={`${it.serial_id}-${i}`}
+                  className="flex items-center justify-between gap-2 rounded-xl border border-gray-100 bg-gray-50 px-3 py-2"
+                >
+                  <span className="font-semibold text-gray-800 text-sm">
+                    {it.name}
+                  </span>
+                  {it.status === "accepted" ? (
+                    <span className="text-[11px] font-semibold text-green-700 bg-green-100 rounded-full px-2 py-0.5">
+                      אושרה
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-semibold text-amber-700 bg-amber-100 rounded-full px-2 py-0.5">
+                      ממתינה
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={() => setConsiderationDetail(null)}
+              className="mt-5 w-full rounded-xl border-2 border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              סגור
+            </button>
+          </div>
+        </div>
+      )}
 
       <HelpSupportModal isOpen={showHelpSupport} onClose={closeAllModals} />
 
