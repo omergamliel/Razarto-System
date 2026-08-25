@@ -2495,6 +2495,13 @@ export default function ShiftCalendar() {
         isViewer={tourDemo ? false : isViewer}
         demoMode={tourDemo}
         isAdmin={isAdmin}
+        considerations={
+          selectedShift?.start_date
+            ? considerationsByDate.get(
+                String(selectedShift.start_date).slice(0, 10),
+              ) || null
+            : null
+        }
       />
 
       <AcceptSwapModal
