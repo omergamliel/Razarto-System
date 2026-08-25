@@ -2613,12 +2613,6 @@ export default function ShiftCalendar() {
                 </div>
               ))}
             </div>
-            <button
-              onClick={() => setConsiderationDetail(null)}
-              className="mt-5 w-full rounded-xl border-2 border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
-            >
-              סגור
-            </button>
           </div>
         </div>
       )}
