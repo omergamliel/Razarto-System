@@ -19,14 +19,16 @@ import { isActiveGroupMember } from '@/lib/utils';
 const HEBREW_DAYS = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'];
 const HEBREW_DAYS_FULL = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
 
-export default function CalendarGrid({ 
-  currentDate, 
-  viewMode, 
-  shifts, 
+export default function CalendarGrid({
+  currentDate,
+  viewMode,
+  shifts,
   onCellClick,
   currentUserEmail,
   isAdmin = false,
-  switchFlow = null
+  switchFlow = null,
+  considerationsByDate = null,
+  onConsiderationClick = null
 }) {
 
   // --- 1. Fetch Authorized People for Joining Data ---
@@ -187,6 +189,10 @@ export default function CalendarGrid({
               isAdmin={isAdmin}
               switchFlow={switchFlow}
               inactiveGroupColor={inactiveGroupColor}
+              considerations={
+                considerationsByDate?.get(format(day, 'yyyy-MM-dd')) || null
+              }
+              onConsiderationClick={onConsiderationClick}
             />
           </motion.div>
         ))}
