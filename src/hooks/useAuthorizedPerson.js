@@ -133,10 +133,15 @@ export function useViewerMode() {
   );
 }
 
-// The single rule for "is THIS user currently a read-only viewer": the global
-// switch is on AND their real permission level is the base "RR" role. Managers
-// and Admins are never downgraded. Kept here so every consumer derives it the
-// same way and the overlay can't drift between call sites.
+// The single rule for "is THIS user currently a read-only viewer". Two ways to
+// be one:
+//   1. The dedicated "Viewer" permission level — a permanent, per-user view-only
+//      role (sees everything an RR user sees, but can never take or change a
+//      shift). Independent of the global switch and of group membership.
+//   2. The global "RR ⇒ viewer" switch is on AND their real level is "RR".
+// Managers and Admins are never downgraded. Kept here so every consumer derives
+// it the same way and the overlay can't drift between call sites.
 export function isViewerFor(permissions, viewerModeOn) {
+  if (permissions === "Viewer") return true;
   return Boolean(viewerModeOn) && permissions === "RR";
 }
