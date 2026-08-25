@@ -33,8 +33,21 @@ export function logActivity({
   status = "ok",
   entity,
   entityId,
+  details,
 } = {}) {
   const who = actor || currentActor;
+  // Snapshot the affected record's data INTO the log so the details survive
+  // even if the referenced record is later deleted (logs must be self-contained,
+  // not dependent on other entities). Stored as a JSON string.
+  let detailsStr;
+  if (details != null && details !== "") {
+    try {
+      detailsStr =
+        typeof details === "string" ? details : JSON.stringify(details);
+    } catch (e) {
+      console.warn("logActivity: could not serialize details", e);
+    }
+  }
   try {
     return base44.entities.ActivityLog.create({
       actor_id:
@@ -45,6 +58,7 @@ export function logActivity({
       status,
       entity,
       entity_id: entityId != null ? String(entityId) : undefined,
+      details: detailsStr,
     }).catch((e) => {
       console.error("logActivity failed:", e);
     });
