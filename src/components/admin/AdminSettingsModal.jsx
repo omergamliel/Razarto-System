@@ -54,6 +54,7 @@ import {
   MessageSquare,
   RotateCcw,
   Eye,
+  CalendarHeart,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -248,6 +249,8 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   const [activeTab, setActiveTab] = useState("users");
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [systemStatus, setSystemStatus] = useState(true);
+  // "התחשבות" tab: K = max protected/pending consideration dates per user.
+  const [considerationMax, setConsiderationMax] = useState("5");
   const [systemSettings, setSystemSettings] = useState({
     // הטקסטים בפועל שמוצגים תחת הלוגו ב-CalendarHeader.jsx
     title: "מערכת לניהול משמרות",
@@ -684,8 +687,41 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       }
     }
 
+    const considerationRow = appSettings.find(
+      (s) => s.setting_key === "consideration",
+    );
+    if (considerationRow?.value) {
+      try {
+        const saved = JSON.parse(considerationRow.value);
+        if (saved?.maxDates != null) setConsiderationMax(String(saved.maxDates));
+      } catch (error) {
+        console.error("Failed to parse saved consideration settings:", error);
+      }
+    }
+
     settingsHydratedRef.current = true;
   }, [isOpen, appSettings]);
+
+  const saveConsiderationMutation = useMutation({
+    mutationFn: () => {
+      const n = Math.floor(Number(considerationMax));
+      if (!Number.isFinite(n) || n < 1) {
+        throw new Error("יש להזין מספר שלם חיובי");
+      }
+      return upsertSetting("consideration", { maxDates: n });
+    },
+    onSuccess: () => {
+      logActivity({
+        action: `עדכון מכסת בקשות התחשבות ל-${Math.floor(Number(considerationMax))}`,
+        type: "עדכון מערכת",
+        entity: "AppSettings",
+      });
+      queryClient.invalidateQueries({ queryKey: ["app-settings"] });
+      toast.success("מכסת ההתחשבות נשמרה");
+    },
+    onError: (e) =>
+      toast.error(e?.message || "שגיאה בשמירת מכסת ההתחשבות"),
+  });
 
   const saveSystemSettingsMutation = useMutation({
     mutationFn: () =>
@@ -1155,6 +1191,21 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
 
       const holidayDates = new Set(Object.keys(holidaysByDate));
 
+      // Accepted consideration requests: a person is never assigned a shift on a
+      // date they have an accepted request for. Built as serial_id -> Set(dates)
+      // and honored by distributeShifts (protectedDates). Fetched fresh so a
+      // just-accepted request is respected without relying on cache warmth.
+      const considerationRequests =
+        await base44.entities.ConsiderationRequest.list();
+      const protectedDates = new Map();
+      considerationRequests
+        .filter((r) => r.status === "accepted" && r.serial_id != null && r.date)
+        .forEach((r) => {
+          const key = Number(r.serial_id);
+          if (!protectedDates.has(key)) protectedDates.set(key, new Set());
+          protectedDates.get(key).add(r.date);
+        });
+
       const result = distributeShifts({
         people: eligiblePeople,
         existingShifts: allShiftsForDistribution,
@@ -1162,6 +1213,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         endDate,
         holidayDates,
         cholHamoedDates,
+        protectedDates,
       });
 
       // Create each shift slot (a pure time slot; Phase 4), then its base
@@ -1567,6 +1619,11 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         id: "distribution",
         label: "חלוקת משמרות",
         Icon: Scale,
+      },
+      {
+        id: "consideration",
+        label: "התחשבות",
+        Icon: CalendarHeart,
       },
       {
         id: "tests",
@@ -2879,6 +2936,46 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                   )}
                 </div>
               )}
+            </div>
+          )}
+
+          {activeTab === "consideration" && (
+            <div className="space-y-4 md:space-y-6 overflow-y-auto">
+              <div className="bg-white p-4 md:p-6 rounded-2xl border border-gray-100 shadow-sm max-w-xl">
+                <div className="flex items-center gap-2 mb-2">
+                  <CalendarHeart className="w-5 h-5 text-indigo-500" />
+                  <h3 className="font-bold text-gray-800">הגדרות התחשבות</h3>
+                </div>
+                <p className="text-sm text-gray-500 leading-relaxed mb-4">
+                  מספר התאריכים המרבי (K) שכל משתמש רשאי לבקש להתחשבות. ערך זה מגביל
+                  גם את מספר הבקשות הממתינות שמשתמש יכול להחזיק בו-זמנית. בקשות
+                  שאושרו יילקחו בחשבון בעת חלוקת המשמרות — המשתמש לא ישובץ בתאריכים
+                  שאושרו לו.
+                </p>
+                <div className="flex items-end gap-3">
+                  <div className="flex flex-col gap-1">
+                    <label className="text-xs text-gray-500">
+                      מכסת תאריכים / בקשות ממתינות (K)
+                    </label>
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={considerationMax}
+                      onChange={(e) => setConsiderationMax(e.target.value)}
+                      className="rounded-xl border border-gray-200 px-3 py-2 text-sm bg-white w-32"
+                      dir="ltr"
+                    />
+                  </div>
+                  <Button
+                    onClick={() => saveConsiderationMutation.mutate()}
+                    disabled={saveConsiderationMutation.isPending}
+                    className="rounded-xl h-10 bg-indigo-600 hover:bg-indigo-700 text-white"
+                  >
+                    {saveConsiderationMutation.isPending ? "שומר..." : "שמירה"}
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
 
