@@ -212,12 +212,12 @@ export default function CalendarHeader({
                 />
               </button>
 
-              {/* 1b. טבלת צדק */}
+              {/* 1b. התחשבויות */}
               <button
                 onClick={onOpenFairnessMatrix}
                 data-tour="fairness"
                 className="group relative p-2 rounded-xl hover:bg-gray-100 transition-all duration-200"
-                title="טבלת צדק"
+                title="התחשבויות"
               >
                 <Scale className="w-6 h-6 md:w-7 md:h-7 text-[#3F51B5] group-hover:scale-110 transition-transform" />
               </button>
