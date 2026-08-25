@@ -2019,7 +2019,9 @@ export default function ShiftCalendar() {
 
     // Permissions & ownership
     const permissionLevel = authorizedPerson.permissions;
-    const isRR = permissionLevel === "RR";
+    // A "Viewer" mirrors RR's viewing access (same shifts/details are openable);
+    // every action is separately blocked by the isViewer read-only overlay.
+    const isRR = permissionLevel === "RR" || permissionLevel === "Viewer";
     const isMyShift =
       shift.original_user_id === authorizedPerson.serial_id ||
       shift.assigned_email === authorizedPerson.email;
