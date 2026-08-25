@@ -367,6 +367,8 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     switch (perm) {
       case "RR":
         return { bg: "#fde4cf", text: "#5d3a1a", border: "#e8cdb3" };
+      case "Viewer":
+        return { bg: "#e5e7eb", text: "#334155", border: "#cbd5e1" };
       case "None":
         return { bg: "#fecaca", text: "#7f1d1d", border: "#fca5a5" };
       case "Manager":
@@ -3108,6 +3110,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                     </SelectTrigger>
                     <SelectContent dir="rtl">
                       <SelectItem value="None">ללא גישה (None)</SelectItem>
+                      <SelectItem value="Viewer">צפייה בלבד (Viewer)</SelectItem>
                       <SelectItem value="RR">משתמש רגיל (RR)</SelectItem>
                       <SelectItem value="Manager">מנהל (Manager)</SelectItem>
                     </SelectContent>
@@ -3285,7 +3288,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
 
       {/* --- 3. PERMISSIONS MODAL --- */}
       <Dialog open={isPermissionsOpen} onOpenChange={setIsPermissionsOpen}>
-        <DialogContent className="sm:max-w-[550px] text-right" dir="rtl">
+        <DialogContent className="sm:max-w-[680px] text-right" dir="rtl">
           <DialogHeader className="text-right">
             <DialogTitle className="flex items-center gap-2 text-xl">
               <div className="bg-purple-100 p-2 rounded-full">
@@ -3298,7 +3301,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 py-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 py-4">
             {/* None Option */}
             <div
               onClick={() => setSelectedPermission("None")}
@@ -3315,6 +3318,27 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
               </div>
               {selectedPermission === "None" && (
                 <div className="absolute top-2 right-2 text-red-600">
+                  <Check className="w-5 h-5" />
+                </div>
+              )}
+            </div>
+
+            {/* Viewer Option */}
+            <div
+              onClick={() => setSelectedPermission("Viewer")}
+              className={`cursor-pointer rounded-xl border-2 p-4 transition-all relative overflow-hidden group
+                ${selectedPermission === "Viewer" ? "border-slate-400 bg-slate-50" : "border-gray-200 hover:border-slate-200 hover:bg-gray-50"}
+              `}
+            >
+              <div className="flex flex-col items-center text-center gap-3">
+                <Eye className="w-12 h-12 text-slate-400" />
+                <h3 className="font-bold text-gray-800">צפייה בלבד (Viewer)</h3>
+                <p className="text-xs text-gray-500 leading-tight">
+                  מאפשר צפייה בלבד — ללא לקיחת או שינוי משמרות
+                </p>
+              </div>
+              {selectedPermission === "Viewer" && (
+                <div className="absolute top-2 right-2 text-slate-600">
                   <Check className="w-5 h-5" />
                 </div>
               )}
