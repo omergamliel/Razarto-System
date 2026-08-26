@@ -1455,11 +1455,21 @@ export default function ShiftCalendar() {
       if (existingGift) {
         throw new Error("כבר קיימת הצעת מתנה פתוחה למשמרת זו");
       }
+      // Record the current owner (the recipient who'll accept and be freed)
+      // now — on accept the shift moves to the giver, so it can't be recovered
+      // later for the history view. Resolve from the assignment coverage row
+      // (Phase 4), falling back to the enriched shift's owner id.
+      const recipientId =
+        resolveOwnerId(shift, coverages) ??
+        (shift.original_user_id != null
+          ? Number(shift.original_user_id)
+          : undefined);
       return base44.entities.SwapRequest.create({
         shift_ids: [shift.id],
         offered_shift_ids: [],
         requesting_user_id: authorizedPerson.serial_id,
         request_type: "Gift",
+        gift_recipient_id: recipientId,
         req_start_date: shift.start_date,
         req_end_date: shift.end_date || shift.start_date,
         req_start_time: shift.start_time || "09:00",
@@ -2495,13 +2505,6 @@ export default function ShiftCalendar() {
         isViewer={tourDemo ? false : isViewer}
         demoMode={tourDemo}
         isAdmin={isAdmin}
-        considerations={
-          selectedShift?.start_date
-            ? considerationsByDate.get(
-                String(selectedShift.start_date).slice(0, 10),
-              ) || null
-            : null
-        }
       />
 
       <AcceptSwapModal
@@ -2613,6 +2616,12 @@ export default function ShiftCalendar() {
                 </div>
               ))}
             </div>
+            <button
+              onClick={() => setConsiderationDetail(null)}
+              className="mt-5 w-full rounded-xl border-2 border-gray-200 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors"
+            >
+              סגור
+            </button>
           </div>
         </div>
       )}
