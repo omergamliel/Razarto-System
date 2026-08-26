@@ -1,7 +1,7 @@
 import { useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
-import { addMessage } from "@/components/sidebar/messageStore";
+import { addMessage, removeByFingerprint } from "@/components/sidebar/messageStore";
 import { computeNotificationEvents } from "@/components/sidebar/notificationEvents";
 
 const SEEN_KEY_PREFIX = "razarto_notif_seen_";
@@ -81,12 +81,15 @@ export function useNotificationScanner() {
     });
 
     // Drop fingerprints that no longer match any current candidate (e.g. a
-    // stale Open request got lazy-cleaned-up) so the set stays bounded.
-    // Fingerprints are id+state based and never legitimately recur once
-    // dropped, so this can't cause a re-notification.
+    // gift/swap offer that was accepted, declined, or cancelled) so the set
+    // stays bounded. Fingerprints are id+state based and never legitimately
+    // recur once dropped, so this can't cause a re-notification. Also pull the
+    // popup that was raised for it — otherwise a resolved offer's message
+    // lingers in the sidebar until manually dismissed.
     seen.forEach((fp) => {
       if (!currentFingerprints.has(fp)) {
         seen.delete(fp);
+        removeByFingerprint(fp);
         changed = true;
       }
     });
