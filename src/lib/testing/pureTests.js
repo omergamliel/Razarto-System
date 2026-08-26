@@ -454,7 +454,7 @@ function testComputeNotificationEvents() {
   assert(has("h2h-incoming:rH2HIn"), "incoming Head2Head request should notify me");
   assert(has("gift-offer:rGiftIn"), "an incoming gift offer on my shift should notify me");
   assert(has("sr-pending:rMineFull"), "my own still-open request should notify me it's pending");
-  assert(has("coverage-new:c1"), "a new coverage offer on my shift should notify me");
+  assert(has("coverage-new:c1:offered"), "a new coverage offer on my (still-open) shift should notify me");
   assert(has("sr-partial-outcome:rPartialDone"), "my resolved Partial request should notify me of its outcome");
 
   // ...and each message deep-links to the exact menu item that caused it.
@@ -464,7 +464,7 @@ function testComputeNotificationEvents() {
     "an incoming gift should deep-link to the swap-requests 'incoming' tab");
   assertEqual(targetOf("sr-pending:rMineFull"), "kpi:swap_requests:mine",
     "my pending request should deep-link to the swap-requests 'mine' tab");
-  assertEqual(targetOf("coverage-new:c1"), "kpi:partial_gaps:mine",
+  assertEqual(targetOf("coverage-new:c1:offered"), "kpi:partial_gaps:mine",
     "a coverage offer on a Partial request should deep-link to the partial-gaps 'mine' tab");
   assertEqual(targetOf("sr-partial-outcome:rPartialDone"), "kpi:approved",
     "a resolved partial outcome should deep-link to the history ('approved') tab");
@@ -473,9 +473,9 @@ function testComputeNotificationEvents() {
   assert(!has("h2h-incoming:rMineH2HOut"), "my own outgoing Head2Head request should not self-notify");
   assert(!has("gift-offer:rGiftOut"), "a gift I sent should not notify me as an incoming offer");
   assert(!has("sr-pending:rGiftOut"), "a gift I sent should not surface as a pending swap request");
-  assert(!has("coverage-new:cSelf"), "a coverage where I'm both owner and coverer should not notify");
-  assert(!has("coverage-new:aS1"), "a base assignment row is ownership, not a coverage offer — it must not notify");
-  assert(!has("coverage-new:aS4"), "a base assignment row must never fire a new-coverage event");
+  assert(!has("coverage-new:cSelf:offered"), "a coverage where I'm both owner and coverer should not notify");
+  assert(!has("coverage-new:aS1:offered"), "a base assignment row is ownership, not a coverage offer — it must not notify");
+  assert(!has("coverage-new:aS4:offered"), "a base assignment row must never fire a new-coverage event");
 
   // Fingerprint stability: identical input must yield an identical fingerprint
   // set (this is what useNotificationScanner's localStorage dedupe relies on).
