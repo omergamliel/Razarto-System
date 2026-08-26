@@ -14,8 +14,6 @@ import {
   Send,
   UserRoundPen,
   Gift,
-  CalendarHeart,
-  Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -74,10 +72,6 @@ export default function ShiftDetailsModal({
   // data-mutating action button, leaving only the non-mutating exports.
   isViewer = false,
   isAdmin,
-  // Manager-only: non-rejected consideration requests ("התחשבות") on this
-  // shift's date — [{ name, status, serial_id }], where an "accepted" request
-  // is one a manager already approved. Same source as the calendar cell badge.
-  considerations = null,
   // Guided walkthrough: render a passed-in demo shift as a clean "white" shift
   // (its real per-shift queries are disabled so nothing is fetched) purely so
   // the tour can spotlight the action buttons. Read-only; the tour's click
@@ -628,12 +622,6 @@ export default function ShiftDetailsModal({
       label: row.name,
       variant: "covered",
     }));
-    const remaining = ownerSegments.map((seg) => ({
-      start: seg.start,
-      end: seg.end,
-      label: ownerDisplayName,
-      variant: "original",
-    }));
     // The requested-but-still-uncovered gaps get their own grey band, distinct
     // from the blue "still with the original owner" band — this is the range
     // that was actually asked for help and nobody has claimed yet.
@@ -643,6 +631,20 @@ export default function ShiftDetailsModal({
       label: "טרם נתפס",
       variant: "needsHelp",
     }));
+    // The owner's remaining time includes the requested gaps (they're still
+    // technically uncovered), but those are drawn separately as the grey
+    // "טרם נתפס" band. Cut the grey ranges out of the blue band so the two
+    // don't overlap — otherwise the blue band spans the full track and its
+    // owner label centers over the whole width instead of over the actual
+    // blue range it represents.
+    const remaining = ownerSegments
+      .flatMap((seg) => subtractSegments(seg.start, seg.end, missingSegments))
+      .map((seg) => ({
+        start: seg.start,
+        end: seg.end,
+        label: ownerDisplayName,
+        variant: "original",
+      }));
     return [...covered, ...remaining, ...needsHelp].sort(
       (a, b) => a.start - b.start,
     );
@@ -1079,37 +1081,6 @@ export default function ShiftDetailsModal({
                             {format(row.end, "HH:mm")}
                           </span>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Manager-only: who asked not to be scheduled on this date
-                    ("התחשבות"). Yellow card mirroring the calendar cell badge
-                    (same CalendarHeart icon); a green check marks a request a
-                    manager already approved, nothing if still pending. */}
-                {isAdmin && considerations?.length > 0 && (
-                  <div className="rounded-2xl bg-yellow-50 border border-yellow-200 p-4 shadow-sm space-y-2">
-                    <div className="flex items-center gap-2 text-yellow-800">
-                      <CalendarHeart className="w-4 h-4" />
-                      <p className="text-sm font-semibold">
-                        בקשות התחשבות בתאריך זה
-                      </p>
-                    </div>
-                    <p className="text-[11px] text-yellow-700">
-                      המשתמשים הבאים ביקשו שלא לשבץ אותם למשמרת זו:
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {considerations.map((c, idx) => (
-                        <span
-                          key={`${c.serial_id}-${idx}`}
-                          className="inline-flex items-center gap-1 rounded-full bg-white border border-yellow-200 px-2.5 py-1 text-xs font-semibold text-yellow-900"
-                        >
-                          {c.name}
-                          {c.status === "accepted" && (
-                            <Check className="w-3.5 h-3.5 text-green-600" />
-                          )}
-                        </span>
                       ))}
                     </div>
                   </div>
