@@ -127,7 +127,8 @@ export default function KPIHeader({
         gaps = gaps.flatMap((seg) => {
           if (covEnd <= seg.start || covStart >= seg.end) return [seg];
           const pieces = [];
-          if (covStart > seg.start) pieces.push({ start: seg.start, end: covStart });
+          if (covStart > seg.start)
+            pieces.push({ start: seg.start, end: covStart });
           if (covEnd < seg.end) pieces.push({ start: covEnd, end: seg.end });
           return pieces;
         });
@@ -235,7 +236,7 @@ export default function KPIHeader({
 
   return (
     <div
-      className="grid grid-cols-5 gap-1 sm:gap-2 mb-3 md:mb-6"
+      className="grid grid-cols-5 gap-1 sm:gap-2 mb-1 md:mb-6"
       data-tour="kpi-band"
     >
       {kpis.map((kpi, index) => {
@@ -255,47 +256,47 @@ export default function KPIHeader({
         const countStyle =
           themed && !kpi.isAction ? { color: themed } : undefined;
         return (
-        <motion.div
-          key={kpi.id}
-          data-tour={`kpi-${kpi.id}`}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: index * 0.05 }}
-          style={cardStyle}
-          onClick={() =>
-            kpi.isAction
-              ? onStartSwitchFlow && onStartSwitchFlow()
-              : onKPIClick && onKPIClick(kpi.id)
-          }
-          className={`
+          <motion.div
+            key={kpi.id}
+            data-tour={`kpi-${kpi.id}`}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: index * 0.05 }}
+            style={cardStyle}
+            onClick={() =>
+              kpi.isAction
+                ? onStartSwitchFlow && onStartSwitchFlow()
+                : onKPIClick && onKPIClick(kpi.id)
+            }
+            className={`
             ${kpi.bgColor} border ${kpi.borderColor}
             rounded-xl cursor-pointer hover:shadow-md transition-all
             flex flex-col items-center justify-center text-center
             p-2 md:p-4 md:flex-row md:gap-3 md:items-center md:text-right
             h-full
           `}
-        >
-          <div
-            style={iconStyle}
-            className={`p-1.5 md:p-3 rounded-lg md:rounded-xl bg-gradient-to-br ${kpi.gradient} text-white shadow-sm mb-1 md:mb-0 shrink-0`}
           >
-            <kpi.icon className="w-4 h-4 md:w-6 md:h-6" />
-          </div>
-
-          <div className="flex flex-col items-center md:items-start">
-            <span
-              style={countStyle}
-              className={`text-xl md:text-3xl font-extrabold leading-none mb-1 md:mb-0 ${kpi.isAction ? "invisible" : kpi.textColor}`}
+            <div
+              style={iconStyle}
+              className={`p-1.5 md:p-3 rounded-lg md:rounded-xl bg-gradient-to-br ${kpi.gradient} text-white shadow-sm mb-1 md:mb-0 shrink-0`}
             >
-              {kpi.isAction ? "0" : kpi.count}
-            </span>
+              <kpi.icon className="w-4 h-4 md:w-6 md:h-6" />
+            </div>
 
-            <p className="text-[10px] md:text-xs font-bold text-gray-700 leading-tight min-h-[2.5em] flex items-center">
-              <span className="md:hidden block px-1">{kpi.mobileTitle}</span>
-              <span className="hidden md:block">{kpi.desktopTitle}</span>
-            </p>
-          </div>
-        </motion.div>
+            <div className="flex flex-col items-center md:items-start">
+              <span
+                style={countStyle}
+                className={`text-xl md:text-3xl font-extrabold leading-none mb-1 md:mb-0 ${kpi.isAction ? "invisible" : kpi.textColor}`}
+              >
+                {kpi.isAction ? "0" : kpi.count}
+              </span>
+
+              <p className="text-[10px] md:text-xs font-bold text-gray-700 leading-tight min-h-[2.5em] flex items-center">
+                <span className="md:hidden block px-1">{kpi.mobileTitle}</span>
+                <span className="hidden md:block">{kpi.desktopTitle}</span>
+              </p>
+            </div>
+          </motion.div>
         );
       })}
     </div>
