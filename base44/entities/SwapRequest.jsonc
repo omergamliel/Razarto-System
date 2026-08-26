@@ -47,6 +47,10 @@
       },
       "description": "\u05de\u05d6\u05d4\u05d9 \u05de\u05e9\u05de\u05e8\u05d5\u05ea \u05de\u05d5\u05e6\u05e2\u05d5\u05ea (\u05e8\u05d0\u05e9 \u05d1\u05e8\u05d0\u05e9). \u05e8\u05d9\u05e7 \u05d1\u05d1\u05e7\u05e9\u05ea General \u05d4\u05e4\u05ea\u05d5\u05d7\u05d4 \u05dc\u05db\u05d0\u05df"
     },
+    "gift_recipient_id": {
+      "type": "number",
+      "description": "Gift only: serial_id of the shift's owner at the moment the gift was offered \u2014 i.e. the person who accepts the offer and is freed from the shift. Captured at creation because ownership moves to the giver on accept, so it can't be recovered afterward (used to show both sides in the history view)."
+    },
     "status": {
       "type": "string",
       "enum": [
@@ -70,18 +74,9 @@
   ],
   "rls": {
     "read": {
-      "$or": [
-        {
-          "user_condition": {
-            "data.is_authorized": true
-          }
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
+      "user_condition": {
+        "data.is_authorized": true
+      }
     },
     "create": {
       "user_condition": {
