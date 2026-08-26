@@ -142,7 +142,7 @@ export default function CalendarHeader({
           {/* ----------------------------- */}
           {/* 1. פס עליון סטיקי (User + Logo + Icons) */}
           {/* ----------------------------- */}
-          <div className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-200 shadow-sm px-4 md:px-6 py-3 rounded-b-2xl -mx-4 -mt-6 mb-8 flex items-center justify-between transition-all">
+          <div className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-gray-200 shadow-sm px-4 md:px-6 py-3 rounded-b-2xl -mx-4 -mt-6 mb-4 flex items-center justify-between transition-all">
             {/* צד ימין: לוגו + ברכה + שם משתמש */}
             <div className="flex items-center gap-3 md:gap-4 flex-shrink-0">
               {/* LOGO AREA - Compact for Mobile */}
@@ -266,7 +266,7 @@ export default function CalendarHeader({
           {/* 2. אזור המיתוג (כותרת ראשית בלבד - לוגו הועבר למעלה) */}
           {/* ----------------------------- */}
           <div
-            className="flex flex-col items-center justify-center mb-0.5 px-2 text-center"
+            className="flex flex-col items-center justify-center mb-1 px-2 text-center"
             data-tour="brand"
           >
             <h1
