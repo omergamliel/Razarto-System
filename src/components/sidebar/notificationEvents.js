@@ -121,7 +121,12 @@ export function computeNotificationEvents({
       !!parentRequest && RESOLVED_STATUSES.includes(parentRequest.status);
     const isPartialParent = parentRequest?.request_type === "Partial";
     events.push({
-      fingerprint: `coverage-new:${c.id}`,
+      // The resolved state is part of the fingerprint so the message tracks the
+      // shift's real state: when a still-open cover ("offered") later closes the
+      // shift ("covered"), the old fingerprint stops matching and its popup is
+      // pulled, while the new one is raised — without this the wording froze at
+      // whatever it was the first time the owner saw it.
+      fingerprint: `coverage-new:${c.id}:${resolved ? "covered" : "offered"}`,
       type: resolved ? "covered" : "partial",
       title: resolved ? "המשמרת שלך כוסתה" : "הוצע כיסוי למשמרת שלך",
       body: `${coverer} ${resolved ? "כיסה/תה" : "הציע/ה לכסות"} את המשמרת שלך (${dateLabel})`,
@@ -132,20 +137,37 @@ export function computeNotificationEvents({
     });
   });
 
-  // 4. One of my own swap requests (any type) is still sitting unanswered.
-  // Gifts are excluded — the giver already got a confirmation toast, and this
-  // message's "swap request" wording doesn't fit a one-directional gift offer.
+  // 4. One of my own swap requests is still waiting for help. Gifts are
+  // excluded — the giver already got a confirmation toast, and this message's
+  // "swap request" wording doesn't fit a one-directional gift offer.
   swapRequests.forEach((r) => {
     if (Number(r.requesting_user_id) !== myId) return;
-    if (r.status !== "Open") return;
     if (r.request_type === "Gift") return;
+
+    // A Partial request keeps waiting through "Partially_Covered" (some hours
+    // claimed, more still open) — it isn't done until it's Closed/Cancelled
+    // (handled by event 5). General/H2H only have the single "Open" wait.
+    const isPartial = r.request_type === "Partial";
+    const stillWaiting = isPartial
+      ? ["Open", "Partially_Covered"].includes(r.status)
+      : r.status === "Open";
+    if (!stillWaiting) return;
+
     events.push({
-      fingerprint: `sr-pending:${r.id}`,
+      // Status is part of the fingerprint so Open → Partially_Covered swaps the
+      // wording (old popup pulled, new one raised) instead of freezing.
+      fingerprint: `sr-pending:${r.id}:${r.status}`,
       type: "swap_requested",
       title: "הבקשה שלך עדיין ממתינה",
-      body: "בקשת ההחלפה שלך עדיין לא התקבלה על ידי אף אחד",
+      body: isPartial
+        ? r.status === "Partially_Covered"
+          ? "חלק מהשעות שביקשת כוסו — עדיין נותרו שעות פתוחות בבקשה"
+          : "בקשת הכיסוי החלקי שלך עדיין ממתינה למענה"
+        : "בקשת ההחלפה שלך עדיין לא התקבלה על ידי אף אחד",
       actionLabel: "צפייה בבקשה",
-      actionTarget: "kpi:swap_requests:mine",
+      actionTarget: isPartial
+        ? "kpi:partial_gaps:mine"
+        : "kpi:swap_requests:mine",
     });
   });
 
