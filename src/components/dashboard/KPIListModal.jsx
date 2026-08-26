@@ -678,6 +678,17 @@ export default function KPIListModal({
           offered_shifts: offeredShifts.map((s, idx) => ({
             ...s,
             owner_name: offeredUsers[idx]?.full_name || "לא ידוע",
+            // Ownership was removed from the Shift in Phase 4, so a raw offered
+            // shift has no original_user_id — resolve it from the assignment
+            // coverage row. Without this the "incoming head-to-head" detection
+            // (deriveRequestItemFlags / filterRequestsForSwapTab, which both
+            // match offered_shifts against my serial_id) never fires, so a
+            // counter-offer targeting my shift shows no accept button and is
+            // missing from the "בקשות אליי" tab.
+            original_user_id:
+              offeredUsers[idx]?.serial_id ??
+              resolveOwnerId(s, coveragesAll) ??
+              s.original_user_id,
           })),
           is_request_object: true,
           is_closed_request: isClosedRequest,
@@ -1560,6 +1571,28 @@ export default function KPIListModal({
                                       לקח/ה את המשמרת ללא תמורה
                                     </span>
                                   </div>
+                                  {/* Who accepted the offer (the original owner
+                                      who was freed). Only shown for gifts that
+                                      recorded the recipient at creation
+                                      (gift_recipient_id) — older gifts predate
+                                      the field and simply omit this line. */}
+                                  {(() => {
+                                    const recipient = authorizedUsers.find(
+                                      (u) =>
+                                        Number(u?.serial_id) ===
+                                        Number(item.gift_recipient_id),
+                                    );
+                                    if (!recipient) return null;
+                                    return (
+                                      <div className="mt-1.5 flex items-center gap-2 flex-wrap text-xs text-gray-600">
+                                        <CheckCircle2 className="w-3.5 h-3.5 text-pink-500 shrink-0" />
+                                        <span>אושרה על ידי</span>
+                                        <span className="font-semibold text-pink-800">
+                                          {recipient.full_name}
+                                        </span>
+                                      </div>
+                                    );
+                                  })()}
                                   {startDate && (
                                     <div
                                       className="mt-2 flex items-center gap-1 text-xs text-gray-500"
