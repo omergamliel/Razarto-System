@@ -266,7 +266,7 @@ export default function CalendarHeader({
           {/* 2. אזור המיתוג (כותרת ראשית בלבד - לוגו הועבר למעלה) */}
           {/* ----------------------------- */}
           <div
-            className="flex flex-col items-center justify-center mb-1 px-2 text-center"
+            className="flex flex-col items-center justify-center mb-0.5 px-2 text-center"
             data-tour="brand"
           >
             <h1
