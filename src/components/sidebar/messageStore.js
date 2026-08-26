@@ -38,6 +38,10 @@ export function addMessage({
   body = "",
   actionLabel = "",
   actionTarget = null,
+  // Stable identity of the underlying event (e.g. `gift-offer:<id>`). Kept on
+  // the message so the scanner can auto-remove it once the event it stands for
+  // no longer exists — a gift/swap that was accepted or cancelled.
+  fingerprint = null,
 }) {
   const message = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -46,6 +50,7 @@ export function addMessage({
     body,
     actionLabel,
     actionTarget,
+    fingerprint,
     created_date: new Date().toISOString(),
   };
   messages = [message, ...messages];
@@ -56,6 +61,19 @@ export function addMessage({
 export function removeMessage(id) {
   messages = messages.filter((m) => m.id !== id);
   emit();
+}
+
+// Remove any message that was raised for a given event fingerprint. Called by
+// the scanner when the event a notification stood for no longer matches current
+// data (e.g. an incoming gift offer was accepted, declined, or cancelled), so
+// the popup doesn't linger after it's been resolved.
+export function removeByFingerprint(fingerprint) {
+  if (!fingerprint) return;
+  const next = messages.filter((m) => m.fingerprint !== fingerprint);
+  if (next.length !== messages.length) {
+    messages = next;
+    emit();
+  }
 }
 
 export function clearAll() {
@@ -69,6 +87,8 @@ export function clearAll() {
 export function dispatchAction(actionTarget) {
   if (typeof window === "undefined") return;
   window.dispatchEvent(
-    new CustomEvent("razarto:sidebar-action", { detail: { target: actionTarget } }),
+    new CustomEvent("razarto:sidebar-action", {
+      detail: { target: actionTarget },
+    }),
   );
 }
