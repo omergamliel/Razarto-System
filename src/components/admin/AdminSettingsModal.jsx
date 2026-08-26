@@ -92,7 +92,6 @@ import FaqManager from "@/components/admin/FaqManager";
 import ThemesTab from "@/components/admin/ThemesTab";
 import LogsTab from "@/components/admin/LogsTab";
 import {
-  MONITOR_CHECKS,
   LOG_TYPE_OPTIONS,
   DEFAULT_GROUP_SYMBOLS,
 } from "@/components/admin/adminConstants";
@@ -362,8 +361,6 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   const [showTestExportGate, setShowTestExportGate] = useState(false);
 
   const queryClient = useQueryClient();
-
-  const monitorChecks = MONITOR_CHECKS;
 
   // --- HELPER: Permission Colors ---
   const getPermissionStyle = (perm) => {
@@ -1572,12 +1569,6 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
 
   const filteredPeople = getFilteredPeople();
 
-  const statusColors = {
-    ok: "bg-emerald-500",
-    warn: "bg-amber-400",
-    error: "bg-rose-500",
-  };
-
   const tabs = useMemo(
     () => [
       {
@@ -2404,43 +2395,6 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                       {viewerModeOn ? "ON" : "OFF"}
                     </span>
                   </button>
-                </div>
-              </div>
-
-              <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
-                <div className="flex items-center justify-between mb-2">
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800">
-                      מוניטור
-                    </p>
-                    <p className="text-xs text-gray-500">
-                      בדיקת שירותים בזמן אמת
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs text-emerald-600">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />{" "}
-                    הכל תקין
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                  {monitorChecks.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 bg-gradient-to-br from-white to-gray-50"
-                    >
-                      <span
-                        className={`w-3 h-3 rounded-full ${statusColors[item.status]} animate-pulse`}
-                      />
-                      <div className="flex flex-col text-sm">
-                        <span className="font-semibold text-gray-800">
-                          {item.label}
-                        </span>
-                        <span className="text-xs text-gray-500">
-                          {item.detail}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
                 </div>
               </div>
 
