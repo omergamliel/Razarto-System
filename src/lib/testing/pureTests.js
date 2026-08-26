@@ -453,7 +453,8 @@ function testComputeNotificationEvents() {
   // Every process fires the right event...
   assert(has("h2h-incoming:rH2HIn"), "incoming Head2Head request should notify me");
   assert(has("gift-offer:rGiftIn"), "an incoming gift offer on my shift should notify me");
-  assert(has("sr-pending:rMineFull"), "my own still-open request should notify me it's pending");
+  assert(has("sr-pending:rMineFull:Open"), "my own still-open request should notify me it's pending");
+  assert(has("sr-pending:rMinePartial:Open"), "my own still-open Partial request should notify me it's pending");
   assert(has("coverage-new:c1:offered"), "a new coverage offer on my (still-open) shift should notify me");
   assert(has("sr-partial-outcome:rPartialDone"), "my resolved Partial request should notify me of its outcome");
 
@@ -462,8 +463,10 @@ function testComputeNotificationEvents() {
     "an incoming Head2Head should deep-link to the swap-requests 'incoming' tab");
   assertEqual(targetOf("gift-offer:rGiftIn"), "kpi:swap_requests:incoming",
     "an incoming gift should deep-link to the swap-requests 'incoming' tab");
-  assertEqual(targetOf("sr-pending:rMineFull"), "kpi:swap_requests:mine",
-    "my pending request should deep-link to the swap-requests 'mine' tab");
+  assertEqual(targetOf("sr-pending:rMineFull:Open"), "kpi:swap_requests:mine",
+    "my pending General request should deep-link to the swap-requests 'mine' tab");
+  assertEqual(targetOf("sr-pending:rMinePartial:Open"), "kpi:partial_gaps:mine",
+    "my pending Partial request should deep-link to the partial-gaps 'mine' tab, not swap-requests");
   assertEqual(targetOf("coverage-new:c1:offered"), "kpi:partial_gaps:mine",
     "a coverage offer on a Partial request should deep-link to the partial-gaps 'mine' tab");
   assertEqual(targetOf("sr-partial-outcome:rPartialDone"), "kpi:approved",
@@ -472,7 +475,7 @@ function testComputeNotificationEvents() {
   // Negative guards — buttons/messages that don't belong stay silent.
   assert(!has("h2h-incoming:rMineH2HOut"), "my own outgoing Head2Head request should not self-notify");
   assert(!has("gift-offer:rGiftOut"), "a gift I sent should not notify me as an incoming offer");
-  assert(!has("sr-pending:rGiftOut"), "a gift I sent should not surface as a pending swap request");
+  assert(!has("sr-pending:rGiftOut:Open"), "a gift I sent should not surface as a pending swap request");
   assert(!has("coverage-new:cSelf:offered"), "a coverage where I'm both owner and coverer should not notify");
   assert(!has("coverage-new:aS1:offered"), "a base assignment row is ownership, not a coverage offer — it must not notify");
   assert(!has("coverage-new:aS4:offered"), "a base assignment row must never fire a new-coverage event");
