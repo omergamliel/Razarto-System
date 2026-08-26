@@ -212,12 +212,12 @@ export default function CalendarHeader({
                 />
               </button>
 
-              {/* 1b. התחשבויות */}
+              {/* 1b. טבלת צדק */}
               <button
                 onClick={onOpenFairnessMatrix}
                 data-tour="fairness"
                 className="group relative p-2 rounded-xl hover:bg-gray-100 transition-all duration-200"
-                title="התחשבויות"
+                title="טבלת צדק"
               >
                 <Scale className="w-6 h-6 md:w-7 md:h-7 text-[#3F51B5] group-hover:scale-110 transition-transform" />
               </button>
@@ -266,7 +266,7 @@ export default function CalendarHeader({
           {/* 2. אזור המיתוג (כותרת ראשית בלבד - לוגו הועבר למעלה) */}
           {/* ----------------------------- */}
           <div
-            className="flex flex-col items-center justify-center mb-3 px-2 text-center"
+            className="flex flex-col items-center justify-center mb-1 px-2 text-center"
             data-tour="brand"
           >
             <h1
