@@ -2585,15 +2585,13 @@ export default function ShiftCalendar() {
             role="dialog"
             aria-modal="true"
           >
-            <h3 className="text-lg font-bold text-gray-800 mb-1">
-              בקשות התחשבות
-            </h3>
+            <h3 className="text-lg font-bold text-gray-800 mb-1">אילוצים</h3>
             <p className="text-sm text-gray-500 mb-4">
               לתאריך{" "}
               <span className="font-semibold text-gray-700">
                 {String(considerationDetail.date).split("-").reverse().join("/")}
               </span>{" "}
-              — יש לקחת בחשבון בבחירת בעל המשמרת
+              — משתמשים אלה ביקשו שלא לשבץ אותם במשמרת ביום זה
             </p>
             <div className="space-y-1.5 max-h-64 overflow-y-auto">
               {considerationDetail.items.map((it, i) => (
@@ -2604,15 +2602,9 @@ export default function ShiftCalendar() {
                   <span className="font-semibold text-gray-800 text-sm">
                     {it.name}
                   </span>
-                  {it.status === "accepted" ? (
-                    <span className="text-[11px] font-semibold text-green-700 bg-green-100 rounded-full px-2 py-0.5">
-                      אושרה
-                    </span>
-                  ) : (
-                    <span className="text-[11px] font-semibold text-amber-700 bg-amber-100 rounded-full px-2 py-0.5">
-                      ממתינה
-                    </span>
-                  )}
+                  <span className="text-[11px] font-semibold text-amber-700 bg-amber-100 rounded-full px-2 py-0.5">
+                    אילוץ
+                  </span>
                 </div>
               ))}
             </div>
