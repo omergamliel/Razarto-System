@@ -146,19 +146,19 @@ export function isViewerFor(permissions, viewerModeOn) {
   return Boolean(viewerModeOn) && permissions === "RR";
 }
 
-// The AppSettings setting_key holding the "consideration" (התחשבות) config —
-// a JSON blob { maxDates: number }. `maxDates` (K) is BOTH the cap on how many
-// protected dates a user may request AND the cap on how many pending requests
-// they may hold at once. Admin-set in AdminSettingsModal ▸ התחשבות.
+// The AppSettings setting_key holding the "אילוצים" (constraints) config — a
+// JSON blob { maxDates: number }. `maxDates` (K) is the MONTHLY THRESHOLD: users
+// may set any number of constraints, but crossing K constraints within a single
+// calendar month signals managers. (The stored field is still named `maxDates`
+// for backward compatibility.) Admin-set in AdminSettingsModal ▸ אילוצים.
 export const CONSIDERATION_KEY = "consideration";
 
 // Default K when nothing has been saved yet.
 export const DEFAULT_CONSIDERATION_MAX = 5;
 
-// The effective K (max protected/pending consideration dates per user). Reads
-// the shared ["app-settings"] cache so a change by an admin reaches every
-// client at once. Falls back to DEFAULT_CONSIDERATION_MAX for an absent or
-// non-positive value.
+// The effective K (monthly constraint threshold). Reads the shared
+// ["app-settings"] cache so a change by an admin reaches every client at once.
+// Falls back to DEFAULT_CONSIDERATION_MAX for an absent or non-positive value.
 export function useConsiderationMaxDates() {
   const { data: rows = [] } = useAppSettings();
   return useMemo(() => {
