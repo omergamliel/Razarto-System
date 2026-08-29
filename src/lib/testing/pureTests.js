@@ -15,6 +15,8 @@ import {
   filterRequestsForSwapTab,
   filterPartialGapsForTab,
   isActiveGroupMember,
+  isActiveGroupMemberOnDate,
+  activeMemberSerialIdOnDate,
 } from "@/lib/utils";
 import { assert, assertEqual } from "./assert";
 
@@ -554,6 +556,95 @@ function testActiveGroupMember() {
 }
 
 // --------------------------------------------------------------------------
+// Scheduled active-member switch: a group's active member can be scheduled to
+// change on a date. activeMemberSerialIdOnDate/isActiveGroupMemberOnDate must
+// resolve the active member AS OF a date — the outgoing member before the
+// switch date, the incoming member on/after it — so the calendar and
+// distribution treat a group as one unit across the handover.
+// --------------------------------------------------------------------------
+function testScheduledSwitch() {
+  const groupWithSwitch = {
+    symbol: "A",
+    active: true,
+    serial_id: 7, // outgoing (current) active member
+    scheduled_switch_date: "2026-03-01",
+    scheduled_switch_serial_id: 9, // incoming member
+  };
+
+  // Before the switch date → outgoing member is active.
+  assertEqual(
+    activeMemberSerialIdOnDate(groupWithSwitch, "2026-02-28"),
+    7,
+    "before the switch date the outgoing member is active",
+  );
+  // On the switch date → incoming member is active (boundary is inclusive).
+  assertEqual(
+    activeMemberSerialIdOnDate(groupWithSwitch, "2026-03-01"),
+    9,
+    "on the switch date the incoming member becomes active",
+  );
+  // After the switch date → incoming member.
+  assertEqual(
+    activeMemberSerialIdOnDate(groupWithSwitch, "2026-05-10"),
+    9,
+    "after the switch date the incoming member is active",
+  );
+
+  // No scheduled switch → the plain active member, regardless of date.
+  const plain = { symbol: "A", active: true, serial_id: 7 };
+  assertEqual(
+    activeMemberSerialIdOnDate(plain, "2030-01-01"),
+    7,
+    "without a scheduled switch the current active member always wins",
+  );
+  // A scheduled serial with no date (or vice versa) is ignored.
+  assertEqual(
+    activeMemberSerialIdOnDate(
+      { symbol: "A", active: true, serial_id: 7, scheduled_switch_serial_id: 9 },
+      "2030-01-01",
+    ),
+    7,
+    "a scheduled serial with no date does not take effect",
+  );
+  // Inactive group, no member → null.
+  assertEqual(
+    activeMemberSerialIdOnDate({ symbol: "A", active: false, serial_id: null }, "2030-01-01"),
+    null,
+    "an inactive group with no member has no active serial",
+  );
+
+  const groups = [groupWithSwitch];
+  const outgoing = { sign: "A", serial_id: 7 };
+  const incoming = { sign: "A", serial_id: 9 };
+
+  // The outgoing member is "active" only before the switch date.
+  assert(
+    isActiveGroupMemberOnDate(outgoing, groups, "2026-02-28"),
+    "outgoing member is active before the switch",
+  );
+  assert(
+    !isActiveGroupMemberOnDate(outgoing, groups, "2026-03-01"),
+    "outgoing member is NOT active on/after the switch",
+  );
+  // The incoming member is "active" only from the switch date on.
+  assert(
+    !isActiveGroupMemberOnDate(incoming, groups, "2026-02-28"),
+    "incoming member is NOT active before the switch",
+  );
+  assert(
+    isActiveGroupMemberOnDate(incoming, groups, "2026-03-01"),
+    "incoming member is active on/after the switch",
+  );
+
+  // isActiveGroupMember (date-agnostic) must stay backward-compatible: with no
+  // scheduled switch it matches the plain active rule for today.
+  assert(
+    isActiveGroupMember(outgoing, [plain]),
+    "date-agnostic check still recognizes a plain active member",
+  );
+}
+
+// --------------------------------------------------------------------------
 // interactionRules: which action buttons a shift's detail view shows, at every
 // stage of every process. Each case is a full boolean snapshot so a button
 // that MUST be hidden is asserted absent, not just the ones that show.
@@ -1059,6 +1150,12 @@ export const pureTests = [
     name: "isActiveGroupMember: own-group-scoped active rule (lingering/stale/duplicate rows)",
     category: "pure",
     run: testActiveGroupMember,
+  },
+  {
+    id: "pure-scheduled-switch",
+    name: "activeMemberSerialIdOnDate / isActiveGroupMemberOnDate: scheduled active-member switch resolves per date",
+    category: "pure",
+    run: testScheduledSwitch,
   },
   {
     id: "pure-shift-action-flags",
