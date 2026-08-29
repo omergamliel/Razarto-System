@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { addMessage, removeByFingerprint } from "@/components/sidebar/messageStore";
 import { computeNotificationEvents } from "@/components/sidebar/notificationEvents";
+import { useConsiderationMaxDates } from "@/hooks/useAuthorizedPerson";
 
 const SEEN_KEY_PREFIX = "razarto_notif_seen_";
 
@@ -56,6 +57,16 @@ export function useNotificationScanner() {
     enabled: !!me,
   });
 
+  // Constraint (אילוץ) threshold signal is manager-only, so the requests are
+  // only fetched for managers/admins (matches the calendar's own gating).
+  const isManager = me?.permissions === "Manager" || me?.permissions === "Admin";
+  const considerationThreshold = useConsiderationMaxDates();
+  const { data: considerationRequests = [] } = useQuery({
+    queryKey: ["consideration-requests"],
+    queryFn: () => base44.entities.ConsiderationRequest.list(),
+    enabled: !!me && isManager,
+  });
+
   useEffect(() => {
     if (!me) return;
 
@@ -65,6 +76,8 @@ export function useNotificationScanner() {
       swapRequests,
       coverages,
       allUsers,
+      considerationRequests,
+      considerationThreshold,
     });
 
     const seenKey = `${SEEN_KEY_PREFIX}${me.serial_id}`;
@@ -97,5 +110,13 @@ export function useNotificationScanner() {
     if (changed) {
       localStorage.setItem(seenKey, JSON.stringify([...seen]));
     }
-  }, [me, shifts, swapRequests, coverages, allUsers]);
+  }, [
+    me,
+    shifts,
+    swapRequests,
+    coverages,
+    allUsers,
+    considerationRequests,
+    considerationThreshold,
+  ]);
 }
