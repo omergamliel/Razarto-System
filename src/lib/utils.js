@@ -41,7 +41,48 @@ export const isOpenStatus = (status) =>
 // shown in "ניהול קבוצות". Every surface (shift interaction gate, assignment
 // dropdowns, the "assigned to inactive member" marking, fair distribution, the
 // fairness matrix) must go through this so they can't drift apart.
-export function isActiveGroupMember(person, shiftGroups) {
+//
+// Scheduled switch: a group may schedule its active member to change on a future
+// date (ShiftGroup.scheduled_switch_date + scheduled_switch_serial_id). From
+// that date on, the group's active member is the incoming serial_id; before it,
+// the current one. All the "is active" logic below therefore takes a date and
+// resolves the active member AS OF that date, so a shift dated after the switch
+// belongs to the incoming member (and isn't flagged as out-of-policy) while the
+// same group's earlier shifts still belong to the outgoing member.
+
+// Local 'yyyy-MM-dd' for "now" — the default date for the date-agnostic
+// isActiveGroupMember (today's active member). Computed from local time so it
+// agrees with the calendar's own date keys near midnight.
+export function todayKey() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+// The serial_id of a group's active member as of `dateStr` ('yyyy-MM-dd'),
+// honoring a scheduled switch. Returns the incoming member on/after the switch
+// date, otherwise the current active member, or null when no one is active.
+export function activeMemberSerialIdOnDate(group, dateStr) {
+  if (!group) return null;
+  if (
+    group.scheduled_switch_date &&
+    group.scheduled_switch_serial_id != null &&
+    dateStr &&
+    dateStr >= group.scheduled_switch_date
+  ) {
+    return Number(group.scheduled_switch_serial_id);
+  }
+  return group.active && group.serial_id != null
+    ? Number(group.serial_id)
+    : null;
+}
+
+// Date-aware form of the group active-member rule: is `person` the active member
+// of THEIR OWN group as of `dateStr`? Same own-group-scoped, last-write-wins,
+// null-member-safe rules as isActiveGroupMember, plus the scheduled switch.
+export function isActiveGroupMemberOnDate(person, shiftGroups, dateStr) {
   const sign = person?.sign;
   const serialId = person?.serial_id;
   if (!sign || serialId == null) return false;
@@ -49,11 +90,17 @@ export function isActiveGroupMember(person, shiftGroups) {
   for (const group of shiftGroups || []) {
     if (group?.symbol === sign) row = group; // last write wins, like the admin map
   }
-  return (
-    Boolean(row?.active) &&
-    row?.serial_id != null &&
-    Number(row.serial_id) === Number(serialId)
-  );
+  const activeSerial = activeMemberSerialIdOnDate(row, dateStr);
+  return activeSerial != null && Number(activeSerial) === Number(serialId);
+}
+
+// Date-agnostic active-member check — resolves the active member as of TODAY.
+// Used by every "can this person act now" gate (swap interactions, assignment
+// dropdowns, the star in "ניהול קבוצות"). Per-shift surfaces that care about a
+// specific date (the calendar's out-of-policy marker, distribution) use
+// isActiveGroupMemberOnDate instead.
+export function isActiveGroupMember(person, shiftGroups) {
+  return isActiveGroupMemberOnDate(person, shiftGroups, todayKey());
 }
 
 // ---------------------------------------------------------------------------
