@@ -54,7 +54,6 @@ import {
   MessageSquare,
   RotateCcw,
   Eye,
-  CalendarHeart,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -248,7 +247,8 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   const [activeTab, setActiveTab] = useState("users");
   const [isNavOpen, setIsNavOpen] = useState(false);
   const [systemStatus, setSystemStatus] = useState(true);
-  // "התחשבות" tab: K = max protected/pending consideration dates per user.
+  // "אילוצים" tab: K = monthly constraint threshold. Users may set unlimited
+  // constraints; crossing K in a single month signals managers.
   const [considerationMax, setConsiderationMax] = useState("5");
   const [systemSettings, setSystemSettings] = useState({
     // הטקסטים בפועל שמוצגים תחת הלוגו ב-CalendarHeader.jsx
@@ -394,6 +394,31 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     queryFn: () => base44.entities.AuthorizedPerson.list(),
     enabled: isOpen,
   });
+
+  // Platform Users (admins may read all rows per User RLS). A person is
+  // "connected" once they've completed onboarding, which flips is_authorized on
+  // their platform User (auth.updateMe) and syncs serial_id — onboarding does
+  // NOT write AuthorizedPerson.linked_user_id, so relying on that alone left
+  // connected users showing as disconnected. Match by serial_id here.
+  const { data: platformUsers = [] } = useQuery({
+    queryKey: ["platform-users"],
+    queryFn: () => base44.entities.User.list(),
+    enabled: isOpen,
+  });
+  const authorizedSerialIds = useMemo(() => {
+    const set = new Set();
+    platformUsers.forEach((u) => {
+      if (u.is_authorized && u.serial_id != null) set.add(Number(u.serial_id));
+    });
+    return set;
+  }, [platformUsers]);
+  const isPersonConnected = useCallback(
+    (person) =>
+      Boolean(person.linked_user_id) ||
+      (person.serial_id != null &&
+        authorizedSerialIds.has(Number(person.serial_id))),
+    [authorizedSerialIds],
+  );
 
   // One-time legacy data migration: the "View" permission was replaced by
   // "None". Any rows still stored as "View" are bulk-updated to "None" the
@@ -709,15 +734,15 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     },
     onSuccess: () => {
       logActivity({
-        action: `עדכון מכסת בקשות התחשבות ל-${Math.floor(Number(considerationMax))}`,
+        action: `עדכון סף האילוצים החודשי ל-${Math.floor(Number(considerationMax))}`,
         type: "עדכון מערכת",
         entity: "AppSettings",
       });
       queryClient.invalidateQueries({ queryKey: ["app-settings"] });
-      toast.success("מכסת ההתחשבות נשמרה");
+      toast.success("סף האילוצים נשמר");
     },
     onError: (e) =>
-      toast.error(e?.message || "שגיאה בשמירת מכסת ההתחשבות"),
+      toast.error(e?.message || "שגיאה בשמירת סף האילוצים"),
   });
 
   const saveSystemSettingsMutation = useMutation({
@@ -1188,15 +1213,18 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
 
       const holidayDates = new Set(Object.keys(holidaysByDate));
 
-      // Accepted consideration requests: a person is never assigned a shift on a
-      // date they have an accepted request for. Built as serial_id -> Set(dates)
-      // and honored by distributeShifts (protectedDates). Fetched fresh so a
-      // just-accepted request is respected without relying on cache warmth.
+      // Constraints (אילוצים): a person is never assigned a shift on a date they
+      // set a constraint for. Constraints take effect immediately with no
+      // approval, so every non-rejected request counts (the legacy "rejected"
+      // status is still excluded for backward compatibility). Built as
+      // serial_id -> Set(dates) and honored by distributeShifts (protectedDates).
+      // Fetched fresh so a just-added constraint is respected without relying on
+      // cache warmth.
       const considerationRequests =
         await base44.entities.ConsiderationRequest.list();
       const protectedDates = new Map();
       considerationRequests
-        .filter((r) => r.status === "accepted" && r.serial_id != null && r.date)
+        .filter((r) => r.status !== "rejected" && r.serial_id != null && r.date)
         .forEach((r) => {
           const key = Number(r.serial_id);
           if (!protectedDates.has(key)) protectedDates.set(key, new Set());
@@ -1613,8 +1641,8 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       },
       {
         id: "consideration",
-        label: "התחשבות",
-        Icon: CalendarHeart,
+        label: "אילוצים",
+        Icon: Ban,
       },
       {
         id: "tests",
@@ -1906,7 +1934,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                           <div className="col-span-3 md:col-span-1 flex justify-center items-center">
                             <img
                               src={
-                                person.linked_user_id
+                                isPersonConnected(person)
                                   ? "https://i.imagesup.co/images2/30a37d06678a9808e762570c63cede181682172e.png"
                                   : "https://i.imagesup.co/images2/b4873b1a4a57971b9ab6294adda44a6a184efc66.png"
                               }
@@ -2897,19 +2925,19 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
             <div className="space-y-4 md:space-y-6 overflow-y-auto">
               <div className="bg-white p-4 md:p-6 rounded-2xl border border-gray-100 shadow-sm max-w-xl">
                 <div className="flex items-center gap-2 mb-2">
-                  <CalendarHeart className="w-5 h-5 text-indigo-500" />
-                  <h3 className="font-bold text-gray-800">הגדרות התחשבות</h3>
+                  <Ban className="w-5 h-5 text-indigo-500" />
+                  <h3 className="font-bold text-gray-800">הגדרות אילוצים</h3>
                 </div>
                 <p className="text-sm text-gray-500 leading-relaxed mb-4">
-                  מספר התאריכים המרבי (K) שכל משתמש רשאי לבקש להתחשבות. ערך זה מגביל
-                  גם את מספר הבקשות הממתינות שמשתמש יכול להחזיק בו-זמנית. בקשות
-                  שאושרו יילקחו בחשבון בעת חלוקת המשמרות — המשתמש לא ישובץ בתאריכים
-                  שאושרו לו.
+                  סף האילוצים החודשי (K). משתמשים רשאים להגדיר כמה אילוצים שירצו,
+                  והם נלקחים בחשבון בחלוקת המשמרות מיד וללא צורך באישור. כאשר משתמש
+                  חורג מ-K אילוצים בחודש בודד, המנהלים מקבלים על כך התראה (בלשונית
+                  זו ובסרגל ההודעות) כדי לבדוק את החריגה ולמחוק אילוצים במידת הצורך.
                 </p>
                 <div className="flex items-end gap-3">
                   <div className="flex flex-col gap-1">
                     <label className="text-xs text-gray-500">
-                      מכסת תאריכים / בקשות ממתינות (K)
+                      סף אילוצים חודשי (K)
                     </label>
                     <input
                       type="number"
