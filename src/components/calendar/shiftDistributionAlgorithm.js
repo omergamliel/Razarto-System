@@ -179,7 +179,7 @@ function pickTogetherCandidate(people, justice, weekly, weekKey, excludeIds, { l
  * @param {string} params.endDate - 'yyyy-MM-dd'
  * @param {Set<string>} [params.holidayDates] - Set of 'yyyy-MM-dd' holiday dates (chag days AND erev-chag days)
  * @param {Set<string>} [params.cholHamoedDates] - Set of 'yyyy-MM-dd' Chol HaMoed dates (subset of holidayDates that should NOT be treated as togetherness-worthy)
- * @param {Map<number, Set<string>>} [params.protectedDates] - Map of serial_id -> Set of 'yyyy-MM-dd' dates the person has an ACCEPTED consideration request for; they are never assigned a shift on those dates.
+ * @param {Map<number, Set<string>>} [params.protectedDates] - Map of serial_id -> Set of 'yyyy-MM-dd' dates the person set a constraint (אילוץ) for; they are never assigned a shift on those dates.
  * @returns {{assignments: Array<{date: string, personId: number}>, skipped: Array<{date: string, reason: string}>, justiceTable: Array<{personId: number, name: string, totalShifts: number}>}}
  */
 export function distributeShifts({
@@ -191,7 +191,7 @@ export function distributeShifts({
   cholHamoedDates = new Set(),
   protectedDates = new Map(),
 }) {
-  // A person with an accepted consideration for a date must not be assigned a
+  // A person with a constraint (אילוץ) for a date must not be assigned a
   // shift on it. `protectedOnDate` gives everyone protected on a given day (to
   // exclude from candidate selection); `isProtected` checks one person/day (to
   // stop a multi-day chunk from spilling onto a protected day).
@@ -292,7 +292,7 @@ export function distributeShifts({
         anchorId != null ? people.find((p) => p.serial_id === anchorId) : null;
       const segmentAnchorDate = emptyDays[0].date;
 
-      // Anyone with an accepted consideration on a day in this segment is
+      // Anyone with a constraint on a day in this segment is
       // excluded from picking it. For a "together" block (one person takes
       // every day) that means anyone protected on ANY day of the segment.
       const togetherExcluded = new Set();
@@ -330,7 +330,7 @@ export function distributeShifts({
       // sequence of the fairest available people, so a long Chol HaMoed run
       // doesn't pin one person down yet people aren't rotated one day at a
       // time either. Each chunk re-evaluates availability for its first open
-      // day, excluding anyone protected there (accepted consideration) or who
+      // day, excluding anyone protected there (a constraint) or who
       // already took an earlier chunk; a chosen person's run is cut short
       // before any day they are themselves protected on.
       let remaining = emptyDays;
