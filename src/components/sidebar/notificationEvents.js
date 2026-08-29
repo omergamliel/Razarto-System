@@ -26,15 +26,24 @@ function formatShiftDate(shift) {
 // state got there. Each returned event carries a stable `fingerprint` so the
 // caller (useNotificationScanner) can dedupe against what's already been
 // shown, across reloads, without needing a realtime/push channel.
+// 'yyyy-MM-dd' -> 'MM/yyyy' for the manager constraint-threshold message.
+function formatMonth(monthKey) {
+  const [y, m] = (monthKey || "").split("-");
+  return y && m ? `${m}/${y}` : monthKey;
+}
+
 export function computeNotificationEvents({
   me,
   shifts = [],
   swapRequests = [],
   coverages = [],
   allUsers = [],
+  considerationRequests = [],
+  considerationThreshold = 0,
 }) {
   if (!me?.serial_id) return [];
   const myId = Number(me.serial_id);
+  const isManager = me.permissions === "Manager" || me.permissions === "Admin";
 
   const shiftById = new Map(shifts.map((s) => [s.id, s]));
 
@@ -209,6 +218,38 @@ export function computeNotificationEvents({
       actionTarget: "kpi:approved",
     });
   });
+
+  // 6. Manager-only: a user crossed the monthly constraint (אילוץ) threshold.
+  // Constraints are always honored — this is an informational heads-up so a
+  // manager can review the load and, if they wish, delete some (from the
+  // אילוצים tab). One message per user+month over the threshold; the scanner
+  // auto-pulls it if deletions bring the user back under the threshold.
+  if (isManager && considerationThreshold > 0) {
+    const byUserMonth = new Map();
+    considerationRequests.forEach((r) => {
+      if (!r.date || r.serial_id == null) return;
+      const monthKey = r.date.slice(0, 7);
+      const key = `${r.serial_id}|${monthKey}`;
+      if (!byUserMonth.has(key)) {
+        byUserMonth.set(key, {
+          serialId: r.serial_id,
+          name: r.user_name || nameOf(allUsers, r.serial_id),
+          monthKey,
+          count: 0,
+        });
+      }
+      byUserMonth.get(key).count += 1;
+    });
+    byUserMonth.forEach((g) => {
+      if (g.count <= considerationThreshold) return;
+      events.push({
+        fingerprint: `consideration-threshold:${g.serialId}:${g.monthKey}`,
+        type: "info",
+        title: "חריגה ממכסת האילוצים",
+        body: `${g.name} הגדיר/ה ${g.count} אילוצים בחודש ${formatMonth(g.monthKey)} (סף: ${considerationThreshold}). האילוצים תקפים — ניתן לבדוק ולמחוק בלשונית 'אילוצים'.`,
+      });
+    });
+  }
 
   return events;
 }
