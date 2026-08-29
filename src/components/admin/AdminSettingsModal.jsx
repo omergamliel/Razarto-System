@@ -5,7 +5,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { format } from "date-fns";
+import { format, addDays } from "date-fns";
 import { distributeShifts } from "../calendar/shiftDistributionAlgorithm";
 import {
   createAssignmentForShift,
@@ -68,7 +68,11 @@ import {
 } from "@/components/ui/select";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44, logActivity } from "@/api/base44Client";
-import { isActiveGroupMember as isActiveGroupMemberRule } from "@/lib/utils";
+import {
+  isActiveGroupMember as isActiveGroupMemberRule,
+  activeMemberSerialIdOnDate,
+  todayKey,
+} from "@/lib/utils";
 import { VIEWER_MODE_KEY } from "@/hooks/useAuthorizedPerson";
 import { toast } from "sonner";
 import {
@@ -101,6 +105,13 @@ import {
 // users. Setting lang="en-GB" on the input forces the dd/mm/yyyy display
 // Israeli users expect, in every Chromium/Firefox browser, while .value
 // keeps emitting/accepting the same 'yyyy-MM-dd' string as before.
+// Display an ISO 'yyyy-MM-dd' string as dd/MM/yyyy (the Israeli format), without
+// touching the underlying value. Returns the input unchanged if it isn't ISO.
+function formatILDate(iso) {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || "");
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : iso || "";
+}
+
 function DateInputIL({ value, onChange, className = "" }) {
   return (
     <Input
@@ -318,6 +329,14 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   // the name being typed.
   const [addGroupOpen, setAddGroupOpen] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
+  // Scheduled active-member switch dialog: which group symbol is open (or null),
+  // the incoming member's serial_id, and the switch date ('yyyy-MM-dd'). From
+  // that date on, the group's active member becomes the incoming member — both
+  // in the calendar (the incoming member's shifts aren't flagged out-of-policy)
+  // and in distribution (ownership switches over during the run).
+  const [switchDialogSymbol, setSwitchDialogSymbol] = useState(null);
+  const [switchTargetSerial, setSwitchTargetSerial] = useState("");
+  const [switchDate, setSwitchDate] = useState("");
 
   // Archive Logic States
   const [isArchiveMode, setIsArchiveMode] = useState(false);
@@ -330,6 +349,10 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   });
   const [distributionResult, setDistributionResult] = useState(null);
   const [distributionError, setDistributionError] = useState("");
+  // Grace period (days) an incoming member is left free of shifts after a
+  // scheduled group switch — honored by distribution. Persisted as the
+  // AppSettings "switch_grace" row; defaults to 30.
+  const [switchGraceDays, setSwitchGraceDays] = useState("30");
 
   // --- Delete shifts in a date range ---
   const [deleteShiftsRange, setDeleteShiftsRange] = useState({
@@ -718,6 +741,18 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       }
     }
 
+    const switchGraceRow = appSettings.find(
+      (s) => s.setting_key === "switch_grace",
+    );
+    if (switchGraceRow?.value) {
+      try {
+        const saved = JSON.parse(switchGraceRow.value);
+        if (saved?.days != null) setSwitchGraceDays(String(saved.days));
+      } catch (error) {
+        console.error("Failed to parse saved switch-grace settings:", error);
+      }
+    }
+
     settingsHydratedRef.current = true;
   }, [isOpen, appSettings]);
 
@@ -740,6 +775,26 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     },
     onError: (e) =>
       toast.error(e?.message || "שגיאה בשמירת סף האילוצים"),
+  });
+
+  const saveSwitchGraceMutation = useMutation({
+    mutationFn: () => {
+      const n = Math.floor(Number(switchGraceDays));
+      if (!Number.isFinite(n) || n < 0) {
+        throw new Error("יש להזין מספר שלם (0 ומעלה)");
+      }
+      return upsertSetting("switch_grace", { days: n });
+    },
+    onSuccess: () => {
+      logActivity({
+        action: `עדכון תקופת החסד להחלפה מתוזמנת ל-${Math.floor(Number(switchGraceDays))} ימים`,
+        type: "עדכון מערכת",
+        entity: "AppSettings",
+      });
+      queryClient.invalidateQueries({ queryKey: ["app-settings"] });
+      toast.success("תקופת החסד נשמרה");
+    },
+    onError: (e) => toast.error(e?.message || "שגיאה בשמירת תקופת החסד"),
   });
 
   const saveSystemSettingsMutation = useMutation({
@@ -1184,25 +1239,169 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     onError: () => toast.error("שגיאה בהסרת המשתמש מהקבוצה."),
   });
 
+  // 3d. Groups — schedule (or cancel) a future active-member switch. The
+  // group's ShiftGroup row keeps its current active member in `serial_id`; the
+  // scheduled fields say "on this date, the active member becomes this other
+  // member". The shared date-aware rule (activeMemberSerialIdOnDate) then makes
+  // the calendar and distribution treat the incoming member as active from that
+  // date on — no cron/commit step needed. Passing target=null clears it.
+  const scheduleSwitchMutation = useMutation({
+    mutationFn: async ({ symbol, targetSerialId, date }) => {
+      const existing = activeGroupBySymbol.get(symbol);
+      const clearing = targetSerialId == null || !date;
+      const payload = clearing
+        ? { scheduled_switch_date: null, scheduled_switch_serial_id: null }
+        : {
+            scheduled_switch_date: date,
+            scheduled_switch_serial_id: Number(targetSerialId),
+          };
+      if (existing) {
+        await base44.entities.ShiftGroup.update(existing.id, payload);
+      } else {
+        // No row yet (group referenced only by members' `sign`) — create it.
+        // There's no current active member to carry over, so leave that empty.
+        await base44.entities.ShiftGroup.create({
+          symbol,
+          serial_id: null,
+          active: false,
+          ...payload,
+        });
+      }
+      return { clearing };
+    },
+    onSuccess: (result, { symbol }) => {
+      logActivity({
+        action: result?.clearing
+          ? `ביטול החלפה מתוזמנת בקבוצה ${symbol}`
+          : `תזמון החלפת משתמש פעיל בקבוצה ${symbol}`,
+        type: "עדכון מערכת",
+        entity: "ShiftGroup",
+      });
+      queryClient.invalidateQueries(["shift-groups"]);
+      setSwitchDialogSymbol(null);
+      setSwitchTargetSerial("");
+      setSwitchDate("");
+      toast.success(
+        result?.clearing ? "ההחלפה המתוזמנת בוטלה" : "ההחלפה תוזמנה בהצלחה",
+      );
+    },
+    onError: () => toast.error("שגיאה בתזמון ההחלפה."),
+  });
+
   // 4. Fair shift distribution — only RR and Manager permission holders are
   // in the rotation pool (Admins/None users are excluded from being
   // auto-assigned shifts by this algorithm).
   const runDistributionMutation = useMutation({
     mutationFn: async ({ startDate, endDate }) => {
-      // Strict active-only rule: a person is assigned shifts only if they are
-      // the active member of THEIR OWN group (their group's ShiftGroup row is
-      // active AND its serial_id is theirs), on top of the RR/Manager permission
-      // check. isActiveGroupMember scopes to the person's own group (by sign),
-      // so a stale/duplicate active row under another group — or a row whose
-      // `active` flag lingered true after its member was cleared — can't smuggle
-      // a non-active person into the rotation. Users in no group, or non-active
-      // group members, are excluded.
-      const eligiblePeople = authorizedPeople.filter(
-        (p) =>
-          ["RR", "Manager"].includes(p.permissions) &&
-          isActiveGroupMember(p),
+      // Each group contributes ONE fairness participant — its "representative",
+      // the member active at the START of the range (activeMemberSerialIdOnDate,
+      // which honors a scheduled switch). The group is treated as a single unit
+      // for fairness across a switch: the algorithm runs on the representative,
+      // then ownership is remapped per date so shifts on/after the switch date
+      // go to the incoming member. This keeps the group's total shift count the
+      // same whether or not it switches mid-range.
+      const grace = Math.max(0, Math.floor(Number(switchGraceDays)) || 0);
+      const peopleBySerial = new Map(
+        authorizedPeople.map((p) => [Number(p.serial_id), p]),
       );
-      if (eligiblePeople.length === 0) {
+
+      // Constraints (אילוצים): a person is never assigned a shift on a date they
+      // set a constraint for. Constraints take effect immediately with no
+      // approval, so every non-rejected request counts (the legacy "rejected"
+      // status is still excluded for backward compatibility). Fetched fresh so a
+      // just-added constraint is respected without relying on cache warmth.
+      const considerationRequests =
+        await base44.entities.ConsiderationRequest.list();
+      const rawProtected = new Map(); // serial_id -> Set(dates)
+      considerationRequests
+        .filter((r) => r.status !== "rejected" && r.serial_id != null && r.date)
+        .forEach((r) => {
+          const key = Number(r.serial_id);
+          if (!rawProtected.has(key)) rawProtected.set(key, new Set());
+          rawProtected.get(key).add(r.date);
+        });
+
+      const reps = []; // fairness participants (one per group)
+      const protectedDates = new Map(); // repSerial -> Set(dates)
+      const repInfo = new Map(); // repSerial -> { switchDate, incomingSerial }
+      const ownerRemap = new Map(); // any member serial -> repSerial (for seeding)
+
+      const addProtected = (repSerial, dates) => {
+        if (!dates) return;
+        if (!protectedDates.has(repSerial))
+          protectedDates.set(repSerial, new Set());
+        const set = protectedDates.get(repSerial);
+        dates.forEach((d) => set.add(d));
+      };
+
+      activeGroupBySymbol.forEach((group, symbol) => {
+        const repSerial = activeMemberSerialIdOnDate(group, startDate);
+        if (repSerial == null) return; // no active member at range start
+        const rep = peopleBySerial.get(Number(repSerial));
+        // Only RR/Manager members are in the rotation, and the representative
+        // must actually belong to this group (guards a stale scheduled serial).
+        if (
+          !rep ||
+          !["RR", "Manager"].includes(rep.permissions) ||
+          rep.sign !== symbol
+        )
+          return;
+
+        reps.push(rep);
+        const repKey = Number(repSerial);
+
+        const hasSwitch =
+          !!group.scheduled_switch_date &&
+          group.scheduled_switch_serial_id != null;
+        const switchDate = hasSwitch ? group.scheduled_switch_date : null;
+        const incomingSerial = hasSwitch
+          ? Number(group.scheduled_switch_serial_id)
+          : null;
+        const outgoingSerial =
+          group.active && group.serial_id != null
+            ? Number(group.serial_id)
+            : null;
+
+        repInfo.set(repKey, { switchDate, incomingSerial });
+
+        // Fold both switch members into the representative so the group's prior
+        // in-range shifts (owned by whoever) count as ONE unit for fairness.
+        ownerRemap.set(repKey, repKey);
+        if (outgoingSerial != null) ownerRemap.set(outgoingSerial, repKey);
+        if (incomingSerial != null) ownerRemap.set(incomingSerial, repKey);
+
+        if (hasSwitch && incomingSerial != null) {
+          // Constraints, split across the switch date: before it the outgoing
+          // member's constraints apply to the group's slot, on/after it the
+          // incoming member's.
+          if (outgoingSerial != null) {
+            const before = [...(rawProtected.get(outgoingSerial) || [])].filter(
+              (d) => d < switchDate,
+            );
+            addProtected(repKey, before);
+          }
+          const after = [...(rawProtected.get(incomingSerial) || [])].filter(
+            (d) => d >= switchDate,
+          );
+          addProtected(repKey, after);
+
+          // Grace period: leave the incoming member free of shifts for `grace`
+          // days from the switch date (the group's slot is protected there).
+          if (grace > 0) {
+            const graceSet = new Set();
+            const base = new Date(switchDate);
+            for (let i = 0; i < grace; i++) {
+              graceSet.add(format(addDays(base, i), "yyyy-MM-dd"));
+            }
+            addProtected(repKey, graceSet);
+          }
+        } else {
+          // No scheduled switch — the representative's own constraints.
+          addProtected(repKey, rawProtected.get(repKey));
+        }
+      });
+
+      if (reps.length === 0) {
         throw new Error(
           "אין עובדים זכאים לחלוקה — נדרש משתמש פעיל בקבוצה (RR או Manager, פעיל בקבוצה). הגדירו משתמשים פעילים בלשונית 'ניהול קבוצות'.",
         );
@@ -1210,27 +1409,20 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
 
       const holidayDates = new Set(Object.keys(holidaysByDate));
 
-      // Constraints (אילוצים): a person is never assigned a shift on a date they
-      // set a constraint for. Constraints take effect immediately with no
-      // approval, so every non-rejected request counts (the legacy "rejected"
-      // status is still excluded for backward compatibility). Built as
-      // serial_id -> Set(dates) and honored by distributeShifts (protectedDates).
-      // Fetched fresh so a just-added constraint is respected without relying on
-      // cache warmth.
-      const considerationRequests =
-        await base44.entities.ConsiderationRequest.list();
-      const protectedDates = new Map();
-      considerationRequests
-        .filter((r) => r.status !== "rejected" && r.serial_id != null && r.date)
-        .forEach((r) => {
-          const key = Number(r.serial_id);
-          if (!protectedDates.has(key)) protectedDates.set(key, new Set());
-          protectedDates.get(key).add(r.date);
-        });
+      // Seed the algorithm with existing shifts, but with each group's members
+      // folded onto its representative so a group that already switched (or has
+      // shifts under both members) is counted as one unit.
+      const remappedShifts = allShiftsForDistribution.map((s) => {
+        const owner = Number(s.original_user_id);
+        const mapped = ownerRemap.get(owner);
+        return mapped != null && mapped !== owner
+          ? { ...s, original_user_id: mapped }
+          : s;
+      });
 
       const result = distributeShifts({
-        people: eligiblePeople,
-        existingShifts: allShiftsForDistribution,
+        people: reps,
+        existingShifts: remappedShifts,
         startDate,
         endDate,
         holidayDates,
@@ -1238,12 +1430,27 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         protectedDates,
       });
 
+      // Remap each assignment from the representative to the member who is
+      // actually active on that date — i.e. hand shifts on/after the switch
+      // date to the incoming member.
+      const finalAssignments = result.assignments.map((a) => {
+        const info = repInfo.get(Number(a.personId));
+        if (
+          info?.switchDate &&
+          info.incomingSerial != null &&
+          a.date >= info.switchDate
+        ) {
+          return { date: a.date, personId: info.incomingSerial };
+        }
+        return a;
+      });
+
       // Create each shift slot (a pure time slot; Phase 4), then its base
       // "assignment" coverage row recording the owner. Throttled so a large
       // distribution can't trip the rate limiter — creating N shifts + N
       // coverage rows in one burst does.
       await runThrottled(
-        result.assignments.map((a) => async () => {
+        finalAssignments.map((a) => async () => {
           const shift = await base44.entities.Shift.create({
             start_date: a.date,
             end_date: a.date,
@@ -1254,7 +1461,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         }),
       );
 
-      return result;
+      return { ...result, assignments: finalAssignments };
     },
     onSuccess: (result, { startDate, endDate }) => {
       logActivity({
@@ -2089,13 +2296,32 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 content-start">
                       {filteredGroupSymbols.map((symbol) => {
                         const activeSeg = activeGroupBySymbol.get(symbol);
-                        const activeSerialId =
-                          activeSeg?.active && activeSeg?.serial_id != null
-                            ? activeSeg.serial_id
-                            : null;
+                        // Effective active member for TODAY — honors a scheduled
+                        // switch whose date has already passed, so the star
+                        // follows the incoming member once the date arrives.
+                        const activeSerialId = activeMemberSerialIdOnDate(
+                          activeSeg,
+                          todayKey(),
+                        );
                         const isActiveSerial = (m) =>
                           activeSerialId != null &&
                           Number(m.serial_id) === Number(activeSerialId);
+                        // A pending (still-future) scheduled switch, if any.
+                        const scheduledSwitchDate =
+                          activeSeg?.scheduled_switch_date || null;
+                        const scheduledSwitchSerial =
+                          activeSeg?.scheduled_switch_serial_id ?? null;
+                        const hasPendingSwitch =
+                          !!scheduledSwitchDate &&
+                          scheduledSwitchSerial != null &&
+                          scheduledSwitchDate > todayKey();
+                        const incomingMemberName = hasPendingSwitch
+                          ? (membersBySymbol.get(symbol) || []).find(
+                              (m) =>
+                                Number(m.serial_id) ===
+                                Number(scheduledSwitchSerial),
+                            )?.full_name || `#${scheduledSwitchSerial}`
+                          : null;
                         // Order the active member first, keeping everyone else in
                         // the existing name-sorted order (membersBySymbol is
                         // already sorted by full_name).
@@ -2151,6 +2377,27 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                                 <Button
                                   size="icon"
                                   variant="ghost"
+                                  title="תזמן החלפת משתמש פעיל"
+                                  className={`h-8 w-8 ${
+                                    hasPendingSwitch
+                                      ? "text-blue-600"
+                                      : "text-gray-300 hover:text-blue-600"
+                                  }`}
+                                  onClick={() => {
+                                    setSwitchDialogSymbol(symbol);
+                                    setSwitchTargetSerial(
+                                      scheduledSwitchSerial != null
+                                        ? String(scheduledSwitchSerial)
+                                        : "",
+                                    );
+                                    setSwitchDate(scheduledSwitchDate || "");
+                                  }}
+                                >
+                                  <CalendarDays className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
                                   title="הסר קבוצה"
                                   className="h-8 w-8 text-gray-300 hover:text-red-500"
                                   onClick={() => setGroupToDelete(symbol)}
@@ -2159,6 +2406,33 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                                 </Button>
                               </div>
                             </div>
+
+                            {/* Pending scheduled active-member switch */}
+                            {hasPendingSwitch && (
+                              <div className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 bg-blue-50 border border-blue-200">
+                                <div className="flex items-center gap-1.5 min-w-0 text-[11px] text-blue-700">
+                                  <CalendarDays className="w-3.5 h-3.5 shrink-0" />
+                                  <span className="truncate">
+                                    החלפה מתוזמנת ל־{incomingMemberName} בתאריך{" "}
+                                    {formatILDate(scheduledSwitchDate)}
+                                  </span>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="text-[11px] font-semibold text-blue-600 hover:text-red-500 shrink-0"
+                                  disabled={scheduleSwitchMutation.isPending}
+                                  onClick={() =>
+                                    scheduleSwitchMutation.mutate({
+                                      symbol,
+                                      targetSerialId: null,
+                                      date: null,
+                                    })
+                                  }
+                                >
+                                  ביטול
+                                </button>
+                              </div>
+                            )}
 
                             {/* Members */}
                             {members.length === 0 ? (
@@ -2709,6 +2983,53 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                     </>
                   )}
                 </Button>
+              </div>
+
+              <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">
+                      תקופת חסד להחלפה מתוזמנת
+                    </p>
+                    <p className="text-xs text-gray-500 max-w-xl">
+                      כאשר מתוזמנת החלפת משתמש פעיל בקבוצה (בלשונית "ניהול
+                      קבוצות"), המשתמש הנכנס יישאר פנוי ממשמרות למשך מספר הימים
+                      שנבחר מתאריך ההחלפה — חלוקת המשמרות תדלג עליו בתקופה זו. 0 =
+                      ללא תקופת חסד. ברירת המחדל: 30 ימים.
+                    </p>
+                  </div>
+                  <CalendarDays className="w-5 h-5 text-blue-500 shrink-0" />
+                </div>
+                <div className="flex items-end gap-3" dir="rtl">
+                  <div className="grid gap-1">
+                    <Label className="text-sm text-gray-700">
+                      ימי חופש למשתמש הנכנס
+                    </Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={switchGraceDays}
+                      onChange={(e) => setSwitchGraceDays(e.target.value)}
+                      className="rounded-xl w-32"
+                    />
+                  </div>
+                  <Button
+                    onClick={() => saveSwitchGraceMutation.mutate()}
+                    disabled={saveSwitchGraceMutation.isPending}
+                    className="h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white gap-2"
+                  >
+                    {saveSwitchGraceMutation.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" /> שומר...
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-4 h-4" /> שמור
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
 
               <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
@@ -3611,6 +3932,155 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
               {addGroupMutation.isPending ? "מוסיף..." : "הוסף קבוצה"}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* --- 3D. SCHEDULE ACTIVE-MEMBER SWITCH MODAL --- */}
+      <Dialog
+        open={!!switchDialogSymbol}
+        onOpenChange={(o) => {
+          if (!o) {
+            setSwitchDialogSymbol(null);
+            setSwitchTargetSerial("");
+            setSwitchDate("");
+          }
+        }}
+      >
+        <DialogContent
+          className="sm:max-w-[440px] text-right"
+          dir="rtl"
+          closePosition="left-4 top-4"
+        >
+          {(() => {
+            const symbol = switchDialogSymbol;
+            const seg = symbol ? activeGroupBySymbol.get(symbol) : null;
+            const currentActiveSerial = activeMemberSerialIdOnDate(
+              seg,
+              todayKey(),
+            );
+            const members = symbol ? membersBySymbol.get(symbol) || [] : [];
+            const currentActiveName =
+              currentActiveSerial != null
+                ? members.find(
+                    (m) => Number(m.serial_id) === Number(currentActiveSerial),
+                  )?.full_name || `#${currentActiveSerial}`
+                : null;
+            const targetSelected = switchTargetSerial !== "";
+            const sameAsActive =
+              targetSelected &&
+              currentActiveSerial != null &&
+              Number(switchTargetSerial) === Number(currentActiveSerial);
+            const isValid = targetSelected && !!switchDate && !sameAsActive;
+            return (
+              <>
+                <DialogHeader className="text-right">
+                  <DialogTitle className="flex items-center gap-2 text-xl">
+                    <div className="bg-blue-100 p-2 rounded-full">
+                      <CalendarDays className="w-5 h-5 text-blue-600" />
+                    </div>
+                    תזמון החלפה — קבוצה {symbol}
+                  </DialogTitle>
+                  <DialogDescription className="text-right">
+                    מהתאריך שנבחר, המשתמש הנכנס יהפוך לפעיל בקבוצה — משמרות מאותו
+                    תאריך ואילך ישויכו אליו (במקום למשתמש הפעיל הנוכחי), ולא יסומנו
+                    כמשובצות למי שאינו פעיל.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="py-2 space-y-3">
+                  <div className="text-xs text-gray-500">
+                    משתמש פעיל נוכחי:{" "}
+                    <b className="text-gray-700">
+                      {currentActiveName || "אין"}
+                    </b>
+                  </div>
+                  <div className="grid gap-1">
+                    <Label className="text-sm text-gray-700">
+                      משתמש נכנס (יהפוך לפעיל)
+                    </Label>
+                    <Select
+                      value={switchTargetSerial}
+                      onValueChange={setSwitchTargetSerial}
+                      dir="rtl"
+                    >
+                      <SelectTrigger className="rounded-xl">
+                        <SelectValue placeholder="בחר משתמש מהקבוצה" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {members.filter((m) => m.serial_id != null).length ===
+                        0 ? (
+                          <div className="px-3 py-2 text-xs text-gray-400">
+                            אין חברים בקבוצה
+                          </div>
+                        ) : (
+                          members
+                            .filter((m) => m.serial_id != null)
+                            .map((m) => (
+                              <SelectItem
+                                key={m.id}
+                                value={String(m.serial_id)}
+                                disabled={
+                                  currentActiveSerial != null &&
+                                  Number(m.serial_id) ===
+                                    Number(currentActiveSerial)
+                                }
+                              >
+                                {m.full_name}
+                                {currentActiveSerial != null &&
+                                Number(m.serial_id) ===
+                                  Number(currentActiveSerial)
+                                  ? " (פעיל כעת)"
+                                  : ""}
+                              </SelectItem>
+                            ))
+                        )}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-1">
+                    <Label className="text-sm text-gray-700">תאריך ההחלפה</Label>
+                    <DateInputIL
+                      value={switchDate}
+                      onChange={setSwitchDate}
+                      className="rounded-xl"
+                    />
+                  </div>
+                  {sameAsActive && (
+                    <p className="text-xs text-red-500">
+                      יש לבחור משתמש שונה מהמשתמש הפעיל הנוכחי.
+                    </p>
+                  )}
+                </div>
+                <DialogFooter className="flex-col sm:flex-row gap-2">
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setSwitchDialogSymbol(null);
+                      setSwitchTargetSerial("");
+                      setSwitchDate("");
+                    }}
+                  >
+                    ביטול
+                  </Button>
+                  <Button
+                    disabled={!isValid || scheduleSwitchMutation.isPending}
+                    onClick={() =>
+                      scheduleSwitchMutation.mutate({
+                        symbol,
+                        targetSerialId: switchTargetSerial,
+                        date: switchDate,
+                      })
+                    }
+                    className="gap-1 bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    <CalendarDays className="w-4 h-4" />
+                    {scheduleSwitchMutation.isPending
+                      ? "שומר..."
+                      : "תזמן החלפה"}
+                  </Button>
+                </DialogFooter>
+              </>
+            );
+          })()}
         </DialogContent>
       </Dialog>
 
