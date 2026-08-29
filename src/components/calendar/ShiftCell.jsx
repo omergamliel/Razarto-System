@@ -31,10 +31,22 @@ export default function ShiftCell({
   inactiveGroupColor = "#f97316",
   considerations = null,
   onConsiderationClick = null,
+  lastShiftDate = null,
 }) {
   const handleClick = () => {
     onClick(date, shift);
   };
+
+  // Manager-only "unstaffed gap" flag: this day has no shift, or a shift whose
+  // owner doesn't resolve — rendered as "לא משובץ" by CalendarGrid's enrichment
+  // (a null owner, or a stale/deleted one). Only flagged when a later-dated
+  // shift still exists (dayStr < lastShiftDate), so trailing days past the end
+  // of the schedule aren't marked — only genuine holes inside it.
+  const dayStr = format(date, "yyyy-MM-dd");
+  const isUnassigned =
+    !shift || shift.user_name === "לא משובץ" || shift.original_user_id == null;
+  const isUnstaffedGap =
+    isAdmin && isUnassigned && !!lastShiftDate && dayStr < lastShiftDate;
 
   // Manager-only highlight: this date has constraint(s) (אילוצים) — users who
   // asked not to be scheduled on it. Constraints are always in effect (no
@@ -187,7 +199,7 @@ export default function ShiftCell({
       <div
         className={`
         absolute top-1 right-1 md:top-2 md:right-2 w-6 h-6 md:w-8 md:h-8 rounded-lg flex items-center justify-center
-        ${today ? "bg-[#64B5F6] text-white" : holidayName ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-600"}
+        ${today ? "bg-[#64B5F6] text-white" : isUnstaffedGap ? "bg-red-500 text-white" : holidayName ? "bg-purple-100 text-purple-700" : "bg-gray-100 text-gray-600"}
         font-semibold text-xs md:text-sm
       `}
       >
