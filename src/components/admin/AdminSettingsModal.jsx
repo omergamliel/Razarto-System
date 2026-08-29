@@ -3003,7 +3003,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                 <div className="flex items-end gap-3" dir="rtl">
                   <div className="grid gap-1">
                     <Label className="text-sm text-gray-700">
-                      ימי חופש למשתמש הנכנס
+                      ימי כבוד למשתמש הנכנס
                     </Label>
                     <Input
                       type="number"
