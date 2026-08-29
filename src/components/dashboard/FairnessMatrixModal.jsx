@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Scale, CalendarHeart } from "lucide-react";
+import { X, Scale, Ban } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import ConsiderationPanel from "./ConsiderationPanel";
 import { useQuery } from "@tanstack/react-query";
@@ -35,7 +35,7 @@ export default function FairnessMatrixModal({
     format(endOfMonth(today), "yyyy-MM-dd"),
   );
   const [tab, setTab] = useState("groups"); // "groups" | "users" — groups is the default
-  // Top-level tab: the fairness matrix vs. the consideration (התחשבות) tool.
+  // Top-level tab: the fairness matrix vs. the constraints (אילוצים) tool.
   const [mode, setMode] = useState("fairness"); // "fairness" | "consideration"
 
   const { data: shifts = [], isLoading: isShiftsLoading } = useQuery({
@@ -228,12 +228,11 @@ export default function FairnessMatrixModal({
               </div>
               <div>
                 <h2 className="text-2xl md:text-3xl font-bold mb-0.5">
-                  התחשבויות
+                  טבלת צדק
                 </h2>
                 <p className="text-white/90 text-xs md:text-sm">
-                  בקשות התחשבות בתאריכים ואיזון חלוקת המשמרות
+                  כמות משמרות לכל משתמש וקבוצה בטווח שנבחר
                 </p>
-
               </div>
             </div>
           </div>
@@ -260,8 +259,8 @@ export default function FairnessMatrixModal({
                     : "text-gray-500 hover:text-gray-700"
                 }`}
               >
-                <CalendarHeart className="w-4 h-4" />
-                התחשבויות
+                <Ban className="w-4 h-4" />
+                אילוצים
               </button>
             </div>
           </div>
