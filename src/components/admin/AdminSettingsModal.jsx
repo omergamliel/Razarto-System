@@ -397,9 +397,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
 
   // Platform Users (admins may read all rows per User RLS). A person is
   // "connected" once they've completed onboarding, which flips is_authorized on
-  // their platform User (auth.updateMe) and syncs serial_id — onboarding does
-  // NOT write AuthorizedPerson.linked_user_id, so relying on that alone left
-  // connected users showing as disconnected. Match by serial_id here.
+  // their platform User (auth.updateMe) and syncs serial_id. Match by serial_id.
   const { data: platformUsers = [] } = useQuery({
     queryKey: ["platform-users"],
     queryFn: () => base44.entities.User.list(),
@@ -414,9 +412,8 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   }, [platformUsers]);
   const isPersonConnected = useCallback(
     (person) =>
-      Boolean(person.linked_user_id) ||
-      (person.serial_id != null &&
-        authorizedSerialIds.has(Number(person.serial_id))),
+      person.serial_id != null &&
+      authorizedSerialIds.has(Number(person.serial_id)),
     [authorizedSerialIds],
   );
 
