@@ -14,7 +14,7 @@ import { useQuery } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { useHolidays } from './useHolidays';
 import { useThemePalette } from '@/hooks/useAuthorizedPerson';
-import { isActiveGroupMember } from '@/lib/utils';
+import { isActiveGroupMemberOnDate } from '@/lib/utils';
 
 const HEBREW_DAYS = ['א', 'ב', 'ג', 'ד', 'ה', 'ו', 'ש'];
 const HEBREW_DAYS_FULL = ['ראשון', 'שני', 'שלישי', 'רביעי', 'חמישי', 'שישי', 'שבת'];
@@ -53,6 +53,20 @@ export default function CalendarGrid({
   const palette = useThemePalette();
   const inactiveGroupColor = palette.calendar.inactiveGroupShift;
 
+  // The last (latest) date that has any shift at all. A manager-only "unstaffed
+  // gap" highlight (see ShiftCell) marks empty/unassigned days in red, but only
+  // when a shift still follows them — i.e. the day sits inside the scheduled
+  // span, not past its end. ISO 'yyyy-MM-dd' strings compare lexicographically,
+  // so a plain string max is enough (no need to pre-sort the entity).
+  const lastShiftDate = React.useMemo(() => {
+    let max = null;
+    (shifts || []).forEach((s) => {
+      const d = s?.start_date || s?.date;
+      if (d && (!max || d > max)) max = d;
+    });
+    return max;
+  }, [shifts]);
+
   // --- 2. Helper: Enrich Shift Data ---
   // מחבר בין המשמרת לבין פרטי המשתמש (שם, תפקיד)
   const getEnrichedShift = (shift) => {
@@ -69,10 +83,18 @@ export default function CalendarGrid({
       role_name: originalUser ? originalUser.full_name : 'פנוי',
       // True when this shift's assigned owner is NOT the active member of THEIR
       // OWN group — an assignment that shouldn't normally happen via
-      // distribution. Uses the shared, group-scoped rule so a stale/lingering
-      // active row can't mask an inactive assignment.
+      // distribution. Date-aware: active membership is resolved as of THIS
+      // shift's date, so after a group's scheduled switch the incoming member's
+      // shifts aren't flagged (and the outgoing member's post-switch shifts
+      // are). Uses the shared, group-scoped rule so a stale/lingering active row
+      // can't mask an inactive assignment.
       assignedToInactiveMember:
-        !!originalUser && !isActiveGroupMember(originalUser, shiftGroups),
+        !!originalUser &&
+        !isActiveGroupMemberOnDate(
+          originalUser,
+          shiftGroups,
+          shift.start_date || shift.date,
+        ),
     };
   };
 
@@ -149,6 +171,7 @@ export default function CalendarGrid({
               isAdmin={isAdmin}
               switchFlow={switchFlow}
               inactiveGroupColor={inactiveGroupColor}
+              lastShiftDate={lastShiftDate}
               considerations={
                 considerationsByDate?.get(format(day, 'yyyy-MM-dd')) || null
               }
