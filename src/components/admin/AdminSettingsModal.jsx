@@ -5,7 +5,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { format, addDays } from "date-fns";
+import { format, addDays, subMonths } from "date-fns";
 import { distributeShifts } from "../calendar/shiftDistributionAlgorithm";
 import {
   createAssignmentForShift,
@@ -54,6 +54,7 @@ import {
   MessageSquare,
   RotateCcw,
   Eye,
+  History,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -352,6 +353,12 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   });
   const [distributionResult, setDistributionResult] = useState(null);
   const [distributionError, setDistributionError] = useState("");
+  // When on (default), the fairness table is seeded with each group's shift
+  // count from the 6 months BEFORE the range start, so a group that already
+  // worked a lot recently is deprioritized. Counted by group (folded onto the
+  // representative), not by individual member. Off = fairness is decided purely
+  // within the selected range.
+  const [considerHistory, setConsiderHistory] = useState(true);
   // Grace period (days) an incoming member is left free of shifts after a
   // scheduled group switch — honored by distribution. Persisted as the
   // AppSettings "switch_grace" row; defaults to 30.
@@ -1349,6 +1356,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       const protectedDates = new Map(); // repSerial -> Set(dates)
       const repInfo = new Map(); // repSerial -> { switchDate, incomingSerial }
       const ownerRemap = new Map(); // any member serial -> repSerial (for seeding)
+      const symbolToRep = new Map(); // group symbol -> repSerial (for history-by-group)
 
       const addProtected = (repSerial, dates) => {
         if (!dates) return;
@@ -1373,6 +1381,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
 
         reps.push(rep);
         const repKey = Number(repSerial);
+        symbolToRep.set(symbol, repKey);
 
         // A scheduled deactivate: from that date on the group has no active
         // member, so its slot must receive no shifts on/after it.
@@ -1471,6 +1480,24 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
           : s;
       });
 
+      // Historical fairness baseline (toggle): when enabled, count each group's
+      // shifts in the 6 months BEFORE the range start and seed the fairness table
+      // with them, so a group that worked a lot recently is deprioritized. Counted
+      // BY GROUP — every shift is attributed to its owner's group representative,
+      // regardless of which member actually worked it — never per individual user.
+      const priorJustice = new Map();
+      if (considerHistory) {
+        const historyStart = format(subMonths(new Date(startDate), 6), "yyyy-MM-dd");
+        allShiftsForDistribution.forEach((s) => {
+          if (!s.start_date) return;
+          if (s.start_date >= startDate || s.start_date < historyStart) return;
+          const owner = peopleBySerial.get(Number(s.original_user_id));
+          const repKey = owner?.sign ? symbolToRep.get(owner.sign) : null;
+          if (repKey == null) return; // owner's group isn't in the active pool
+          priorJustice.set(repKey, (priorJustice.get(repKey) || 0) + 1);
+        });
+      }
+
       const result = distributeShifts({
         people: reps,
         existingShifts: remappedShifts,
@@ -1479,6 +1506,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         holidayDates,
         cholHamoedDates,
         protectedDates,
+        priorJustice,
       });
 
       // Remap each assignment from the representative to the member who is
@@ -3024,6 +3052,38 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                       className="rounded-xl"
                     />
                   </div>
+                </div>
+
+                <div className="mt-4 flex items-start justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-3">
+                  <div className="flex items-start gap-2">
+                    <History className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-medium text-gray-800">
+                        התחשבות ב-6 החודשים האחרונים
+                      </p>
+                      <p className="text-xs text-gray-500 max-w-md">
+                        כאשר מופעל, החלוקה מתחשבת במספר המשמרות שכל קבוצה צברה
+                        ב-6 החודשים שקדמו לתאריך ההתחלה (לפי קבוצות, לא לפי
+                        משתמשים), כדי לאזן את העומס לאורך זמן. כבוי — הצדק מחושב
+                        רק בטווח שנבחר.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={considerHistory}
+                    onClick={() => setConsiderHistory((prev) => !prev)}
+                    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+                      considerHistory ? "bg-blue-600" : "bg-gray-300"
+                    }`}
+                  >
+                    <span
+                      className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                        considerHistory ? "-translate-x-5" : "-translate-x-1"
+                      }`}
+                    />
+                  </button>
                 </div>
 
                 {distributionError && (
