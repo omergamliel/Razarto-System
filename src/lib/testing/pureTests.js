@@ -642,6 +642,51 @@ function testScheduledSwitch() {
     isActiveGroupMember(outgoing, [plain]),
     "date-agnostic check still recognizes a plain active member",
   );
+
+  // --- Scheduled DEACTIVATE: from the date on, the group has NO active member. ---
+  const groupWithDeactivate = {
+    symbol: "B",
+    active: true,
+    serial_id: 7, // currently active member
+    scheduled_switch_date: "2026-03-01",
+    scheduled_switch_deactivate: true,
+    scheduled_switch_serial_id: null,
+  };
+  assertEqual(
+    activeMemberSerialIdOnDate(groupWithDeactivate, "2026-02-28"),
+    7,
+    "before the deactivate date the current member is still active",
+  );
+  assertEqual(
+    activeMemberSerialIdOnDate(groupWithDeactivate, "2026-03-01"),
+    null,
+    "on the deactivate date the group has no active member (inclusive boundary)",
+  );
+  assertEqual(
+    activeMemberSerialIdOnDate(groupWithDeactivate, "2026-06-01"),
+    null,
+    "after the deactivate date the group still has no active member",
+  );
+  // The member is "active" only before the deactivate date.
+  const deGroups = [groupWithDeactivate];
+  const member = { sign: "B", serial_id: 7 };
+  assert(
+    isActiveGroupMemberOnDate(member, deGroups, "2026-02-28"),
+    "member is active before the scheduled deactivate",
+  );
+  assert(
+    !isActiveGroupMemberOnDate(member, deGroups, "2026-03-01"),
+    "member is NOT active on/after the scheduled deactivate",
+  );
+  // A deactivate flag with no date does not take effect.
+  assertEqual(
+    activeMemberSerialIdOnDate(
+      { symbol: "B", active: true, serial_id: 7, scheduled_switch_deactivate: true },
+      "2030-01-01",
+    ),
+    7,
+    "a deactivate flag with no date does not take effect",
+  );
 }
 
 // --------------------------------------------------------------------------
