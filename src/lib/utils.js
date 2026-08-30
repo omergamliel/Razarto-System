@@ -42,13 +42,16 @@ export const isOpenStatus = (status) =>
 // dropdowns, the "assigned to inactive member" marking, fair distribution, the
 // fairness matrix) must go through this so they can't drift apart.
 //
-// Scheduled switch: a group may schedule its active member to change on a future
-// date (ShiftGroup.scheduled_switch_date + scheduled_switch_serial_id). From
-// that date on, the group's active member is the incoming serial_id; before it,
-// the current one. All the "is active" logic below therefore takes a date and
-// resolves the active member AS OF that date, so a shift dated after the switch
-// belongs to the incoming member (and isn't flagged as out-of-policy) while the
-// same group's earlier shifts still belong to the outgoing member.
+// Scheduled change: a group may schedule its active member to change on a future
+// date (ShiftGroup.scheduled_switch_date). Two modes: a SWITCH to an incoming
+// member (scheduled_switch_serial_id), or a DEACTIVATE (scheduled_switch_deactivate)
+// after which no one is active in the group at all. From that date on, the group's
+// active member is the incoming serial_id (switch) or nobody (deactivate); before
+// it, the current one. All the "is active" logic below therefore takes a date and
+// resolves the active member AS OF that date, so a shift dated after the change
+// belongs to the incoming member (or to no one, for a deactivate) — and isn't
+// flagged as out-of-policy — while the group's earlier shifts still belong to the
+// outgoing member.
 
 // Local 'yyyy-MM-dd' for "now" — the default date for the date-agnostic
 // isActiveGroupMember (today's active member). Computed from local time so it
@@ -66,13 +69,15 @@ export function todayKey() {
 // date, otherwise the current active member, or null when no one is active.
 export function activeMemberSerialIdOnDate(group, dateStr) {
   if (!group) return null;
-  if (
-    group.scheduled_switch_date &&
-    group.scheduled_switch_serial_id != null &&
-    dateStr &&
-    dateStr >= group.scheduled_switch_date
-  ) {
-    return Number(group.scheduled_switch_serial_id);
+  // A schedule fires on/after its date, in one of two modes:
+  //   - deactivate: no one is active in the group from that date on (returns null)
+  //   - switch: the incoming member becomes active from that date on
+  // Before the date (or with no schedule) the current active member wins.
+  if (group.scheduled_switch_date && dateStr && dateStr >= group.scheduled_switch_date) {
+    if (group.scheduled_switch_deactivate) return null;
+    if (group.scheduled_switch_serial_id != null) {
+      return Number(group.scheduled_switch_serial_id);
+    }
   }
   return group.active && group.serial_id != null
     ? Number(group.serial_id)
