@@ -15,12 +15,16 @@ const getWeekKey = (date) => toDateKey(startOfWeek(date, { weekStartsOn: 0 }));
 // [startDate, endDate] only. The algorithm intentionally has no knowledge of
 // anything outside the given range: fairness is decided purely within the
 // range being distributed, not by anyone's shift history before it.
-function initState(people, inRangeShifts) {
+function initState(people, inRangeShifts, priorJustice = new Map()) {
   const justice = new Map();
   const weekly = new Map();
   const lastAssignedDate = new Map();
   people.forEach((p) => {
-    justice.set(p.serial_id, 0);
+    // Seed the fairness count with any historical baseline for this person
+    // (shifts worked before the range — see `priorJustice`). Only the justice
+    // count is seeded: the weekly cap and adjacency ("comfort") bookkeeping are
+    // about days INSIDE the range and must ignore the far-past history.
+    justice.set(p.serial_id, priorJustice.get(p.serial_id) || 0);
     weekly.set(p.serial_id, new Map());
   });
 
@@ -180,6 +184,7 @@ function pickTogetherCandidate(people, justice, weekly, weekKey, excludeIds, { l
  * @param {Set<string>} [params.holidayDates] - Set of 'yyyy-MM-dd' holiday dates (chag days AND erev-chag days)
  * @param {Set<string>} [params.cholHamoedDates] - Set of 'yyyy-MM-dd' Chol HaMoed dates (subset of holidayDates that should NOT be treated as togetherness-worthy)
  * @param {Map<number, Set<string>>} [params.protectedDates] - Map of serial_id -> Set of 'yyyy-MM-dd' dates the person set a constraint (אילוץ) for; they are never assigned a shift on those dates.
+ * @param {Map<number, number>} [params.priorJustice] - Map of serial_id -> shift count from BEFORE the range (e.g. the past 6 months), used to seed the fairness table so recent history carries over. Only affects fairness ranking (and the returned justiceTable totals), never the weekly cap or adjacency, which are range-local.
  * @returns {{assignments: Array<{date: string, personId: number}>, skipped: Array<{date: string, reason: string}>, justiceTable: Array<{personId: number, name: string, totalShifts: number}>}}
  */
 export function distributeShifts({
@@ -190,6 +195,7 @@ export function distributeShifts({
   holidayDates = new Set(),
   cholHamoedDates = new Set(),
   protectedDates = new Map(),
+  priorJustice = new Map(),
 }) {
   // A person with a constraint (אילוץ) for a date must not be assigned a
   // shift on it. `protectedOnDate` gives everyone protected on a given day (to
@@ -215,7 +221,11 @@ export function distributeShifts({
     return s.start_date >= startDate && s.start_date <= endDate;
   });
 
-  const { justice, weekly, lastAssignedDate } = initState(people, inRangeShifts);
+  const { justice, weekly, lastAssignedDate } = initState(
+    people,
+    inRangeShifts,
+    priorJustice,
+  );
 
   const existingByDate = new Map();
   inRangeShifts.forEach((s) => existingByDate.set(s.start_date, s));
