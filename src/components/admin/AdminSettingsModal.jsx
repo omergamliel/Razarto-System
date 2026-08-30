@@ -337,6 +337,9 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   const [switchDialogSymbol, setSwitchDialogSymbol] = useState(null);
   const [switchTargetSerial, setSwitchTargetSerial] = useState("");
   const [switchDate, setSwitchDate] = useState("");
+  // Scheduling mode in the dialog: "switch" (hand the group to another member)
+  // or "deactivate" (from the date on, the group has no active member at all).
+  const [switchMode, setSwitchMode] = useState("switch");
 
   // Archive Logic States
   const [isArchiveMode, setIsArchiveMode] = useState(false);
@@ -1246,14 +1249,27 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   // the calendar and distribution treat the incoming member as active from that
   // date on — no cron/commit step needed. Passing target=null clears it.
   const scheduleSwitchMutation = useMutation({
-    mutationFn: async ({ symbol, targetSerialId, date }) => {
+    mutationFn: async ({ symbol, targetSerialId, date, deactivate = false }) => {
       const existing = activeGroupBySymbol.get(symbol);
-      const clearing = targetSerialId == null || !date;
+      // A deactivate schedule needs only a date (no incoming member); a switch
+      // needs both a date and a target. Anything else clears the schedule.
+      const clearing = !date || (!deactivate && targetSerialId == null);
       const payload = clearing
-        ? { scheduled_switch_date: null, scheduled_switch_serial_id: null }
+        ? {
+            scheduled_switch_date: null,
+            scheduled_switch_serial_id: null,
+            scheduled_switch_deactivate: false,
+          }
+        : deactivate
+        ? {
+            scheduled_switch_date: date,
+            scheduled_switch_serial_id: null,
+            scheduled_switch_deactivate: true,
+          }
         : {
             scheduled_switch_date: date,
             scheduled_switch_serial_id: Number(targetSerialId),
+            scheduled_switch_deactivate: false,
           };
       if (existing) {
         await base44.entities.ShiftGroup.update(existing.id, payload);
@@ -1267,13 +1283,16 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
           ...payload,
         });
       }
-      return { clearing };
+      return { clearing, deactivate };
     },
     onSuccess: (result, { symbol }) => {
+      const label = result?.clearing
+        ? `ביטול שינוי מתוזמן בקבוצה ${symbol}`
+        : result?.deactivate
+        ? `תזמון ביטול משתמש פעיל בקבוצה ${symbol}`
+        : `תזמון החלפת משתמש פעיל בקבוצה ${symbol}`;
       logActivity({
-        action: result?.clearing
-          ? `ביטול החלפה מתוזמנת בקבוצה ${symbol}`
-          : `תזמון החלפת משתמש פעיל בקבוצה ${symbol}`,
+        action: label,
         type: "עדכון מערכת",
         entity: "ShiftGroup",
       });
@@ -1281,11 +1300,16 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       setSwitchDialogSymbol(null);
       setSwitchTargetSerial("");
       setSwitchDate("");
+      setSwitchMode("switch");
       toast.success(
-        result?.clearing ? "ההחלפה המתוזמנת בוטלה" : "ההחלפה תוזמנה בהצלחה",
+        result?.clearing
+          ? "השינוי המתוזמן בוטל"
+          : result?.deactivate
+          ? "ביטול הפעיל תוזמן בהצלחה"
+          : "ההחלפה תוזמנה בהצלחה",
       );
     },
-    onError: () => toast.error("שגיאה בתזמון ההחלפה."),
+    onError: () => toast.error("שגיאה בתזמון השינוי."),
   });
 
   // 4. Fair shift distribution — only RR and Manager permission holders are
@@ -1350,8 +1374,14 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         reps.push(rep);
         const repKey = Number(repSerial);
 
+        // A scheduled deactivate: from that date on the group has no active
+        // member, so its slot must receive no shifts on/after it.
+        const isDeactivate =
+          !!group.scheduled_switch_date && !!group.scheduled_switch_deactivate;
+        const deactivateDate = isDeactivate ? group.scheduled_switch_date : null;
         const hasSwitch =
           !!group.scheduled_switch_date &&
+          !isDeactivate &&
           group.scheduled_switch_serial_id != null;
         const switchDate = hasSwitch ? group.scheduled_switch_date : null;
         const incomingSerial = hasSwitch
@@ -1395,6 +1425,27 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
             }
             addProtected(repKey, graceSet);
           }
+        } else if (isDeactivate) {
+          // Scheduled deactivate: the representative (active at range start) holds
+          // the group's slot only BEFORE the deactivate date — its own constraints
+          // apply there. Every date on/after the deactivate date is protected on
+          // the rep so the algorithm never assigns the (now memberless) group a
+          // shift; those days flow to the other active groups instead.
+          const before = [...(rawProtected.get(repKey) || [])].filter(
+            (d) => d < deactivateDate,
+          );
+          addProtected(repKey, before);
+
+          const goneSet = new Set();
+          let cursor = new Date(
+            deactivateDate > startDate ? deactivateDate : startDate,
+          );
+          const rangeEnd = new Date(endDate);
+          while (cursor <= rangeEnd) {
+            goneSet.add(format(cursor, "yyyy-MM-dd"));
+            cursor = addDays(cursor, 1);
+          }
+          addProtected(repKey, goneSet);
         } else {
           // No scheduled switch — the representative's own constraints.
           addProtected(repKey, rawProtected.get(repKey));
@@ -2306,15 +2357,23 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                         const isActiveSerial = (m) =>
                           activeSerialId != null &&
                           Number(m.serial_id) === Number(activeSerialId);
-                        // A pending (still-future) scheduled switch, if any.
+                        // A pending (still-future) scheduled change, if any —
+                        // either a switch to another member or a deactivate.
                         const scheduledSwitchDate =
                           activeSeg?.scheduled_switch_date || null;
                         const scheduledSwitchSerial =
                           activeSeg?.scheduled_switch_serial_id ?? null;
-                        const hasPendingSwitch =
+                        const scheduledDeactivate =
+                          !!activeSeg?.scheduled_switch_deactivate;
+                        const isFutureSchedule =
                           !!scheduledSwitchDate &&
-                          scheduledSwitchSerial != null &&
                           scheduledSwitchDate > todayKey();
+                        const hasPendingSwitch =
+                          isFutureSchedule &&
+                          !scheduledDeactivate &&
+                          scheduledSwitchSerial != null;
+                        const hasPendingDeactivate =
+                          isFutureSchedule && scheduledDeactivate;
                         const incomingMemberName = hasPendingSwitch
                           ? (membersBySymbol.get(symbol) || []).find(
                               (m) =>
@@ -2377,14 +2436,19 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                                 <Button
                                   size="icon"
                                   variant="ghost"
-                                  title="תזמן החלפת משתמש פעיל"
+                                  title="תזמן החלפה / ביטול משתמש פעיל"
                                   className={`h-8 w-8 ${
-                                    hasPendingSwitch
+                                    hasPendingSwitch || hasPendingDeactivate
                                       ? "text-blue-600"
                                       : "text-gray-300 hover:text-blue-600"
                                   }`}
                                   onClick={() => {
                                     setSwitchDialogSymbol(symbol);
+                                    setSwitchMode(
+                                      scheduledDeactivate
+                                        ? "deactivate"
+                                        : "switch",
+                                    );
                                     setSwitchTargetSerial(
                                       scheduledSwitchSerial != null
                                         ? String(scheduledSwitchSerial)
@@ -2407,14 +2471,15 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                               </div>
                             </div>
 
-                            {/* Pending scheduled active-member switch */}
-                            {hasPendingSwitch && (
+                            {/* Pending scheduled active-member change (switch or deactivate) */}
+                            {(hasPendingSwitch || hasPendingDeactivate) && (
                               <div className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 bg-blue-50 border border-blue-200">
                                 <div className="flex items-center gap-1.5 min-w-0 text-[11px] text-blue-700">
                                   <CalendarDays className="w-3.5 h-3.5 shrink-0" />
                                   <span className="truncate">
-                                    החלפה מתוזמנת ל־{incomingMemberName} בתאריך{" "}
-                                    {formatILDate(scheduledSwitchDate)}
+                                    {hasPendingDeactivate
+                                      ? `ביטול משתמש פעיל מתוזמן בתאריך ${formatILDate(scheduledSwitchDate)}`
+                                      : `החלפה מתוזמנת ל־${incomingMemberName} בתאריך ${formatILDate(scheduledSwitchDate)}`}
                                   </span>
                                 </div>
                                 <button
@@ -3943,6 +4008,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
             setSwitchDialogSymbol(null);
             setSwitchTargetSerial("");
             setSwitchDate("");
+            setSwitchMode("switch");
           }
         }}
       >
@@ -3965,12 +4031,15 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                     (m) => Number(m.serial_id) === Number(currentActiveSerial),
                   )?.full_name || `#${currentActiveSerial}`
                 : null;
+            const isDeactivateMode = switchMode === "deactivate";
             const targetSelected = switchTargetSerial !== "";
             const sameAsActive =
               targetSelected &&
               currentActiveSerial != null &&
               Number(switchTargetSerial) === Number(currentActiveSerial);
-            const isValid = targetSelected && !!switchDate && !sameAsActive;
+            const isValid = isDeactivateMode
+              ? !!switchDate
+              : targetSelected && !!switchDate && !sameAsActive;
             return (
               <>
                 <DialogHeader className="text-right">
@@ -3978,12 +4047,12 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                     <div className="bg-blue-100 p-2 rounded-full">
                       <CalendarDays className="w-5 h-5 text-blue-600" />
                     </div>
-                    תזמון החלפה — קבוצה {symbol}
+                    תזמון שינוי — קבוצה {symbol}
                   </DialogTitle>
                   <DialogDescription className="text-right">
-                    מהתאריך שנבחר, המשתמש הנכנס יהפוך לפעיל בקבוצה — משמרות מאותו
-                    תאריך ואילך ישויכו אליו (במקום למשתמש הפעיל הנוכחי), ולא יסומנו
-                    כמשובצות למי שאינו פעיל.
+                    {isDeactivateMode
+                      ? "מהתאריך שנבחר, לא יהיה משתמש פעיל בקבוצה — הקבוצה לא תשובץ למשמרות חדשות מאותו תאריך ואילך."
+                      : "מהתאריך שנבחר, המשתמש הנכנס יהפוך לפעיל בקבוצה — משמרות מאותו תאריך ואילך ישויכו אליו (במקום למשתמש הפעיל הנוכחי), ולא יסומנו כמשובצות למי שאינו פעיל."}
                   </DialogDescription>
                 </DialogHeader>
                 <div className="py-2 space-y-3">
@@ -3993,58 +4062,89 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                       {currentActiveName || "אין"}
                     </b>
                   </div>
-                  <div className="grid gap-1">
-                    <Label className="text-sm text-gray-700">
-                      משתמש נכנס (יהפוך לפעיל)
-                    </Label>
-                    <Select
-                      value={switchTargetSerial}
-                      onValueChange={setSwitchTargetSerial}
-                      dir="rtl"
+                  {/* Mode toggle: switch to another member, or deactivate the group */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setSwitchMode("switch")}
+                      className={`rounded-xl border px-3 py-2 text-sm font-semibold transition-colors ${
+                        !isDeactivateMode
+                          ? "bg-blue-600 text-white border-blue-600"
+                          : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"
+                      }`}
                     >
-                      <SelectTrigger className="rounded-xl">
-                        <SelectValue placeholder="בחר משתמש מהקבוצה" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {members.filter((m) => m.serial_id != null).length ===
-                        0 ? (
-                          <div className="px-3 py-2 text-xs text-gray-400">
-                            אין חברים בקבוצה
-                          </div>
-                        ) : (
-                          members
-                            .filter((m) => m.serial_id != null)
-                            .map((m) => (
-                              <SelectItem
-                                key={m.id}
-                                value={String(m.serial_id)}
-                                disabled={
-                                  currentActiveSerial != null &&
+                      החלפה למשתמש אחר
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSwitchMode("deactivate")}
+                      className={`rounded-xl border px-3 py-2 text-sm font-semibold transition-colors ${
+                        isDeactivateMode
+                          ? "bg-blue-600 text-white border-blue-600"
+                          : "bg-white text-gray-600 border-gray-200 hover:border-blue-300"
+                      }`}
+                    >
+                      ביטול פעיל (ללא פעיל)
+                    </button>
+                  </div>
+                  {!isDeactivateMode && (
+                    <div className="grid gap-1">
+                      <Label className="text-sm text-gray-700">
+                        משתמש נכנס (יהפוך לפעיל)
+                      </Label>
+                      <Select
+                        value={switchTargetSerial}
+                        onValueChange={setSwitchTargetSerial}
+                        dir="rtl"
+                      >
+                        <SelectTrigger className="rounded-xl">
+                          <SelectValue placeholder="בחר משתמש מהקבוצה" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {members.filter((m) => m.serial_id != null).length ===
+                          0 ? (
+                            <div className="px-3 py-2 text-xs text-gray-400">
+                              אין חברים בקבוצה
+                            </div>
+                          ) : (
+                            members
+                              .filter((m) => m.serial_id != null)
+                              .map((m) => (
+                                <SelectItem
+                                  key={m.id}
+                                  value={String(m.serial_id)}
+                                  disabled={
+                                    currentActiveSerial != null &&
+                                    Number(m.serial_id) ===
+                                      Number(currentActiveSerial)
+                                  }
+                                >
+                                  {m.full_name}
+                                  {currentActiveSerial != null &&
                                   Number(m.serial_id) ===
                                     Number(currentActiveSerial)
-                                }
-                              >
-                                {m.full_name}
-                                {currentActiveSerial != null &&
-                                Number(m.serial_id) ===
-                                  Number(currentActiveSerial)
-                                  ? " (פעיל כעת)"
-                                  : ""}
-                              </SelectItem>
-                            ))
-                        )}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                                    ? " (פעיל כעת)"
+                                    : ""}
+                                </SelectItem>
+                              ))
+                          )}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                   <div className="grid gap-1">
-                    <Label className="text-sm text-gray-700">תאריך ההחלפה</Label>
+                    <Label className="text-sm text-gray-700">
+                      {isDeactivateMode
+                        ? "תאריך ביטול הפעיל"
+                        : "תאריך ההחלפה"}
+                    </Label>
                     <DateInputIL
                       value={switchDate}
                       onChange={setSwitchDate}
                       className="rounded-xl"
                     />
                   </div>
-                  {sameAsActive && (
+                  {!isDeactivateMode && sameAsActive && (
                     <p className="text-xs text-red-500">
                       יש לבחור משתמש שונה מהמשתמש הפעיל הנוכחי.
                     </p>
@@ -4057,6 +4157,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                       setSwitchDialogSymbol(null);
                       setSwitchTargetSerial("");
                       setSwitchDate("");
+                      setSwitchMode("switch");
                     }}
                   >
                     ביטול
@@ -4068,6 +4169,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                         symbol,
                         targetSerialId: switchTargetSerial,
                         date: switchDate,
+                        deactivate: isDeactivateMode,
                       })
                     }
                     className="gap-1 bg-blue-600 hover:bg-blue-700 text-white"
@@ -4075,6 +4177,8 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                     <CalendarDays className="w-4 h-4" />
                     {scheduleSwitchMutation.isPending
                       ? "שומר..."
+                      : isDeactivateMode
+                      ? "תזמן ביטול פעיל"
                       : "תזמן החלפה"}
                   </Button>
                 </DialogFooter>
