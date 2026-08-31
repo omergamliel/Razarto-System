@@ -270,8 +270,6 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     offlineMessage: "המערכת כרגע בתחזוקה מתוכננת. חזרו בעוד מספר דקות.",
   });
   const [supportSettings, setSupportSettings] = useState({
-    // אין כרגע מדריך שימוש אמיתי — ה-HelpSupportModal מציג הודעת "בקרוב" בלבד.
-    guideUrl: "",
     // ה-embed בפועל ב-HelpSupportModal.jsx (מזהה סרטון YouTube)
     videoUrl: "https://youtu.be/9u12tJQ1KF4",
     // מספרי הוואטסאפ האמיתיים שמוזמנים בפועל מתוך HelpSupportModal.jsx
@@ -1904,7 +1902,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         Icon: Users,
       },
       {
-        id: "support",
+        id: "support",  
         label: "תמיכה",
         icon: "https://cdn-icons-png.flaticon.com/128/15202/15202496.png",
       },
@@ -2849,20 +2847,6 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                   className="grid grid-cols-1 md:grid-cols-2 gap-3"
                   dir="rtl"
                 >
-                  <div className="grid gap-1">
-                    <Label className="text-sm text-gray-700">
-                      קישור למדריך שימוש מלא
-                    </Label>
-                    <Input
-                      value={supportSettings.guideUrl}
-                      onChange={(e) =>
-                        handleSupportChange("guideUrl", e.target.value)
-                      }
-                      placeholder="טרם קיים מדריך — כרגע מוצגת הודעת 'בקרוב' בעמוד התמיכה"
-                      className="rounded-xl"
-                      dir="ltr"
-                    />
-                  </div>
                   <div className="grid gap-1">
                     <Label className="text-sm text-gray-700">
                       קישור לסרטון הדרכה
