@@ -345,6 +345,9 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   // Archive Logic States
   const [isArchiveMode, setIsArchiveMode] = useState(false);
   const [archiveReason, setArchiveReason] = useState("");
+  // When on, the users table shows ONLY permissions="None" users (the archive);
+  // when off, those users are hidden from the main list.
+  const [showArchive, setShowArchive] = useState(false);
 
   // --- Fair shift distribution (tasks.txt #4) ---
   const [distributionRange, setDistributionRange] = useState({
@@ -1867,7 +1870,10 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       const deptMatch =
         selectedDepartments.length === 0 ||
         selectedDepartments.includes(person.department);
-      return searchMatch && deptMatch;
+      // Archive view shows only "None" users; the main list hides them.
+      const isNone = (person.permissions || "None") === "None";
+      const archiveMatch = showArchive ? isNone : !isNone;
+      return searchMatch && deptMatch && archiveMatch;
     });
     // Active group members (isActiveGroupMember) stay on top; everyone else
     // sinks to the bottom, preserving their existing relative order.
@@ -2300,11 +2306,29 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                   )}
                 </div>
 
-                <div className="p-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-500 flex justify-between px-6 shrink-0">
-                  <span>סה"כ רשומות: {filteredPeople.length}</span>
-                  <span className="hidden md:inline">
-                    מציג {filteredPeople.length} מתוך {authorizedPeople.length}
-                  </span>
+                <div className="p-3 bg-gray-50 border-t border-gray-100 text-xs text-gray-500 flex items-center justify-between px-4 md:px-6 shrink-0 gap-3">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={showArchive ? "default" : "outline"}
+                    onClick={() => setShowArchive((prev) => !prev)}
+                    className={`gap-1.5 h-8 rounded-lg shrink-0 ${
+                      showArchive
+                        ? "bg-gray-700 hover:bg-gray-800 text-white"
+                        : "border-gray-300 text-gray-600 hover:bg-gray-100"
+                    }`}
+                  >
+                    <Archive className="w-4 h-4" />
+                    {showArchive ? "חזרה לרשימה" : "ארכיון"}
+                  </Button>
+                  <div className="flex items-center gap-4">
+                    <span>סה"כ רשומות: {filteredPeople.length}</span>
+                    <span className="hidden md:inline">
+                      {showArchive
+                        ? "משתמשים ללא הרשאה (None)"
+                        : `מציג ${filteredPeople.length} מתוך ${authorizedPeople.length}`}
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
