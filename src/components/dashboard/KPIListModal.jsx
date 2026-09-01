@@ -845,7 +845,16 @@ export default function KPIListModal({
         const hasGap = missing.length > 0;
         const hasPartialAssignment = coverageSegments.length > 0 && hasGap;
 
-        if (!hasGap || (!hasPartialAssignment && !activeRequest)) return null;
+        // A shift belongs in the partial-gaps ("כיסוי חלקי") list only when it
+        // is genuinely a partial situation: either an open *Partial* request, or
+        // any request that already has partial coverage taken against it (a
+        // multi-shift whole request that got partly covered — see the collapse
+        // note below). A plain whole-shift request (General/Head2Head/Gift) with
+        // no coverage is NOT a partial gap — it lives in the swap-requests bucket
+        // (see baseData) — so it must not be swept in here, or it floods this
+        // list with identical full-window rows and buries the real partial rows.
+        const isPartialRequest = activeRequest?.request_type === "Partial";
+        if (!hasGap || (!hasPartialAssignment && !isPartialRequest)) return null;
 
         // Newest of the parent request and this shift's covers — so an
         // in-progress partial re-sorts to the top the moment a cover is taken.
