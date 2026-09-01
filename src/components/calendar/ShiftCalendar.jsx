@@ -118,6 +118,19 @@ function buildTourDemoShifts() {
       department: "ב",
       status: "partial",
       coverageType: "partial",
+      // An explicit open Partial request so AcceptSwapModal resolves the request
+      // as "partial" and draws the coverage scale (rather than falling back to a
+      // full-coverage view): נועה already holds 09:00–12:00, leaving 12:00–17:00
+      // as an open gap on the timeline.
+      active_request: {
+        id: "tour-partial-req",
+        request_type: "Partial",
+        status: "Partially_Covered",
+        req_start_date: today,
+        req_start_time: "09:00",
+        req_end_date: today,
+        req_end_time: "17:00",
+      },
       coverages: [
         {
           id: "tour-cov-1",
@@ -298,7 +311,7 @@ export default function ShiftCalendar() {
   //   null            → close everything.
   useEffect(() => {
     const handleTourControl = (e) => {
-      const { open, kpiType, kpiTab, demo, requestType, giftConfirm } =
+      const { open, kpiType, kpiTab, demo, requestType, giftConfirm, flowStep } =
         e.detail || {};
       // Reset every tour-driven surface first so each step is a clean,
       // idempotent request for exactly the state it wants.
@@ -322,7 +335,19 @@ export default function ShiftCalendar() {
           setShowKPIListModal(true);
           break;
         case "switchflow":
-          setSwitchFlow({ step: "own", ownShiftIds: [], targetShiftIds: [] });
+          // flowStep:"target" jumps the band to its second stage with demo
+          // selections seeded (one own shift already picked, one target shift
+          // chosen) so the target-stage title and "אישור ושליחה" button show as
+          // they really appear; otherwise the empty first ("own") stage.
+          setSwitchFlow(
+            flowStep === "target"
+              ? {
+                  step: "target",
+                  ownShiftIds: ["tour-own"],
+                  targetShiftIds: ["tour-other"],
+                }
+              : { step: "own", ownShiftIds: [], targetShiftIds: [] },
+          );
           break;
         case "details-other":
           setSelectedShift(demoShifts.otherShift);
