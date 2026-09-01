@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Calendar, ArrowLeftRight, Send, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -19,6 +19,12 @@ export default function HeadToHeadSelectorModal({
   currentUser,
   canTakeShifts,
   onRoleBlocked,
+  // Guided-tour demo mode: skip every real query and render a fixed list of
+  // fake "my shifts" (demoMyShifts) so the selector shows a populated,
+  // read-only example. The tour's click-blocker prevents the send button from
+  // firing, so no SwapRequest is ever created here.
+  demoMode = false,
+  demoMyShifts = [],
 }) {
   const [selectedShift, setSelectedShift] = useState(null);
   // Neither the sonner toast (never mounted anywhere in the app) nor the
@@ -33,7 +39,7 @@ export default function HeadToHeadSelectorModal({
   const { data: allShifts = [], isLoading } = useQuery({
     queryKey: ["my-future-shifts-h2h", currentUser?.serial_id],
     queryFn: () => base44.entities.Shift.list(),
-    enabled: isOpen && !!currentUser?.serial_id,
+    enabled: isOpen && !demoMode && !!currentUser?.serial_id,
   });
 
   // Ownership + status are derived from ShiftCoverage / SwapRequest now
@@ -42,21 +48,23 @@ export default function HeadToHeadSelectorModal({
   const { data: coverages = [] } = useQuery({
     queryKey: ["coverages"],
     queryFn: () => base44.entities.ShiftCoverage.list(),
-    enabled: isOpen,
+    enabled: isOpen && !demoMode,
   });
   const { data: swapRequests = [] } = useQuery({
     queryKey: ["swap-requests"],
     queryFn: () => base44.entities.SwapRequest.list(),
-    enabled: isOpen,
+    enabled: isOpen && !demoMode,
   });
   const { data: allUsers = [] } = useQuery({
     queryKey: ["all-users"],
     queryFn: () => base44.entities.AuthorizedPerson.list(),
-    enabled: isOpen,
+    enabled: isOpen && !demoMode,
   });
 
   // Filter Shifts: Only Mine, Future, and eligible statuses (white or full request)
-  const myFutureFullShifts = allShifts
+  const myFutureFullShifts = demoMode
+    ? demoMyShifts
+    : allShifts
     .map((shift) =>
       normalizeShiftContext(shift, {
         allUsers,
@@ -103,6 +111,15 @@ export default function HeadToHeadSelectorModal({
   const handleSelectShift = (shift) => {
     setSelectedShift(shift);
   };
+
+  // In the tour, pre-select the first demo shift so the "send" step shows a
+  // highlighted selection and an enabled button (the click-blocker still keeps
+  // it read-only).
+  useEffect(() => {
+    if (demoMode && isOpen && !selectedShift && demoMyShifts.length > 0) {
+      setSelectedShift(demoMyShifts[0]);
+    }
+  }, [demoMode, isOpen, selectedShift, demoMyShifts]);
 
   // Builds the WhatsApp share link for this proposal — offered as an
   // optional follow-up action on the success toast, not the primary action.
@@ -299,7 +316,10 @@ export default function HeadToHeadSelectorModal({
                     </p>
                   </div>
                 ) : (
-                  <div className="space-y-2 overflow-y-auto pr-1">
+                  <div
+                    data-tour="tour-h2h-pick"
+                    className="space-y-2 overflow-y-auto pr-1"
+                  >
                     {myFutureFullShifts.map((shift) => (
                       <motion.div
                         key={shift.id}
@@ -356,6 +376,7 @@ export default function HeadToHeadSelectorModal({
                   ביטול
                 </Button>
                 <Button
+                  data-tour="tour-h2h-send"
                   onClick={handleSendProposal}
                   disabled={
                     !selectedShift || createH2HRequestMutation.isPending
