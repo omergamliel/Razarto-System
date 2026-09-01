@@ -2590,6 +2590,7 @@ export default function ShiftCalendar() {
         currentUserId={
           tourDemo ? TOUR_DEMO_ME.serial_id : authorizedPerson?.serial_id
         }
+        demoForcePartial={tourDemo}
         onAccept={(segmentData) => {
           if (!canTakeShifts) {
             showRoleError();
