@@ -20,7 +20,6 @@ const EXCLUDED_TITLES = [
   "Jabotinsky Day",
   "Herzl Day",
   "Ben-Gurion Day",
-  "Sigd",
   "Aliyah",
   "Family Day",
   "Hebrew Language Day",
