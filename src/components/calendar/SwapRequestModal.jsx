@@ -311,7 +311,7 @@ export default function SwapRequestModal({
 
             <AnimatePresence>
               {swapType === 'partial' && (
-                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden space-y-6">
+                <motion.div data-tour="tour-partial-hours" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }} className="overflow-hidden space-y-6">
 
                   <div className="text-center mt-6 mb-2">
                     <p className="text-sm font-bold text-[#EF5350] mb-1">בחירת שעות ההחלפה</p>
