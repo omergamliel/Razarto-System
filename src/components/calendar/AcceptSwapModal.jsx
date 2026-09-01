@@ -25,7 +25,11 @@ export default function AcceptSwapModal({
   onAccept,
   isAccepting,
   existingCoverages = [],
-  currentUserId
+  currentUserId,
+  // Guided tour only: force the partial-cover view open (coverFull=false) so the
+  // hours scale is guaranteed to render for the walkthrough step, independent of
+  // how the demo shift's request type / coverages happen to resolve.
+  demoForcePartial = false
 }) {
   const normalizedShift = useMemo(
     () =>
@@ -314,7 +318,7 @@ export default function AcceptSwapModal({
       myCoverageSegment ||
       missingSegments[0] ||
       (baseStart && baseEnd ? { start: baseStart, end: baseEnd } : null);
-    const shouldForcePartial = isPartialRequest || (existingCoverages && existingCoverages.length > 0);
+    const shouldForcePartial = demoForcePartial || isPartialRequest || (existingCoverages && existingCoverages.length > 0);
 
     if (shouldForcePartial) {
       setStartDate(defaultSegment ? format(defaultSegment.start, 'yyyy-MM-dd') : (requestStartDate || defaultStartDate));
@@ -354,7 +358,8 @@ export default function AcceptSwapModal({
     missingSegments,
     isPartialRequest,
     shiftWindow,
-    myCoverageSegment
+    myCoverageSegment,
+    demoForcePartial
   ]);
 
   // When a user switches segment tabs, snap the inputs to the selected gap
@@ -495,6 +500,18 @@ export default function AcceptSwapModal({
               </div>
             </div>
 
+            {/* The whole coverage-decision region (full/partial choice +
+                uncovered-windows banner + the hours scale). The guided tour is
+                anchored HERE — on a wrapper that is always present while the
+                modal is open — rather than on the scale itself, which only
+                mounts once a partial cover is chosen (coverFull === false). If
+                the anchor lived on the scale, any step where the scale hasn't
+                mounted yet would leave the tour with no target: the spotlight
+                mask and tip both key off a found rect, so a missing target
+                blanks the entire overlay. Anchoring the always-present wrapper
+                keeps the step visible no matter what, and the spotlight still
+                encloses the scale whenever it's shown. */}
+            <div data-tour="tour-cover-scale" className="space-y-5">
             {/* Decision UI shown for all cases */}
             <div className="space-y-4">
               <div className={`grid grid-cols-1 ${isPartialRequest || hasExistingApprovedCoverage ? '' : 'sm:grid-cols-2'} gap-3`}>
@@ -743,6 +760,7 @@ export default function AcceptSwapModal({
                 </motion.div>
               )}
             </AnimatePresence>
+            </div>
 
             {coverFull && (
               <div className="bg-blue-50 border border-blue-100 rounded-2xl p-4 shadow-sm space-y-2 text-right">
