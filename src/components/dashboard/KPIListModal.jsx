@@ -280,10 +280,15 @@ function buildDemoKpiData() {
     full("demo-sh-ido", 900003, 6, "אבי פרץ"),
     full("demo-sh-me-gift", meId, 1, meName),
     full("demo-sh-me-mine", meId, 7, meName),
-    // partial-gap shifts
+    // partial-gap shifts — deliberately varied so the "כיסוי חלקי" list shows a
+    // spread of states rather than three near-identical rows: a nearly-full
+    // shift with a tiny tail gap (3 coverers), a shift with no coverage at all
+    // (fully open), one I'm partly covering myself (single coverer, two gaps),
+    // and one with a gap in the middle (two coverers on either side).
     timed("demo-sh-me-partial", meId, 3, "08:00", "20:00", meName),
-    timed("demo-sh-mai-partial", 900002, 3, "08:00", "16:00", "יעל ישראלי"),
+    timed("demo-sh-mai-partial", 900002, 3, "06:00", "14:00", "יעל ישראלי"),
     timed("demo-sh-ido-partial", 900003, 4, "08:00", "18:00", "אבי פרץ"),
+    timed("demo-sh-noa-partial", 900004, 5, "12:00", "22:00", "נועה ביטון"),
     // history — closed swap, shift already reassigned to me
     {
       ...full("demo-sh-closed", meId, -3, meName),
@@ -350,7 +355,8 @@ function buildDemoKpiData() {
       status: "Open",
       ...reqDates(shiftById("demo-sh-me-mine")),
     },
-    // open — partial gap on my shift (partially covered below)
+    // open — my own partial request (08:00–20:00), nearly fully covered by
+    // three people; only a short 19:00–20:00 tail is still open → "הפערים שלי".
     {
       id: "demo-req-partial-mine",
       request_type: "Partial",
@@ -360,17 +366,19 @@ function buildDemoKpiData() {
       status: "Partially_Covered",
       ...reqDates(shiftById("demo-sh-me-partial")),
     },
-    // open — partial gap on someone else's shift, split between two coverers
+    // open — a brand-new partial gap nobody has taken yet (06:00–14:00): status
+    // "Open", zero coverages → the whole window shows as one open band.
     {
       id: "demo-req-partial-mai",
       request_type: "Partial",
       requesting_user_id: 900002,
       shift_ids: ["demo-sh-mai-partial"],
       offered_shift_ids: [],
-      status: "Partially_Covered",
+      status: "Open",
       ...reqDates(shiftById("demo-sh-mai-partial")),
     },
-    // open — partial gap on Ido's shift that I'm partly covering
+    // open — Avi's shift (08:00–18:00) that I'm the sole (partial) coverer of;
+    // my 10:00–13:00 slice leaves two open gaps (08–10, 13–18) → "מה שאני מכסה".
     {
       id: "demo-req-partial-ido",
       request_type: "Partial",
@@ -379,6 +387,17 @@ function buildDemoKpiData() {
       offered_shift_ids: [],
       status: "Partially_Covered",
       ...reqDates(shiftById("demo-sh-ido-partial")),
+    },
+    // open — Noa's shift (12:00–22:00) covered on both ends by two people,
+    // leaving a gap in the *middle* (15:00–18:00) rather than a tail.
+    {
+      id: "demo-req-partial-noa",
+      request_type: "Partial",
+      requesting_user_id: 900004,
+      shift_ids: ["demo-sh-noa-partial"],
+      offered_shift_ids: [],
+      status: "Partially_Covered",
+      ...reqDates(shiftById("demo-sh-noa-partial")),
     },
     // history — a closed swap I accepted
     {
@@ -408,15 +427,19 @@ function buildDemoKpiData() {
   });
 
   const coverages = [
-    // My partial shift (08:00–20:00): Shmuel + Avi cover most; 17:00–20:00 open.
-    cov("demo-cov-mine-1", "demo-sh-me-partial", 900001, 3, "08:00", "13:00"),
-    cov("demo-cov-mine-2", "demo-sh-me-partial", 900003, 3, "13:00", "17:00"),
-    // Yael's partial shift (08:00–16:00): Noa + Shmuel cover part; 14:00–16:00 open.
-    cov("demo-cov-mai-1", "demo-sh-mai-partial", 900004, 3, "08:00", "11:00"),
-    cov("demo-cov-mai-2", "demo-sh-mai-partial", 900001, 3, "11:00", "14:00"),
-    // Avi's partial shift (08:00–18:00): I + Yael cover part; 15:00–18:00 open.
-    cov("demo-cov-ido-1", "demo-sh-ido-partial", meId, 4, "08:00", "12:00"),
-    cov("demo-cov-ido-2", "demo-sh-ido-partial", 900002, 4, "12:00", "15:00"),
+    // My partial shift (08:00–20:00): three coverers take almost all of it,
+    // leaving just a 19:00–20:00 tail open.
+    cov("demo-cov-mine-1", "demo-sh-me-partial", 900001, 3, "08:00", "12:00"),
+    cov("demo-cov-mine-2", "demo-sh-me-partial", 900003, 3, "12:00", "16:00"),
+    cov("demo-cov-mine-3", "demo-sh-me-partial", 900004, 3, "16:00", "19:00"),
+    // Yael's partial shift (06:00–14:00): intentionally has NO coverage — it
+    // renders as a single fully-open band.
+    // Avi's partial shift (08:00–18:00): I'm the only coverer (10:00–13:00), so
+    // two gaps remain open on either side (08–10 and 13–18).
+    cov("demo-cov-ido-1", "demo-sh-ido-partial", meId, 4, "10:00", "13:00"),
+    // Noa's partial shift (12:00–22:00): covered at both ends, gap in the middle.
+    cov("demo-cov-noa-1", "demo-sh-noa-partial", 900001, 5, "12:00", "15:00"),
+    cov("demo-cov-noa-2", "demo-sh-noa-partial", 900003, 5, "18:00", "22:00"),
   ];
 
   return { me, users, shifts, swapRequests, coverages };
