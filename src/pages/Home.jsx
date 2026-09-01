@@ -296,10 +296,18 @@ const TOUR_STEPS = [
     radius: 20,
   },
   {
+    selector: "tour-cover-scale",
+    process: "כיסוי חלקי",
+    title: "איך משתמש אחר מכסה — סרגל השעות",
+    body: "במסך שנפתח ב'אחליף' מוצג סרגל של כל שעות המשמרת. כאן רואים ש'נועה ביטון' כבר תפסה חלק (09:00–12:00, בצבע נפרד), והשעות שנותרו (12:00–17:00) עדיין פנויות. המכסה גורר את הידיות כדי לבחור אילו מהשעות הפנויות לקחת. (הצגה בלבד.)",
+    control: { open: "accept", demo: true },
+    radius: 16,
+  },
+  {
     selector: "tour-cover-confirm",
     process: "כיסוי חלקי",
-    title: "איך משתמש אחר מכסה",
-    body: "במסך שנפתח ב'אחליף' הוא מסמן את חלון השעות שיכסה (מה שכבר מכוסה מוצג בפס) ולוחץ 'אשר כיסוי'. גם כאן המכסה מקבל אישור מיידי (טוסט), לא הודעה במרכז ההודעות. (הצגה בלבד.)",
+    title: "איך משתמש אחר מכסה — אישור",
+    body: "אחרי בחירת השעות בסרגל, 'אשר כיסוי' מוסיף את השעות שבחר לכיסוי המשמרת. גם כאן המכסה מקבל אישור מיידי (טוסט), לא הודעה במרכז ההודעות. (הצגה בלבד.)",
     control: { open: "accept", demo: true },
     radius: 14,
   },
@@ -335,15 +343,15 @@ const TOUR_STEPS = [
     process: "החלפה מרובה",
     title: "שלב 1 — בחירת המשמרות שלי",
     body: "בפס התחתון מסמנים בלוח את המשמרת/ות שלכם שתרצו להעביר (המונה מתעדכן) ולוחצים 'המשך'. 'ביטול' יוצא מהתהליך. (תצוגה בלבד — לא נשלחת בקשה.)",
-    control: { open: "switchflow" },
+    control: { open: "switchflow", flowStep: "own" },
     radius: 10,
   },
   {
     selector: "switch-band",
     process: "החלפה מרובה",
     title: "שלב 2 — יעד או בקשה כללית",
-    body: "בשלב היעד שתי דרכים, בדיוק כמו קודם: בחירת משמרת של אדם אחר ואז 'אישור ושליחה' — הצעת ראש-בראש ישירה מולו; או 'שלח כבקשה כללית' — פתיחת הבקשה לכולם. ההודעות שכל צד יקבל זהות לתהליכים שראינו.",
-    control: { open: "switchflow" },
+    body: "עברנו לשלב היעד (משמרת שלכם כבר נבחרה). כאן שתי דרכים: לסמן משמרת של אדם אחר ואז 'אישור ושליחה' — הצעת ראש-בראש ישירה מולו; או 'שלח כבקשה כללית' — פתיחת הבקשה לכולם. ההודעות שכל צד יקבל זהות לתהליכים שראינו.",
+    control: { open: "switchflow", flowStep: "target" },
     radius: 10,
   },
 
@@ -652,7 +660,13 @@ function AppTour() {
     <AnimatePresence>
       <div
         className="fixed inset-0 font-sans"
-        style={{ zIndex: 100000 }}
+        // pointerEvents is set explicitly (not just left to default) because some
+        // steps open a Radix modal dialog (e.g. the gift confirmation) — a modal
+        // Radix layer sets `pointer-events: none` on <body> while open, which the
+        // tour subtree would otherwise INHERIT, leaving the "הבא"/close buttons
+        // and the click-to-advance mask dead. Re-asserting `auto` on our own root
+        // overrides that inheritance so the tour stays clickable above any dialog.
+        style={{ zIndex: 100000, pointerEvents: "auto" }}
         dir="rtl"
         aria-live="polite"
       >
