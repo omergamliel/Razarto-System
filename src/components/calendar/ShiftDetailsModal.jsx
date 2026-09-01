@@ -77,6 +77,9 @@ export default function ShiftDetailsModal({
   // the tour can spotlight the action buttons. Read-only; the tour's click
   // blocker sits above this modal so none of the buttons can actually fire.
   demoMode = false,
+  // Tour "מתנה" step: auto-open the gift confirmation dialog so the tour can
+  // spotlight its "כן, שלח הצעה" button without the (blocked) button click.
+  demoOpenGiftConfirm = false,
 }) {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showCancelRequestConfirm, setShowCancelRequestConfirm] =
@@ -89,6 +92,14 @@ export default function ShiftDetailsModal({
   const [selectedUserId, setSelectedUserId] = useState("");
 
   const queryClient = useQueryClient();
+
+  // Tour only: open (or close) the gift confirmation dialog to match the
+  // current step's demoOpenGiftConfirm flag, so the walkthrough can spotlight
+  // the confirm button. Guarded by demoMode so it never touches real usage.
+  useEffect(() => {
+    if (!demoMode) return;
+    setShowGiftConfirm(isOpen && demoOpenGiftConfirm);
+  }, [demoMode, demoOpenGiftConfirm, isOpen]);
 
   // --- Fetch Active Request Info ---
   const { data: activeRequest, isLoading: isActiveRequestLoading } = useQuery({
@@ -1278,6 +1289,7 @@ export default function ShiftDetailsModal({
                 ביטול
               </Button>
               <Button
+                data-tour="tour-gift-confirm"
                 onClick={handleGiftConfirm}
                 className="bg-[#ec4899] hover:bg-[#db2777] text-white"
               >
