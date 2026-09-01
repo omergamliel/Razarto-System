@@ -86,11 +86,27 @@ const TYPE_STYLES = {
 const getStyle = (type) => TYPE_STYLES[type] || TYPE_STYLES.info;
 
 // Example notifications shown only while the guided walkthrough spotlights this
-// panel (razarto:tour-notif with demo:true). They cover every notification
-// type/color so the tour can explain them on a populated panel instead of the
-// account's real (often empty) feed. Read-only; the remove/clear buttons and
-// action buttons are hidden in demo mode so nothing is touched.
+// panel (razarto:tour-notif with demo:true). Each mirrors a real event produced
+// by notificationEvents.js — same wording, same type/color — so the tour can
+// explain, per request process, exactly what the *owner/target* of a shift sees
+// in their sidebar. (The person who takes/covers/gifts a shift gets a toast, not
+// a persisted sidebar message, so there's no demo entry for that side.)
+//
+// A tour step spotlights a single perspective by passing `ids` on the
+// razarto:tour-notif event (see Home.jsx applyStepUI); with no `ids` the whole
+// list is shown (the notifications overview / colour-legend steps). Read-only:
+// the remove/clear and action buttons are inert in demo mode.
 const DEMO_MESSAGES = [
+  // בקשה כללית / ראש בראש — מה שהפותח (יוזם הבקשה) רואה עד שמישהו נענה.
+  {
+    id: "demo-notif-pending",
+    type: "swap_requested",
+    title: "הבקשה שלך עדיין ממתינה",
+    body: "בקשת ההחלפה שלך עדיין לא התקבלה על ידי אף אחד.",
+    actionLabel: "צפייה בבקשה",
+    actionTarget: "kpi:swap_requests:mine",
+  },
+  // ראש בראש — מה שהצד שההצעה הופנתה אליו רואה.
   {
     id: "demo-notif-h2h",
     type: "swap_requested",
@@ -99,37 +115,59 @@ const DEMO_MESSAGES = [
     actionLabel: "צפייה בבקשה",
     actionTarget: "kpi:swap_requests:incoming",
   },
-  {
-    id: "demo-notif-gift",
-    type: "gift",
-    title: "הוצעה לך מתנה 🎁",
-    body: "נועה ביטון מציעה לקחת על עצמה את המשמרת שלך במתנה — אשרו כדי להשתחרר מהמשמרת.",
-    actionLabel: "צפייה בהצעה",
-    actionTarget: "kpi:swap_requests:incoming",
-  },
-  {
-    id: "demo-notif-partial",
-    type: "partial",
-    title: "הוצע כיסוי למשמרת שלך",
-    body: "יעל ישראלי הציעה לכסות חלק מהשעות במשמרת שלך.",
-    actionLabel: "צפייה בבקשה",
-    actionTarget: "kpi:partial_gaps:mine",
-  },
+  // בקשה כללית — מה שהפותח רואה כשמישהו לוקח את המשמרת.
   {
     id: "demo-notif-covered",
     type: "covered",
     title: "המשמרת שלך כוסתה",
-    body: "אבי פרץ כיסה את המשמרת שלך — אין צורך להגיע.",
+    body: "אבי פרץ כיסה את המשמרת שלך (15/09) — אין צורך להגיע.",
     actionLabel: "צפייה בבקשה",
     actionTarget: "kpi:swap_requests:mine",
   },
+  // מתנה — מה שבעל המשמרת (הצד המקבל) רואה.
   {
-    id: "demo-notif-pending",
-    type: "info",
+    id: "demo-notif-gift",
+    type: "gift",
+    title: "הוצעה לך מתנה 🎁",
+    body: "נועה ביטון מציעה לקחת על עצמה את המשמרת שלך (15/09) במתנה — אשרו כדי להשתחרר מהמשמרת.",
+    actionLabel: "צפייה בהצעה",
+    actionTarget: "kpi:swap_requests:incoming",
+  },
+  // כיסוי חלקי — מה שבעל המשמרת (הפותח) רואה עד שמישהו מציע לכסות.
+  {
+    id: "demo-notif-partial-pending",
+    type: "swap_requested",
     title: "הבקשה שלך עדיין ממתינה",
-    body: "בקשת ההחלפה שפתחת עדיין לא התקבלה על ידי אף אחד.",
+    body: "בקשת הכיסוי החלקי שלך עדיין ממתינה למענה.",
     actionLabel: "צפייה בבקשה",
-    actionTarget: "kpi:swap_requests:mine",
+    actionTarget: "kpi:partial_gaps:mine",
+  },
+  // כיסוי חלקי — מה שבעל המשמרת רואה כשמישהו מציע לכסות חלק מהשעות.
+  {
+    id: "demo-notif-partial-offer",
+    type: "partial",
+    title: "הוצע כיסוי למשמרת שלך",
+    body: "יעל ישראלי הציעה לכסות חלק מהשעות במשמרת שלך (15/09).",
+    actionLabel: "צפייה בבקשה",
+    actionTarget: "kpi:partial_gaps:mine",
+  },
+  // כיסוי חלקי — מה שבעל המשמרת רואה כשכל השעות שביקש כוסו.
+  {
+    id: "demo-notif-partial-covered",
+    type: "covered",
+    title: "הבקשה החלקית שלך קיבלה מענה מלא",
+    body: "כל השעות שביקשת עבור המשמרת שלך כוסו.",
+    actionLabel: "צפייה בהיסטוריה",
+    actionTarget: "kpi:approved",
+  },
+  // כיסוי חלקי — סיכום אפור: בקשה שהסתיימה בלי שאף אחד הציע כיסוי.
+  {
+    id: "demo-notif-noanswer",
+    type: "info",
+    title: "הבקשה החלקית שלך לא קיבלה מענה",
+    body: "אף אחד לא הציע כיסוי לשעות שביקשת.",
+    actionLabel: "צפייה בהיסטוריה",
+    actionTarget: "kpi:approved",
   },
 ];
 
@@ -141,8 +179,11 @@ export default function NotificationSidebar() {
   const [messages, setMessages] = useState(getMessages());
   const [isOpen, setIsOpen] = useState(false);
   // Set by the walkthrough: render the demo notifications above instead of the
-  // real feed while the tour spotlights this panel.
+  // real feed while the tour spotlights this panel. `tourIds`, when set, narrows
+  // the demo feed to a specific ordered subset — the tour uses it to show the
+  // one message that belongs to the process/perspective a step is explaining.
   const [tourDemo, setTourDemo] = useState(false);
+  const [tourIds, setTourIds] = useState(null);
 
   useEffect(() => subscribe(setMessages), []);
 
@@ -153,6 +194,7 @@ export default function NotificationSidebar() {
     const handler = (e) => {
       setIsOpen(!!e.detail?.open);
       setTourDemo(!!e.detail?.demo);
+      setTourIds(Array.isArray(e.detail?.ids) ? e.detail.ids : null);
     };
     window.addEventListener("razarto:tour-notif", handler);
     return () => window.removeEventListener("razarto:tour-notif", handler);
@@ -161,7 +203,14 @@ export default function NotificationSidebar() {
   // Lock background scrolling while the sidebar panel is open.
   useScrollLock(isOpen);
 
-  const displayMessages = tourDemo ? DEMO_MESSAGES : messages;
+  // In demo mode: either the full catalog (overview steps) or, when the step
+  // named specific ids, exactly those messages in the given order.
+  const demoFeed = tourIds
+    ? tourIds
+        .map((id) => DEMO_MESSAGES.find((m) => m.id === id))
+        .filter(Boolean)
+    : DEMO_MESSAGES;
+  const displayMessages = tourDemo ? demoFeed : messages;
   const count = displayMessages.length;
 
   return (
