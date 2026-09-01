@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { base44, setActivityActor, logActivity } from "@/api/base44Client";
-import { format } from "date-fns";
+import { format, addDays } from "date-fns";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useScrollLock } from "@/hooks/useScrollLock";
@@ -132,6 +132,32 @@ function buildTourDemoShifts() {
         },
       ],
     },
+    // A few future full shifts owned by the demo user, offered as the "give in
+    // exchange" options inside HeadToHeadSelectorModal's demo list.
+    myShifts: [
+      {
+        ...base,
+        id: "tour-my-1",
+        start_date: format(addDays(new Date(), 3), "yyyy-MM-dd"),
+        end_date: format(addDays(new Date(), 3), "yyyy-MM-dd"),
+        original_user_id: TOUR_DEMO_ME.serial_id,
+        original_user_name: TOUR_DEMO_ME.full_name,
+        user_name: TOUR_DEMO_ME.full_name,
+        department: "א",
+        status: "Active",
+      },
+      {
+        ...base,
+        id: "tour-my-2",
+        start_date: format(addDays(new Date(), 8), "yyyy-MM-dd"),
+        end_date: format(addDays(new Date(), 8), "yyyy-MM-dd"),
+        original_user_id: TOUR_DEMO_ME.serial_id,
+        original_user_name: TOUR_DEMO_ME.full_name,
+        user_name: TOUR_DEMO_ME.full_name,
+        department: "א",
+        status: "Active",
+      },
+    ],
   };
 }
 
@@ -187,6 +213,9 @@ export default function ShiftCalendar() {
 
   // Head-to-Head States
   const [showHeadToHeadSelector, setShowHeadToHeadSelector] = useState(false);
+  // Tour only: when true, the demo ShiftDetailsModal auto-opens its gift
+  // confirmation dialog so the "מתנה" step can spotlight the confirm button.
+  const [tourGiftConfirm, setTourGiftConfirm] = useState(false);
   const [showHeadToHeadApproval, setShowHeadToHeadApproval] = useState(false);
   const [h2hTargetId, setH2hTargetId] = useState(null);
   const [h2hOfferId, setH2hOfferId] = useState(null);
@@ -258,15 +287,19 @@ export default function ShiftCalendar() {
   // fire during the tour. `detail.open` selects the surface to show:
   //   "kpi"           → the KPI request list on a given tab
   //   "switchflow"    → the multi-shift switch band
-  //   "details-other" → ShiftDetailsModal on someone else's shift (h2h + gift)
+  //   "details-other" → ShiftDetailsModal on someone else's shift (h2h + gift);
+  //                      pass giftConfirm:true to also pop the gift-confirm step
   //   "details-own"   → ShiftDetailsModal on the viewer's own shift (request)
   //   "action"        → ShiftActionModal (admin quick actions)
-  //   "request"       → SwapRequestModal (full/partial request form)
+  //   "request"       → SwapRequestModal; pass requestType:"partial" for the
+  //                      partial (windowed) form, else the full form
+  //   "h2h-select"    → HeadToHeadSelectorModal (pick one of my shifts to offer)
   //   "accept"        → AcceptSwapModal (join a partial gap)
   //   null            → close everything.
   useEffect(() => {
     const handleTourControl = (e) => {
-      const { open, kpiType, kpiTab, demo } = e.detail || {};
+      const { open, kpiType, kpiTab, demo, requestType, giftConfirm } =
+        e.detail || {};
       // Reset every tour-driven surface first so each step is a clean,
       // idempotent request for exactly the state it wants.
       setShowKPIListModal(false);
@@ -274,6 +307,8 @@ export default function ShiftCalendar() {
       setShowActionModal(false);
       setShowSwapRequestModal(false);
       setShowAcceptSwapModal(false);
+      setShowHeadToHeadSelector(false);
+      setTourGiftConfirm(false);
       setSwitchFlow(null);
       setTourDemo(!!demo);
       // Rebuilt each event so the demo shifts are always dated to today (see
@@ -291,6 +326,9 @@ export default function ShiftCalendar() {
           break;
         case "details-other":
           setSelectedShift(demoShifts.otherShift);
+          // giftConfirm → also pop the gift confirmation dialog on top of the
+          // details modal (the "מתנה" send step).
+          setTourGiftConfirm(!!giftConfirm);
           setShowDetailsModal(true);
           break;
         case "details-own":
@@ -303,8 +341,16 @@ export default function ShiftCalendar() {
           break;
         case "request":
           setSelectedShift(demoShifts.ownShift);
-          setSwapRequestInitialType("full");
+          setSwapRequestInitialType(
+            requestType === "partial" ? "partial" : "full",
+          );
           setShowSwapRequestModal(true);
+          break;
+        case "h2h-select":
+          // Head-to-head selector, opened against someone else's shift, with a
+          // demo list of "my shifts" to offer in exchange.
+          setSelectedShift(demoShifts.otherShift);
+          setShowHeadToHeadSelector(true);
           break;
         case "accept":
           setSelectedShift(demoShifts.partialShift);
@@ -1972,6 +2018,7 @@ export default function ShiftCalendar() {
     setShowSuccessModal(false);
     setShowHeadToHeadSelector(false);
     setShowHeadToHeadApproval(false);
+    setTourGiftConfirm(false);
     setH2hTargetId(null);
     setH2hOfferId(null);
     setShowKPIListModal(false);
@@ -2504,6 +2551,7 @@ export default function ShiftCalendar() {
         canTakeShifts={tourDemo ? true : canTakeShifts}
         isViewer={tourDemo ? false : isViewer}
         demoMode={tourDemo}
+        demoOpenGiftConfirm={tourGiftConfirm}
         isAdmin={isAdmin}
       />
 
@@ -2541,9 +2589,11 @@ export default function ShiftCalendar() {
         isOpen={showHeadToHeadSelector}
         onClose={closeAllModals}
         targetShift={selectedShift}
-        currentUser={authorizedPerson}
+        currentUser={tourDemo ? TOUR_DEMO_ME : authorizedPerson}
         canTakeShifts={tourDemo ? true : canTakeShifts}
         onRoleBlocked={showRoleError}
+        demoMode={tourDemo}
+        demoMyShifts={tourDemo ? buildTourDemoShifts().myShifts : []}
       />
 
       <HeadToHeadApprovalModal
