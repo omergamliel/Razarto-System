@@ -117,7 +117,14 @@ const EMAIL_PERSON_KEYS = new Set(["created_by"]);
 // Keys whose value is a system timestamp (show date + time).
 const DATETIME_KEYS = new Set(["created_date", "updated_date"]);
 // Fields that don't interest a manager and are hidden from the detail view.
-const HIDDEN_KEYS = new Set(["id", "is_sample"]);
+// Raw record/user ids (id, serial_id, entity_id) are meaningless to a manager,
+// so they're suppressed — person fields are resolved to names instead.
+const HIDDEN_KEYS = new Set([
+  "id",
+  "is_sample",
+  "serial_id",
+  "entity_id",
+]);
 
 const labelFor = (key) => FIELD_LABELS[key] || key;
 
@@ -203,10 +210,12 @@ function LogDetailModal({ entry, onClose }) {
     return m;
   }, [people]);
 
+  // Managers don't read serial_ids — resolve to the person's name only, never
+  // exposing the raw id (not even as a fallback, which would be meaningless).
   const resolvePerson = (id) => {
     if (id == null || id === "") return "—";
     const p = personBySerial.get(String(id));
-    return p ? `${p.full_name} (#${id})` : `#${id}`;
+    return p ? p.full_name : "משתמש לא ידוע";
   };
 
   const resolveEmailPerson = (email) => {
@@ -336,7 +345,6 @@ function LogDetailModal({ entry, onClose }) {
               <span className="text-gray-500 font-normal">
                 {" "}
                 — {ENTITY_LABELS[entity] || entity}
-                {entityId ? ` #${entityId}` : ""}
               </span>
             )}
           </p>
