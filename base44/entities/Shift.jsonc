@@ -35,7 +35,7 @@
     },
     "create": {
       "user_condition": {
-        "role": "admin"
+        "data.is_authorized": true
       }
     },
     "update": {
@@ -45,7 +45,7 @@
     },
     "delete": {
       "user_condition": {
-        "role": "admin"
+        "data.is_authorized": true
       }
     }
   }
