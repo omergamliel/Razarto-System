@@ -449,6 +449,57 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     });
     return set;
   }, [connectionStatuses]);
+
+  // Admin-only backfill. Each user mirrors their own connectivity into
+  // ConnectionStatus at onboarding (see ShiftCalendar), but users who onboarded
+  // before this entity existed have no row until they next load the app — so a
+  // Manager would see them red. A platform admin CAN read the User entity, so
+  // when one opens this modal we create the missing ConnectionStatus rows for
+  // every authorized user in one shot, populating the mirror for Managers.
+  // Guarded by a ref so it runs once per open; requires the entity to exist in
+  // the backend (list/create no-op-fail otherwise, guard resets to retry).
+  const backfillRan = useRef(false);
+  useEffect(() => {
+    if (!isOpen) {
+      backfillRan.current = false;
+      return;
+    }
+    if (backfillRan.current) return;
+    backfillRan.current = true;
+    (async () => {
+      try {
+        const [users, statuses] = await Promise.all([
+          base44.entities.User.list(),
+          base44.entities.ConnectionStatus.list(),
+        ]);
+        const known = new Set(
+          (statuses || [])
+            .filter((s) => s.serial_id != null)
+            .map((s) => Number(s.serial_id)),
+        );
+        const missing = (users || []).filter(
+          (u) =>
+            u.is_authorized &&
+            u.serial_id != null &&
+            !known.has(Number(u.serial_id)),
+        );
+        if (missing.length === 0) return;
+        await Promise.all(
+          missing.map((u) =>
+            base44.entities.ConnectionStatus.create({
+              serial_id: Number(u.serial_id),
+              connected: true,
+            }),
+          ),
+        );
+        queryClient.invalidateQueries(["connection-statuses"]);
+      } catch {
+        // Not a platform admin (User read denied) or entity not synced yet —
+        // reset so a future open can retry once conditions allow.
+        backfillRan.current = false;
+      }
+    })();
+  }, [isOpen, queryClient]);
   const isPersonConnected = useCallback(
     (person) =>
       person.serial_id != null &&
