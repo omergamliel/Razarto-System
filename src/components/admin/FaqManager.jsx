@@ -42,6 +42,11 @@ export default function FaqManager() {
         type: "עדכון מערכת",
         entity: "FaqItem",
         entityId: data?.id,
+        details: {
+          question: data?.question,
+          answer: data?.answer,
+          order: data?.order,
+        },
       });
       invalidate();
       toast.success("השאלה נוספה");
@@ -57,6 +62,12 @@ export default function FaqManager() {
         type: "עדכון מערכת",
         entity: "FaqItem",
         entityId: variables?.id,
+        details: {
+          ...(variables?.data || {}),
+          question:
+            variables?.data?.question ??
+            faqItems.find((i) => i.id === variables?.id)?.question,
+        },
       });
       invalidate();
     },
@@ -66,11 +77,16 @@ export default function FaqManager() {
   const deleteMutation = useMutation({
     mutationFn: (id) => base44.entities.FaqItem.delete(id),
     onSuccess: (_data, id) => {
+      const removed = faqItems.find((i) => i.id === id);
       logActivity({
         action: "מחיקת שאלה נפוצה",
         type: "עדכון מערכת",
         entity: "FaqItem",
         entityId: id,
+        details: {
+          question: removed?.question || "—",
+          answer: removed?.answer,
+        },
       });
       invalidate();
       toast.success("השאלה נמחקה");
