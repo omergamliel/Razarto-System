@@ -58,6 +58,10 @@ export default function ThemesTab() {
         action: "שמירת ערכת נושא",
         type: "עדכון מערכת",
         entity: "AppSettings",
+        details: {
+          setting: "ערכת נושא",
+          new_value: themePalette,
+        },
       });
       queryClient.invalidateQueries({ queryKey: ["app-settings"] });
       toast.success("ערכת הנושא נשמרה בהצלחה");
