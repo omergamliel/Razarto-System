@@ -38,6 +38,8 @@ const ENTITY_LABELS = {
   AuthorizedPerson: "משתמש",
   ShiftCoverage: "כיסוי משמרת",
   ActivityLog: "רשומת לוג",
+  FaqItem: "שאלה נפוצה",
+  User: "משתמש",
 };
 
 // Hebrew labels for the record fields shown in the detail modal. Unknown keys
@@ -85,6 +87,19 @@ const FIELD_LABELS = {
   giver: "נותן המשמרת",
   taker: "לוקח המשמרת",
   new_owner: "בעלים חדש",
+  action_type: "סוג השינוי",
+  previous_active_user: "משתמש פעיל קודם",
+  new_active_user: "משתמש פעיל חדש",
+  setting: "הגדרה",
+  previous_value: "ערך קודם",
+  new_value: "ערך חדש",
+  name: "שם",
+  members: "חברים",
+  question: "שאלה",
+  answer: "תשובה",
+  order: "סדר",
+  dates: "תאריכים",
+  systemStatus: "סטטוס מערכת",
 };
 
 // Keys whose value is a single person's serial_id.
