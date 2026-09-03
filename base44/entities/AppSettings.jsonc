@@ -24,12 +24,12 @@
     },
     "create": {
       "user_condition": {
-        "role": "admin"
+        "data.is_authorized": true
       }
     },
     "update": {
       "user_condition": {
-        "role": "admin"
+        "data.is_authorized": true
       }
     },
     "delete": {
