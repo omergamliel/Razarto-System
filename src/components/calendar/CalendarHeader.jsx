@@ -78,11 +78,15 @@ export default function CalendarHeader({
         });
       }
     },
-    onSuccess: () => {
+    onSuccess: (_data, url) => {
       logActivity({
         action: "עדכון לוגו המערכת",
         type: "עדכון מערכת",
         entity: "AppSettings",
+        details: {
+          setting: "לוגו המערכת",
+          new_value: url || "—",
+        },
       });
       queryClient.invalidateQueries({ queryKey: ["app-settings"] });
     },
