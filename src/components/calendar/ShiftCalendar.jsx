@@ -46,6 +46,15 @@ import SwitchFlowBand from "./SwitchFlowBand";
 import { isActiveGroupMember } from "@/lib/utils";
 import { useViewerMode, isViewerFor } from "@/hooks/useAuthorizedPerson";
 
+// After a shift write, base44's list endpoint can briefly still return the
+// pre-write snapshot (read-after-write lag), so an immediate refetch would show
+// stale data and the calendar wouldn't update until a manual reload. Waiting a
+// beat before the onSuccess refetch lets the backend become consistent — the
+// existing queries (incl. coverages, which drive ownership) then reload fresh.
+const WRITE_SETTLE_MS = 700;
+const settleAfterWrite = () =>
+  new Promise((resolve) => setTimeout(resolve, WRITE_SETTLE_MS));
+
 // --- Summary of swap flow fixes ---
 // 1) AcceptSwapModal replaces legacy CoverSegmentModal across all entry points.
 // 2) normalizeShiftContext + resolveSwapType/requestWindow standardize swap payloads for UI and WhatsApp deep links.
@@ -1920,6 +1929,7 @@ export default function ShiftCalendar() {
         end_time: newShiftData.end_time || "09:00",
       });
       await createAssignmentForShift(shift, newShiftData.original_user_id);
+      await settleAfterWrite();
       return shift;
     },
     onSuccess: (shift, newShiftData) => {
@@ -1944,22 +1954,8 @@ export default function ShiftCalendar() {
             : [],
         },
       });
-      // Reflect the new shift immediately — base44's list endpoint can lag a
-      // write (read-after-write), so an invalidate-driven refetch may return the
-      // pre-write list and the calendar wouldn't update until a full reload.
-      if (shift?.id) {
-        queryClient.setQueryData(["shifts"], (old) =>
-          (old || []).some((s) => s.id === shift.id)
-            ? old
-            : [...(old || []), shift],
-        );
-      }
-      // Mark stale WITHOUT an immediate refetch — an instant refetch could read
-      // the pre-write list back (see above) and clobber the optimistic value.
-      // The cache reconciles on the next natural refetch, once the write is
-      // visible server-side.
-      queryClient.invalidateQueries({ queryKey: ["shifts"], refetchType: "none" });
-      queryClient.invalidateQueries({ queryKey: ["coverages"], refetchType: "none" });
+      queryClient.invalidateQueries(["shifts"]);
+      queryClient.invalidateQueries(["coverages"]);
       toast.success("המשמרת נוספה בהצלחה");
       setShowAddShiftModal(false);
     },
@@ -1973,10 +1969,12 @@ export default function ShiftCalendar() {
         await syncAssignmentOwner(id, original_user_id, coverages);
       }
       // Any remaining (non-ownership) slot fields still update the Shift itself.
+      let updated = null;
       if (Object.keys(data).length > 0) {
-        return base44.entities.Shift.update(id, data);
+        updated = await base44.entities.Shift.update(id, data);
       }
-      return null;
+      await settleAfterWrite();
+      return updated;
     },
     onSuccess: (_data, variables) => {
       const editedShift = shifts.find((s) => s.id === variables?.id);
@@ -2005,27 +2003,8 @@ export default function ShiftCalendar() {
             : [],
         },
       });
-      // Optimistically reflect the change (base44 list reads can lag a write):
-      // ownership lives in the base "assignment" coverage row, so patch that
-      // row's owner; any plain slot-field edits land on the Shift itself.
-      if (variables?.original_user_id != null) {
-        queryClient.setQueryData(["coverages"], (old) =>
-          (old || []).map((c) =>
-            c.shift_id === variables.id && c.type === "assignment"
-              ? { ...c, covering_user_id: Number(variables.original_user_id) }
-              : c,
-          ),
-        );
-      }
-      if (_data?.id) {
-        queryClient.setQueryData(["shifts"], (old) =>
-          (old || []).map((s) => (s.id === _data.id ? { ...s, ..._data } : s)),
-        );
-      }
-      // Mark stale without an immediate (possibly stale) refetch that would
-      // clobber the optimistic patch above; reconciles on next natural refetch.
-      queryClient.invalidateQueries({ queryKey: ["shifts"], refetchType: "none" });
-      queryClient.invalidateQueries({ queryKey: ["coverages"], refetchType: "none" });
+      queryClient.invalidateQueries(["shifts"]);
+      queryClient.invalidateQueries(["coverages"]);
       toast.success("התפקיד עודכן בהצלחה");
       setShowEditRoleModal(false);
       setShowActionModal(false);
@@ -2050,7 +2029,9 @@ export default function ShiftCalendar() {
           base44.entities.ShiftCoverage.delete(c.id),
         ),
       ]);
-      return await base44.entities.Shift.delete(id);
+      const res = await base44.entities.Shift.delete(id);
+      await settleAfterWrite();
+      return res;
     },
     onSuccess: (_data, id) => {
       const deletedShift = shifts.find((s) => s.id === id);
@@ -2077,26 +2058,9 @@ export default function ShiftCalendar() {
             : [],
         },
       });
-      // Drop the shift (and its coverage/swap rows) from the cache right away —
-      // base44's list read can lag the delete, so a refetch may still include
-      // the deleted shift and the calendar wouldn't update until a full reload.
-      queryClient.setQueryData(["shifts"], (old) =>
-        (old || []).filter((s) => s.id !== id),
-      );
-      queryClient.setQueryData(["coverages"], (old) =>
-        (old || []).filter((c) => c.shift_id !== id),
-      );
-      queryClient.setQueryData(["swap-requests"], (old) =>
-        (old || []).filter(
-          (r) =>
-            !r.shift_ids?.includes(id) && !r.offered_shift_ids?.includes(id),
-        ),
-      );
-      // Mark stale without an immediate (possibly stale) refetch that would
-      // re-add the just-deleted shift; reconciles on next natural refetch.
-      queryClient.invalidateQueries({ queryKey: ["shifts"], refetchType: "none" });
-      queryClient.invalidateQueries({ queryKey: ["swap-requests"], refetchType: "none" });
-      queryClient.invalidateQueries({ queryKey: ["coverages"], refetchType: "none" });
+      queryClient.invalidateQueries(["shifts"]);
+      queryClient.invalidateQueries(["swap-requests"]);
+      queryClient.invalidateQueries(["coverages"]);
       toast.success("המשמרת נמחקה");
       setShowActionModal(false);
       setShowDetailsModal(false);
