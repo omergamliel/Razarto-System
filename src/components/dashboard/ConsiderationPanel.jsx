@@ -183,6 +183,10 @@ export default function ConsiderationPanel({ currentUser, isAdmin }) {
         type: "בקשת התחשבות",
         actor: currentUser,
         entity: "ConsiderationRequest",
+        details: {
+          requester: currentUser?.full_name,
+          count,
+        },
       });
       invalidate();
     },
