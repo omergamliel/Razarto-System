@@ -67,12 +67,12 @@
     },
     "update": {
       "user_condition": {
-        "role": "admin"
+        "data.is_authorized": true
       }
     },
     "delete": {
       "user_condition": {
-        "role": "admin"
+        "data.is_authorized": true
       }
     }
   }
