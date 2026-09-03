@@ -553,6 +553,44 @@ export default function ShiftCalendar() {
       );
   }, [authorizedPerson, currentUser]);
 
+  // --- SYNC ConnectionStatus (manager-visible connectivity mirror) ---
+  // The User entity's read RLS is admin-only, so app-Managers (platform "user")
+  // can't list other users' is_authorized flags — connectivity would show all
+  // red for them. ConnectionStatus exposes ONLY {serial_id, connected} and is
+  // readable by any authorized user, so each user mirrors their own connected
+  // state here at onboarding. Guarded by a ref so re-renders don't re-write.
+  const connectionSyncedRef = useRef(false);
+  useEffect(() => {
+    if (!currentUser?.is_authorized) return;
+    const serialId = authorizedPerson?.serial_id ?? currentUser?.serial_id;
+    if (serialId == null) return;
+    if (connectionSyncedRef.current) return;
+    connectionSyncedRef.current = true;
+    (async () => {
+      try {
+        const existing = await base44.entities.ConnectionStatus.filter({
+          serial_id: Number(serialId),
+        });
+        if (existing && existing.length > 0) {
+          const row = existing[0];
+          if (row.connected !== true) {
+            await base44.entities.ConnectionStatus.update(row.id, {
+              connected: true,
+            });
+          }
+        } else {
+          await base44.entities.ConnectionStatus.create({
+            serial_id: Number(serialId),
+            connected: true,
+          });
+        }
+      } catch (e) {
+        connectionSyncedRef.current = false;
+        debugLog("⚠️ [ShiftCalendar] Failed to sync ConnectionStatus:", e);
+      }
+    })();
+  }, [authorizedPerson, currentUser]);
+
   // Register the acting user for activity logging, so every data mutation the
   // app records (see logActivity in base44Client) is attributed to this person
   // without threading the actor through each call site.
@@ -571,6 +609,12 @@ export default function ShiftCalendar() {
       type: "כניסות משתמשים",
       entity: "User",
       actor: authorizedPerson,
+      details: {
+        full_name: authorizedPerson.full_name,
+        serial_id: authorizedPerson.serial_id,
+        department: authorizedPerson.department,
+        permissions: authorizedPerson.permissions,
+      },
     });
   }, [authorizedPerson]);
 
