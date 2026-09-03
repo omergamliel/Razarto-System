@@ -429,37 +429,26 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     enabled: isOpen,
   });
 
-  // The current platform user. Its `role` ("admin" | "user") is the very gate
-  // that decides whether User.list() below returns everyone or just this row:
-  // app-"Admin" users are invited as platform admins, app-"Manager" users as
-  // plain platform users (see addUserMutation). We reuse the ["current-user"]
-  // cache key already populated by ShiftCalendar so this is usually a cache hit.
-  const { data: currentPlatformUser } = useQuery({
-    queryKey: ["current-user"],
-    queryFn: () => base44.auth.me(),
+  // Connectivity. A person is "connected" once they've completed onboarding,
+  // which mirrors {serial_id, connected:true} into ConnectionStatus (see the
+  // sync effect in ShiftCalendar). We read connectivity from ConnectionStatus
+  // rather than the User entity because User's read RLS is admin-only — an
+  // app-Manager (platform "user") can't list other users' rows, so a
+  // User-based column would show everyone as red for them. ConnectionStatus is
+  // readable by any authorized user and exposes ONLY serial_id + connected (no
+  // emails/names/roles), so the column reflects reality for Managers too.
+  const { data: connectionStatuses = [] } = useQuery({
+    queryKey: ["connection-statuses"],
+    queryFn: () => base44.entities.ConnectionStatus.list(),
     enabled: isOpen,
-  });
-  // Only a platform admin can read every User row, so only then does the
-  // connectivity column reflect reality. For a manager, User.list() returns just
-  // their own row, which would make EVERYONE ELSE look "disconnected" — a false
-  // red. We gate the indicator on this and show a neutral "unknown" instead.
-  const canReadConnectivity = currentPlatformUser?.role === "admin";
-
-  // Platform Users (admins may read all rows per User RLS). A person is
-  // "connected" once they've completed onboarding, which flips is_authorized on
-  // their platform User (auth.updateMe) and syncs serial_id. Match by serial_id.
-  const { data: platformUsers = [] } = useQuery({
-    queryKey: ["platform-users"],
-    queryFn: () => base44.entities.User.list(),
-    enabled: isOpen && canReadConnectivity,
   });
   const authorizedSerialIds = useMemo(() => {
     const set = new Set();
-    platformUsers.forEach((u) => {
-      if (u.is_authorized && u.serial_id != null) set.add(Number(u.serial_id));
+    connectionStatuses.forEach((c) => {
+      if (c.connected && c.serial_id != null) set.add(Number(c.serial_id));
     });
     return set;
-  }, [platformUsers]);
+  }, [connectionStatuses]);
   const isPersonConnected = useCallback(
     (person) =>
       person.serial_id != null &&
@@ -2233,31 +2222,17 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                             </span>
                           </div>
 
-                          {/* Connectivity. Only a platform admin can read every
-                              User row, so only they get the real green/red
-                              status. A manager can't read other users' rows —
-                              rather than paint everyone falsely "disconnected"
-                              (red), show a neutral dash with an explanatory
-                              tooltip. */}
+                          {/* Connectivity */}
                           <div className="col-span-3 md:col-span-1 flex justify-center items-center">
-                            {canReadConnectivity ? (
-                              <img
-                                src={
-                                  isPersonConnected(person)
-                                    ? "https://i.imagesup.co/images2/30a37d06678a9808e762570c63cede181682172e.png"
-                                    : "https://i.imagesup.co/images2/b4873b1a4a57971b9ab6294adda44a6a184efc66.png"
-                                }
-                                alt="Status"
-                                className="w-6 h-6 object-contain"
-                              />
-                            ) : (
-                              <span
-                                className="text-gray-300 text-lg font-bold leading-none"
-                                title="סטטוס החיבור זמין לאדמין המערכת בלבד"
-                              >
-                                —
-                              </span>
-                            )}
+                            <img
+                              src={
+                                isPersonConnected(person)
+                                  ? "https://i.imagesup.co/images2/30a37d06678a9808e762570c63cede181682172e.png"
+                                  : "https://i.imagesup.co/images2/b4873b1a4a57971b9ab6294adda44a6a184efc66.png"
+                              }
+                              alt="Status"
+                              className="w-6 h-6 object-contain"
+                            />
                           </div>
 
                           {/* Actions */}
