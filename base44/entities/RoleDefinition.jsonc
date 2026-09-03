@@ -30,32 +30,23 @@
   ],
   "rls": {
     "read": {
-      "$or": [
-        {
-          "user_condition": {
-            "data.is_authorized": true
-          }
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
+      "user_condition": {
+        "data.is_authorized": true
+      }
     },
     "create": {
       "user_condition": {
-        "role": "admin"
+        "data.is_authorized": true
       }
     },
     "update": {
       "user_condition": {
-        "role": "admin"
+        "data.is_authorized": true
       }
     },
     "delete": {
       "user_condition": {
-        "role": "admin"
+        "data.is_authorized": true
       }
     }
   }
