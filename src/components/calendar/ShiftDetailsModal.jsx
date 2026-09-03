@@ -180,12 +180,28 @@ export default function ShiftDetailsModal({
       // Ownership lives in the base "assignment" coverage row (Phase 4).
       return syncAssignmentOwner(shift.id, parseInt(newUserId, 10), coverages);
     },
-    onSuccess: () => {
+    onSuccess: (_data, newUserId) => {
+      const toPerson = authorizedUsers.find(
+        (p) => Number(p.serial_id) === Number(newUserId),
+      );
       logActivity({
         action: "העברת משמרת למשתמש אחר (ניהול)",
         type: "שינויים בהרשאות",
         entity: "ShiftCoverage",
         entityId: shift?.id,
+        details: {
+          from: shift?.original_user_name,
+          to: toPerson?.full_name || `#${newUserId}`,
+          shifts: shift
+            ? [
+                {
+                  date: shift.start_date,
+                  start_time: shift.start_time,
+                  end_time: shift.end_time,
+                },
+              ]
+            : [],
+        },
       });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["swap-requests"]);
