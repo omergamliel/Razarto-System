@@ -57,7 +57,7 @@
   "rls": {
     "read": {
       "user_condition": {
-        "role": "admin"
+        "data.is_authorized": true
       }
     },
     "create": {
