@@ -663,11 +663,15 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         logo_url: url,
       });
     },
-    onSuccess: () => {
+    onSuccess: (_data, url) => {
       logActivity({
         action: "עדכון לוגו המערכת",
         type: "עדכון מערכת",
         entity: "AppSettings",
+        details: {
+          setting: "לוגו המערכת",
+          new_value: url || "—",
+        },
       });
       queryClient.invalidateQueries({ queryKey: ["app-settings"] });
       toast.success("הלוגו עודכן בהצלחה");
@@ -729,6 +733,10 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
           : "כיבוי מצב צפייה בלבד",
         type: "עדכון מערכת",
         entity: "AppSettings",
+        details: {
+          setting: "מצב צפייה בלבד (RR)",
+          new_value: next ? "מופעל" : "כבוי",
+        },
       });
       queryClient.invalidateQueries({ queryKey: ["app-settings"] });
       toast.success(
@@ -836,6 +844,10 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         action: `עדכון סף האילוצים החודשי ל-${Math.floor(Number(considerationMax))}`,
         type: "עדכון מערכת",
         entity: "AppSettings",
+        details: {
+          setting: "סף אילוצים חודשי",
+          new_value: Math.floor(Number(considerationMax)),
+        },
       });
       queryClient.invalidateQueries({ queryKey: ["app-settings"] });
       toast.success("סף האילוצים נשמר");
@@ -857,6 +869,10 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         action: `עדכון תקופת החסד להחלפה מתוזמנת ל-${Math.floor(Number(switchGraceDays))} ימים`,
         type: "עדכון מערכת",
         entity: "AppSettings",
+        details: {
+          setting: "תקופת חסד להחלפה מתוזמנת (ימים)",
+          new_value: Math.floor(Number(switchGraceDays)),
+        },
       });
       queryClient.invalidateQueries({ queryKey: ["app-settings"] });
       toast.success("תקופת החסד נשמרה");
@@ -872,6 +888,10 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         action: "שמירת הגדרות מערכת",
         type: "עדכון מערכת",
         entity: "AppSettings",
+        details: {
+          setting: "הגדרות מערכת",
+          new_value: { ...systemSettings, systemStatus },
+        },
       });
       queryClient.invalidateQueries({ queryKey: ["app-settings"] });
       toast.success("ההגדרות נשמרו בהצלחה");
@@ -886,6 +906,10 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         action: "שמירת הגדרות תמיכה",
         type: "עדכון מערכת",
         entity: "AppSettings",
+        details: {
+          setting: "הגדרות תמיכה",
+          new_value: supportSettings,
+        },
       });
       queryClient.invalidateQueries({ queryKey: ["app-settings"] });
       toast.success("הגדרות התמיכה נשמרו בהצלחה");
@@ -900,6 +924,10 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         action: "עדכון תבניות הודעות וואטסאפ",
         type: "עדכון מערכת",
         entity: "AppSettings",
+        details: {
+          setting: "תבניות הודעות וואטסאפ",
+          new_value: whatsappTemplates,
+        },
       });
       queryClient.invalidateQueries({ queryKey: ["app-settings"] });
       toast.success("הודעות הוואטסאפ נשמרו בהצלחה");
@@ -988,6 +1016,14 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         type: "שינויים בהרשאות",
         entity: "AuthorizedPerson",
         entityId: data?.id,
+        details: {
+          full_name: data?.full_name,
+          serial_id: data?.serial_id,
+          department: data?.department,
+          permissions: data?.permissions,
+          email: data?.email,
+          sign: data?.sign,
+        },
       });
       queryClient.invalidateQueries(["authorized-people"]);
       // Instead of closing, switch to success step
@@ -1015,6 +1051,12 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         type: "שינויים בהרשאות",
         entity: "AuthorizedPerson",
         entityId: variables?.id,
+        details: {
+          ...(variables?.data || {}),
+          name:
+            _data?.full_name ||
+            authorizedPeople.find((p) => p.id === variables?.id)?.full_name,
+        },
       });
       queryClient.invalidateQueries(["authorized-people"]);
       toast.success("הפרטים עודכנו בהצלחה!");
@@ -1036,6 +1078,15 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         type: "שינויים בהרשאות",
         entity: "AuthorizedPerson",
         entityId: id,
+        details: userToDelete
+          ? {
+              full_name: userToDelete.full_name,
+              serial_id: userToDelete.serial_id,
+              department: userToDelete.department,
+              permissions: userToDelete.permissions,
+              email: userToDelete.email,
+            }
+          : { id },
       });
       queryClient.invalidateQueries(["authorized-people"]);
       toast.success("המשתמש הוסר מהמערכת בהצלחה.");
@@ -1090,12 +1141,29 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       return { previousActiveSerialId, cleared: false };
     },
     onSuccess: (result, { symbol, person }) => {
+      const prevPerson =
+        result?.previousActiveSerialId != null
+          ? authorizedPeople.find(
+              (p) =>
+                Number(p.serial_id) === Number(result.previousActiveSerialId),
+            )
+          : null;
+      const nameOf = (p, serial) =>
+        p ? `${p.full_name} (#${p.serial_id})` : serial != null ? `#${serial}` : "—";
       logActivity({
         action: result?.cleared
           ? `ניקוי משתמש פעיל בקבוצה ${symbol}`
           : `עדכון משתמש פעיל בקבוצה ${symbol}`,
         type: "עדכון מערכת",
         entity: "ShiftGroup",
+        details: {
+          group: symbol,
+          action_type: result?.cleared ? "ניקוי משתמש פעיל" : "עדכון משתמש פעיל",
+          previous_active_user: nameOf(prevPerson, result?.previousActiveSerialId),
+          new_active_user: result?.cleared
+            ? "—"
+            : nameOf(person, person?.serial_id),
+        },
       });
       queryClient.invalidateQueries(["shift-groups"]);
       offerFutureShiftMigration(result, person);
@@ -1127,6 +1195,11 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         action: `העברת ${count} משמרות עתידיות למשתמש פעיל חדש`,
         type: "עדכון מערכת",
         entity: "ShiftCoverage",
+        details: {
+          count,
+          giver: pendingShiftMigration?.previousPerson?.full_name || "—",
+          taker: pendingShiftMigration?.newPerson?.full_name || "—",
+        },
       });
       queryClient.invalidateQueries(["shifts"]);
       queryClient.invalidateQueries(["coverages"]);
@@ -1186,6 +1259,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         action: `הוספת קבוצה: ${(symbol || "").trim()}`,
         type: "עדכון מערכת",
         entity: "ShiftGroup",
+        details: { group: (symbol || "").trim() },
       });
       queryClient.invalidateQueries(["shift-groups"]);
       toast.success("הקבוצה נוספה.");
@@ -1215,6 +1289,10 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         action: `הסרת קבוצה: ${symbol}`,
         type: "עדכון מערכת",
         entity: "ShiftGroup",
+        details: {
+          group: symbol,
+          count: authorizedPeople.filter((p) => p.sign === symbol).length,
+        },
       });
       queryClient.invalidateQueries(["shift-groups"]);
       queryClient.invalidateQueries(["authorized-people"]);
@@ -1242,6 +1320,12 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         action: "יצירת קבוצות ברירת המחדל",
         type: "עדכון מערכת",
         entity: "ShiftGroup",
+        details: {
+          setting: "קבוצות ברירת מחדל",
+          count: DEFAULT_GROUP_SYMBOLS.filter(
+            (s) => !groupSymbols.includes(s),
+          ).length,
+        },
       });
       queryClient.invalidateQueries(["shift-groups"]);
       toast.success("קבוצות ברירת המחדל נוצרו.");
@@ -1264,6 +1348,14 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         action: `הוספת ${personIds.length} משתמשים לקבוצה ${symbol}`,
         type: "עדכון מערכת",
         entity: "AuthorizedPerson",
+        details: {
+          group: symbol,
+          count: personIds.length,
+          members: personIds
+            .map((id) => authorizedPeople.find((p) => p.id === id)?.full_name)
+            .filter(Boolean)
+            .join(", "),
+        },
       });
       queryClient.invalidateQueries(["authorized-people"]);
       toast.success(`נוספו ${personIds.length} משתמשים לקבוצה.`);
@@ -1298,6 +1390,11 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         type: "עדכון מערכת",
         entity: "AuthorizedPerson",
         entityId: person?.id,
+        details: {
+          group: person?.sign || "—",
+          full_name: person?.full_name,
+          serial_id: person?.serial_id,
+        },
       });
       queryClient.invalidateQueries(["authorized-people"]);
       queryClient.invalidateQueries(["shift-groups"]);
@@ -1349,16 +1446,40 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
       }
       return { clearing, deactivate };
     },
-    onSuccess: (result, { symbol }) => {
+    onSuccess: (result, { symbol, targetSerialId, date }) => {
       const label = result?.clearing
         ? `ביטול שינוי מתוזמן בקבוצה ${symbol}`
         : result?.deactivate
         ? `תזמון ביטול משתמש פעיל בקבוצה ${symbol}`
         : `תזמון החלפת משתמש פעיל בקבוצה ${symbol}`;
+      const targetPerson =
+        targetSerialId != null
+          ? authorizedPeople.find(
+              (p) => Number(p.serial_id) === Number(targetSerialId),
+            )
+          : null;
       logActivity({
         action: label,
         type: "עדכון מערכת",
         entity: "ShiftGroup",
+        details: {
+          group: symbol,
+          action_type: result?.clearing
+            ? "ביטול תזמון"
+            : result?.deactivate
+              ? "תזמון ביטול פעיל"
+              : "תזמון החלפת פעיל",
+          date: result?.clearing ? "—" : date || "—",
+          new_active_user: result?.clearing
+            ? "—"
+            : targetPerson
+              ? `${targetPerson.full_name} (#${targetPerson.serial_id})`
+              : result?.deactivate
+                ? "—"
+                : targetSerialId != null
+                  ? `#${targetSerialId}`
+                  : "—",
+        },
       });
       queryClient.invalidateQueries(["shift-groups"]);
       setSwitchDialogSymbol(null);
