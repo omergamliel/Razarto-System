@@ -2029,9 +2029,7 @@ export default function ShiftCalendar() {
           base44.entities.ShiftCoverage.delete(c.id),
         ),
       ]);
-      const res = await base44.entities.Shift.delete(id);
-      await settleAfterWrite();
-      return res;
+      return await base44.entities.Shift.delete(id);
     },
     onSuccess: (_data, id) => {
       const deletedShift = shifts.find((s) => s.id === id);
@@ -2058,7 +2056,27 @@ export default function ShiftCalendar() {
             : [],
         },
       });
-      queryClient.invalidateQueries(["shifts"]);
+      // The shift + its coverage/swap rows are deleted server-side, but base44's
+      // shifts list can lag the delete longer than the coverages list — so an
+      // immediate refetch returns the shift WITHOUT its (already-gone) assignment
+      // row, rendering it as "לא שובץ" until a manual refresh. Remove it from the
+      // cache directly and DON'T let a stale shifts-refetch re-add it. Coverages
+      // and swaps still refetch normally, so other shifts' ownership is never
+      // starved (that was the earlier regression — never do refetchType:"none"
+      // on ["coverages"], which is what drives ownership).
+      queryClient.setQueryData(["shifts"], (old) =>
+        (old || []).filter((s) => s.id !== id),
+      );
+      queryClient.setQueryData(["coverages"], (old) =>
+        (old || []).filter((c) => c.shift_id !== id),
+      );
+      queryClient.setQueryData(["swap-requests"], (old) =>
+        (old || []).filter(
+          (r) =>
+            !r.shift_ids?.includes(id) && !r.offered_shift_ids?.includes(id),
+        ),
+      );
+      queryClient.invalidateQueries({ queryKey: ["shifts"], refetchType: "none" });
       queryClient.invalidateQueries(["swap-requests"]);
       queryClient.invalidateQueries(["coverages"]);
       toast.success("המשמרת נמחקה");
