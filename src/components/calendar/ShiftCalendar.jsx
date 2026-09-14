@@ -43,7 +43,7 @@ import FairnessMatrixModal from "../dashboard/FairnessMatrixModal";
 import HelpSupportModal from "../dashboard/HelpSupportModal";
 import LoadingSkeleton from "../LoadingSkeleton";
 import SwitchFlowBand from "./SwitchFlowBand";
-import { isActiveGroupMember } from "@/lib/utils";
+import { isActiveGroupMember, isRequestExpired } from "@/lib/utils";
 import { useViewerMode, isViewerFor } from "@/hooks/useAuthorizedPerson";
 
 // After a shift write, base44's list endpoint can briefly still return the
@@ -720,13 +720,16 @@ export default function ShiftCalendar() {
   useEffect(() => {
     if (!authorizedPerson || shifts.length === 0) return;
 
-    const today = format(new Date(), "yyyy-MM-dd");
     const activeStatuses = ["Open", "Partially_Covered"];
+    // Judge expiry off the shift's own date too, not just req_end_date — some
+    // requests carry no usable window, and the shift date is what actually
+    // passed. Shared helper keeps this in lockstep with the read-time filters.
+    const shiftsById = new Map(shifts.map((s) => [s.id, s]));
 
     const staleActiveRequests = swapRequests.filter(
       (sr) =>
         activeStatuses.includes(sr.status) &&
-        (sr.req_end_date || sr.req_start_date) < today,
+        isRequestExpired(sr, { shiftsById }),
     );
 
     // Retire expired requests by moving them to a TERMINAL status, not by
