@@ -27,6 +27,31 @@ export const isIframe = window.self !== window.top;
 export const isOpenStatus = (status) =>
   ["Open", "Partially_Covered"].includes(status);
 
+// Today as a local "yyyy-MM-dd" string (NOT toISOString(), which is UTC and can
+// be a day off near midnight). Matches the date strings stored on requests.
+export const localToday = () => {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+};
+
+// A SwapRequest whose entire window has already passed. An expired request can
+// no longer be acted on, so it must never be counted as open or shown as an
+// active swap on the calendar — regardless of its stored status. This is the
+// read-time counterpart to the lazy write-back cleanup in ShiftCalendar: even
+// when that write hasn't landed (e.g. the entities RLS re-sync is still
+// pending, so status updates silently fail), expiration is enforced HERE so
+// the UI is correct immediately. `today` is a "yyyy-MM-dd" string.
+export const isRequestExpired = (sr, today = localToday()) => {
+  if (!sr) return false;
+  const end = sr.req_end_date || sr.req_start_date || "";
+  return end !== "" && end < today;
+};
+
+// Still actionable: open/partially-covered AND not past its window.
+export const isActiveRequest = (sr, today = localToday()) =>
+  isOpenStatus(sr?.status) && !isRequestExpired(sr, today);
+
 // ---------------------------------------------------------------------------
 // Group active-member rule — the single source of truth for "may this person
 // take/interact with shifts (and be assigned them by distribution)".
