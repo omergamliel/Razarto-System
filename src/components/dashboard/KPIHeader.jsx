@@ -42,6 +42,14 @@ export default function KPIHeader({
     queryFn: () => base44.entities.ShiftCoverage.list(),
   });
 
+  // shift.id → shift, so expiry can be judged off the shift's own date (the
+  // reliable signal when a request carries no usable req_end_date).
+  const shiftsById = useMemo(() => {
+    const m = new Map();
+    shiftsAll.forEach((s) => m.set(s.id, s));
+    return m;
+  }, [shiftsAll]);
+
   // --- 1. Swap Requests Count (Red) ---
   // Count ALL open whole-shift SwapRequests — 'General' (open to anyone),
   // 'Head2Head' (a targeted trade), and 'Gift' (a one-directional handoff), to
@@ -55,7 +63,7 @@ export default function KPIHeader({
     return swapRequests.filter((r) => {
       if (r.status !== "Open") return false;
       // An expired request is dead history, not an open request — never count it.
-      if (isRequestExpired(r)) return false;
+      if (isRequestExpired(r, { shiftsById })) return false;
       if (["Head2Head", "General"].includes(r.request_type)) return true;
       if (r.request_type !== "Gift") return false;
       const giftShift = shiftsAll.find((s) =>
@@ -64,7 +72,7 @@ export default function KPIHeader({
       const recipientId = Number(resolveOwnerId(giftShift, coveragesAll));
       return Number(r.requesting_user_id) === myId || recipientId === myId;
     }).length;
-  }, [swapRequests, shiftsAll, coveragesAll, currentUser?.serial_id]);
+  }, [swapRequests, shiftsAll, coveragesAll, shiftsById, currentUser?.serial_id]);
 
   // --- 2. Partial Gaps Count (Yellow) ---
   // Count ALL open SwapRequests that are of type 'Partial', plus any request
@@ -73,11 +81,11 @@ export default function KPIHeader({
     () =>
       swapRequests.filter(
         (r) =>
-          !isRequestExpired(r) &&
+          !isRequestExpired(r, { shiftsById }) &&
           ((r.status === "Open" && r.request_type === "Partial") ||
             r.status === "Partially_Covered"),
       ).length,
-    [swapRequests],
+    [swapRequests, shiftsById],
   );
 
   // --- 3. History / Approved (Green) ---
