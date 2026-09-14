@@ -11,6 +11,7 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { resolveOwnerId } from "@/components/calendar/whatsappTemplates";
+import { isRequestExpired } from "@/lib/utils";
 import { useThemePalette } from "@/hooks/useAuthorizedPerson";
 
 export default function KPIHeader({
@@ -53,6 +54,8 @@ export default function KPIHeader({
     const myId = Number(currentUser?.serial_id);
     return swapRequests.filter((r) => {
       if (r.status !== "Open") return false;
+      // An expired request is dead history, not an open request — never count it.
+      if (isRequestExpired(r)) return false;
       if (["Head2Head", "General"].includes(r.request_type)) return true;
       if (r.request_type !== "Gift") return false;
       const giftShift = shiftsAll.find((s) =>
@@ -70,8 +73,9 @@ export default function KPIHeader({
     () =>
       swapRequests.filter(
         (r) =>
-          (r.status === "Open" && r.request_type === "Partial") ||
-          r.status === "Partially_Covered",
+          !isRequestExpired(r) &&
+          ((r.status === "Open" && r.request_type === "Partial") ||
+            r.status === "Partially_Covered"),
       ).length,
     [swapRequests],
   );
