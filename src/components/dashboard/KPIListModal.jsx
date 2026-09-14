@@ -35,6 +35,7 @@ import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import {
   isOpenStatus,
+  isRequestExpired,
   deriveRequestItemFlags,
   filterRequestsForSwapTab,
   filterPartialGapsForTab,
@@ -874,6 +875,10 @@ export default function KPIListModal({
         return {
           ...activeRequest,
           latest_activity_date,
+          // Whole window already past. Expired partials drop out of the live
+          // "partial gaps" list below, but an expired one that DID get covered
+          // still belongs in "approved" history (it has coverageSegments).
+          is_expired: isRequestExpired(activeRequest),
           id: activeRequest?.id || `partial-${shift.id}`,
           shift_id: shift.id,
           user_name: user?.full_name || shift.user_name || "לא ידוע",
@@ -952,7 +957,11 @@ export default function KPIListModal({
   }, [coveragesAll, shiftsAll, currentUser]);
 
   const baseData = useMemo(() => {
-    const openRequests = swapRequestsAll.filter((r) => isOpenStatus(r.status));
+    // Expired requests are dead history, never "open" — exclude them so the
+    // swap-requests / partial-gaps lists match their (also expiry-aware) badges.
+    const openRequests = swapRequestsAll.filter(
+      (r) => isOpenStatus(r.status) && !isRequestExpired(r),
+    );
     // Whole-shift swap requests: General (open to anyone), Head2Head (a
     // targeted trade), and Gift (a one-directional handoff) all belong in this
     // "בקשות להחלפה" bucket. Partial (windowed) requests get their own list.
@@ -969,10 +978,14 @@ export default function KPIListModal({
     switch (type) {
       case "swap_requests":
         return enrichRequestsWithShiftInfo(fullRequests);
-      case "partial_gaps":
-        return partialGapItems.length
-          ? partialGapItems
+      case "partial_gaps": {
+        // Drop expired partials — they're finished, not live gaps. An expired
+        // one that got covered still shows under "approved" (has coverage).
+        const liveGaps = partialGapItems.filter((item) => !item.is_expired);
+        return liveGaps.length
+          ? liveGaps
           : enrichRequestsWithShiftInfo(partialRequests);
+      }
       case "approved": {
         // Partial swaps that already have at least one accepted coverage
         // window, even if the rest of the shift is still open — these are
