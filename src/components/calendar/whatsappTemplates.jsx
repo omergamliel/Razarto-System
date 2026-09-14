@@ -1,6 +1,7 @@
 import { format, addDays } from "date-fns";
 import { he } from "date-fns/locale";
 import { base44 } from "@/api/base44Client";
+import { isRequestExpired } from "@/lib/utils";
 
 // Distinct colors for each person helping cover a shift, so multiple
 // simultaneous helpers can be told apart at a glance on the coverage
@@ -340,7 +341,7 @@ export const normalizeShiftContext = (
   );
   const ownerId = assignmentCoverage?.covering_user_id;
 
-  const activeRequest =
+  const foundRequest =
     activeRequestOverride ||
     shift.active_request ||
     swapRequests?.find(
@@ -355,6 +356,21 @@ export const normalizeShiftContext = (
         // blocking the new owner from ever requesting a swap on their own shift.
         Number(sr.requesting_user_id) === Number(ownerId),
     );
+
+  // Retire an EXPIRED request at read time so the shift is correct even before
+  // the lazy write-back has flipped its status (that write can lag or, until an
+  // RLS re-sync, fail outright). If it never got any coverage it's simply dead —
+  // drop it so the slot falls back to a plain, unrequested shift. If it DID get
+  // partial coverage, keep it but present it as Closed so the granted help shows
+  // as covered history ("end it where it was and save"), never as an open gap.
+  const foundHasCover =
+    !!foundRequest && rawShiftCoverages.some((c) => c.type === "cover");
+  const activeRequest =
+    foundRequest && isRequestExpired(foundRequest)
+      ? foundHasCover
+        ? { ...foundRequest, status: "Closed" }
+        : null
+      : foundRequest;
   const requestType = resolveSwapType(shift, activeRequest);
   const requestWindow = resolveRequestWindow(shift, activeRequest);
   const shiftWindow = resolveShiftWindow(shift, requestWindow);
