@@ -41,16 +41,45 @@ export const localToday = () => {
 // read-time counterpart to the lazy write-back cleanup in ShiftCalendar: even
 // when that write hasn't landed (e.g. the entities RLS re-sync is still
 // pending, so status updates silently fail), expiration is enforced HERE so
-// the UI is correct immediately. `today` is a "yyyy-MM-dd" string.
-export const isRequestExpired = (sr, today = localToday()) => {
+// the UI is correct immediately.
+//
+// Expiry is judged off EVERY date we can find for the request: its own window
+// (req_start/end_date) AND the dates of the shifts it points at (passed in via
+// `shiftsById`, a Map or plain object shift.id → shift). The shift date is the
+// reliable signal — some requests (General/Head2Head, or older records) carry
+// no usable req_end_date, and it's the shift's calendar date the user reads as
+// "passed". A multi-shift request stays live until its LAST date is in the past.
+// `today` is a "yyyy-MM-dd" string; `shiftsById` is optional.
+export const isRequestExpired = (
+  sr,
+  { today = localToday(), shiftsById } = {},
+) => {
   if (!sr) return false;
-  const end = sr.req_end_date || sr.req_start_date || "";
-  return end !== "" && end < today;
+  const dates = [];
+  const push = (v) => {
+    if (v) dates.push(String(v).slice(0, 10)); // handles ISO datetimes too
+  };
+  push(sr.req_end_date);
+  push(sr.req_start_date);
+  if (shiftsById) {
+    const get = (id) =>
+      typeof shiftsById.get === "function" ? shiftsById.get(id) : shiftsById[id];
+    (sr.shift_ids || []).forEach((id) => {
+      const s = get(id);
+      if (s) {
+        push(s.end_date);
+        push(s.start_date);
+      }
+    });
+  }
+  if (dates.length === 0) return false;
+  const latest = dates.reduce((a, b) => (a > b ? a : b));
+  return latest < today;
 };
 
 // Still actionable: open/partially-covered AND not past its window.
-export const isActiveRequest = (sr, today = localToday()) =>
-  isOpenStatus(sr?.status) && !isRequestExpired(sr, today);
+export const isActiveRequest = (sr, opts) =>
+  isOpenStatus(sr?.status) && !isRequestExpired(sr, opts);
 
 // ---------------------------------------------------------------------------
 // Group active-member rule — the single source of truth for "may this person
