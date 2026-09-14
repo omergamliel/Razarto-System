@@ -365,12 +365,14 @@ export const normalizeShiftContext = (
   // as covered history ("end it where it was and save"), never as an open gap.
   const foundHasCover =
     !!foundRequest && rawShiftCoverages.some((c) => c.type === "cover");
-  const activeRequest =
-    foundRequest && isRequestExpired(foundRequest)
-      ? foundHasCover
-        ? { ...foundRequest, status: "Closed" }
-        : null
-      : foundRequest;
+  const requestExpired =
+    !!foundRequest &&
+    isRequestExpired(foundRequest, { shiftsById: { [shift.id]: shift } });
+  const activeRequest = requestExpired
+    ? foundHasCover
+      ? { ...foundRequest, status: "Closed" }
+      : null
+    : foundRequest;
   const requestType = resolveSwapType(shift, activeRequest);
   const requestWindow = resolveRequestWindow(shift, activeRequest);
   const shiftWindow = resolveShiftWindow(shift, requestWindow);
