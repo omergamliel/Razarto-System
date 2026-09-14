@@ -587,6 +587,14 @@ export default function KPIListModal({
   const coveragesAll = demoDataset ? demoDataset.coverages : coveragesReal;
   const authorizedUsers = demoDataset ? demoDataset.users : authorizedUsersReal;
 
+  // shift.id → shift, so a request's expiry can be judged off the shift's own
+  // date (the reliable signal when a request has no usable req_end_date).
+  const shiftsById = useMemo(() => {
+    const m = new Map();
+    shiftsAll.forEach((s) => m.set(s.id, s));
+    return m;
+  }, [shiftsAll]);
+
   const isLoading =
     !demoMode &&
     (isSwapRequestsLoading ||
@@ -878,7 +886,7 @@ export default function KPIListModal({
           // Whole window already past. Expired partials drop out of the live
           // "partial gaps" list below, but an expired one that DID get covered
           // still belongs in "approved" history (it has coverageSegments).
-          is_expired: isRequestExpired(activeRequest),
+          is_expired: isRequestExpired(activeRequest, { shiftsById }),
           id: activeRequest?.id || `partial-${shift.id}`,
           shift_id: shift.id,
           user_name: user?.full_name || shift.user_name || "לא ידוע",
@@ -915,6 +923,7 @@ export default function KPIListModal({
     isOpen,
     isPartialGapsView,
     shiftsAll,
+    shiftsById,
     swapRequestsAll,
     type,
   ]);
@@ -960,7 +969,7 @@ export default function KPIListModal({
     // Expired requests are dead history, never "open" — exclude them so the
     // swap-requests / partial-gaps lists match their (also expiry-aware) badges.
     const openRequests = swapRequestsAll.filter(
-      (r) => isOpenStatus(r.status) && !isRequestExpired(r),
+      (r) => isOpenStatus(r.status) && !isRequestExpired(r, { shiftsById }),
     );
     // Whole-shift swap requests: General (open to anyone), Head2Head (a
     // targeted trade), and Gift (a one-directional handoff) all belong in this
@@ -1010,6 +1019,7 @@ export default function KPIListModal({
     enrichShiftsWithUserInfo,
     futureShifts,
     partialGapItems,
+    shiftsById,
     swapRequestsAll,
     type,
   ]);
