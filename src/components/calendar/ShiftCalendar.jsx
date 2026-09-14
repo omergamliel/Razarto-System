@@ -710,20 +710,38 @@ export default function ShiftCalendar() {
     return map;
   }, [considerationRequests]);
 
-  // --- LAZY CLEANUP: remove SwapRequests whose date has already passed, and ---
+  // --- LAZY CLEANUP: retire SwapRequests whose date has already passed, and ---
   // reconcile shifts left stuck in a swap-related status with no live request
   // backing them (e.g. after the SwapRequest table was cleared out-of-band).
-  // Closed/Cancelled/Completed requests are left alone as history.
+  // Fully-uncovered expired requests are DELETED; expired requests that were
+  // already partly covered are CLOSED so the granted coverage is preserved.
+  // Closed/Cancelled/Completed requests are otherwise left alone as history.
   useEffect(() => {
     if (!authorizedPerson || shifts.length === 0) return;
 
     const today = format(new Date(), "yyyy-MM-dd");
     const activeStatuses = ["Open", "Partially_Covered"];
 
-    const staleRequests = swapRequests.filter(
+    const staleActiveRequests = swapRequests.filter(
       (sr) =>
         activeStatuses.includes(sr.status) &&
         (sr.req_end_date || sr.req_start_date) < today,
+    );
+
+    // A stale request whose window was already PARTLY covered must not be
+    // deleted — that would also wipe the "cover" rows recording the help
+    // someone actually gave. Instead CLOSE it ("end it where it was and
+    // save"): the granted cover rows survive as the finalized partial help,
+    // and the request drops out of the active/available pool. Requests with
+    // nothing covered have nothing to preserve, so they're deleted outright.
+    const hasGrantedCover = (sr) =>
+      coverages.some(
+        (c) =>
+          c.type === "cover" && (sr.shift_ids || []).includes(c.shift_id),
+      );
+    const requestsToClose = staleActiveRequests.filter(hasGrantedCover);
+    const staleRequests = staleActiveRequests.filter(
+      (sr) => !hasGrantedCover(sr),
     );
 
     // Orphaned coverages: a "cover" ShiftCoverage whose backing SwapRequest is
@@ -750,10 +768,21 @@ export default function ShiftCalendar() {
           )
         : [];
 
-    if (staleRequests.length === 0 && orphanedCoverages.length === 0) return;
+    if (
+      staleRequests.length === 0 &&
+      requestsToClose.length === 0 &&
+      orphanedCoverages.length === 0
+    )
+      return;
 
     Promise.all([
       ...staleRequests.map((sr) => base44.entities.SwapRequest.delete(sr.id)),
+      // Finalize partially-covered stale requests instead of deleting them,
+      // keeping their cover rows (which stay "backed" because Closed counts as
+      // a live-enough status in the orphan sweep above).
+      ...requestsToClose.map((sr) =>
+        base44.entities.SwapRequest.update(sr.id, { status: "Closed" }),
+      ),
       ...orphanedCoverages.map((c) =>
         base44.entities.ShiftCoverage.delete(c.id),
       ),
@@ -763,6 +792,7 @@ export default function ShiftCalendar() {
           "🧹 [ShiftCalendar] Cleaned up expired swap requests & orphaned coverages:",
           {
             requestIds: staleRequests.map((sr) => sr.id),
+            closedRequestIds: requestsToClose.map((sr) => sr.id),
             coverageIds: orphanedCoverages.map((c) => c.id),
           },
         );
