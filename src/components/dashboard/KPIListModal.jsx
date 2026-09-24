@@ -150,6 +150,19 @@ const getDisplayDay = (dateStr) => {
   return format(parsed, "EEEE", { locale: he });
 };
 
+// Format a "yyyy-MM-dd" string as "dd/MM/yyyy" for display. Falls back to the
+// raw string if parsing fails.
+const formatDisplayDate = (dateStr) => {
+  if (!dateStr) return "";
+  try {
+    const parsed = parseISO(dateStr);
+    if (isNaN(parsed)) return dateStr;
+    return format(parsed, "dd/MM/yyyy");
+  } catch {
+    return dateStr;
+  }
+};
+
 // Same coverage-slider used in the history view (SwapTransition), reused here
 // so an in-progress partial gap shows the same visual breakdown before it's
 // closed out, not just the text lists below it.
@@ -1352,6 +1365,14 @@ export default function KPIListModal({
                     item.start_time || item.req_start_time || "09:00";
                   const endTime =
                     item.end_time || item.req_end_time || startTime;
+                  // A full shift (start_time === end_time) is a 24h shift whose
+                  // stored end_date equals start_date — the real end is the next
+                  // day, so advance it for the "סיום" display.
+                  const isFullSpan =
+                    startTime === endTime && startDate === endDate;
+                  const displayEndDate = isFullSpan
+                    ? format(addDays(parseISO(endDate), 1), "yyyy-MM-dd")
+                    : endDate;
                   const dayName = getDisplayDay(startDate);
                   const tone = (() => {
                     if (type !== "my_shifts") return { wrapper: "", label: "" };
@@ -1538,10 +1559,10 @@ export default function KPIListModal({
                                 <Clock className="w-3.5 h-3.5" /> {endTime}
                               </div>
                               <div className="text-sm text-gray-500">
-                                התחלה: {startDate}
+                                התחלה: {formatDisplayDate(startDate)}
                               </div>
                               <div className="text-sm text-gray-500">
-                                סיום: {endDate}
+                                סיום: {formatDisplayDate(displayEndDate)}
                               </div>
                             </div>
                           )}
