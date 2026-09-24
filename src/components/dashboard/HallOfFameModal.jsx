@@ -5,19 +5,22 @@ import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 
 export default function HallOfFameModal({ isOpen, onClose }) {
-  // The leaderboard is built entirely from the SwapRequest entity, joined with
-  // AuthorizedPerson to resolve serial_id → full_name. Every request that
-  // actually went through (status "Closed"/"Completed") is credited to the
-  // person who made it (requesting_user_id), split into two counters:
-  //  - gifts (מתנות): request_type "Gift" — they took a shift off someone with
-  //    nothing in return.
-  //  - swaps (החלפות): every other realised request type (Full / Partial /
-  //    Head2Head / General).
-  // Open/partly-covered/cancelled requests haven't been realised, so they're
-  // not counted.
+  // The leaderboard credits the people who actually HELPED — not those who
+  // asked for help:
+  //  - gifts (מתנות): the giver is the requesting_user_id on a Gift request
+  //    (they offered to take a shift for free, nothing in return).
+  //  - swaps (החלפות): the ACCEPTER — the person who covered the shift. That is
+  //    resolved from ShiftCoverage "cover" rows on the request's shift_ids
+  //    (covering_user_id), NOT the requesting_user_id (who asked for the swap).
+  // Only requests that actually went through (status "Closed"/"Completed") count.
   const { data: allRequests = [], isLoading: requestsLoading } = useQuery({
     queryKey: ["all-swap-requests-hof"],
     queryFn: () => base44.entities.SwapRequest.list(),
+    enabled: isOpen,
+  });
+  const { data: allCoverages = [], isLoading: coveragesLoading } = useQuery({
+    queryKey: ["all-coverages-hof"],
+    queryFn: () => base44.entities.ShiftCoverage.list(),
     enabled: isOpen,
   });
   const { data: allPeople = [], isLoading: peopleLoading } = useQuery({
@@ -25,7 +28,7 @@ export default function HallOfFameModal({ isOpen, onClose }) {
     queryFn: () => base44.entities.AuthorizedPerson.list(),
     enabled: isOpen,
   });
-  const isLoading = requestsLoading || peopleLoading;
+  const isLoading = requestsLoading || coveragesLoading || peopleLoading;
 
   // Aggregate per person: a swap counter and a gift counter, then rank by
   // total contribution.
@@ -48,10 +51,37 @@ export default function HallOfFameModal({ isOpen, onClose }) {
       stats.get(key)[field] += 1;
     };
 
+    // Index coverages by shift_id so we can look up who covered each shift in
+    // a request. Only real "cover" takeovers count (not the base "assignment"
+    // row, and not cancelled covers).
+    const coversByShift = new Map();
+    allCoverages.forEach((c) => {
+      if (c.type === "assignment") return;
+      if (c.status === "Cancelled") return;
+      if (!c.shift_id || c.covering_user_id == null) return;
+      if (!coversByShift.has(c.shift_id)) coversByShift.set(c.shift_id, new Set());
+      coversByShift.get(c.shift_id).add(Number(c.covering_user_id));
+    });
+
     allRequests.forEach((r) => {
       // Only requests that were actually carried out count towards the board.
       if (!["Closed", "Completed"].includes(r.status)) return;
-      bump(r.requesting_user_id, r.request_type === "Gift" ? "gifts" : "swaps");
+
+      if (r.request_type === "Gift") {
+        // Gift: the giver is the requesting user (they offered to take the
+        // shift for free).
+        bump(r.requesting_user_id, "gifts");
+      } else {
+        // Swap: credit each unique person who covered one of the request's
+        // shifts (the accepters), not the requester.
+        const shiftIds = r.shift_ids || [];
+        const accepters = new Set();
+        shiftIds.forEach((sid) => {
+          const covers = coversByShift.get(sid);
+          if (covers) covers.forEach((uid) => accepters.add(uid));
+        });
+        accepters.forEach((uid) => bump(uid, "swaps"));
+      }
     });
 
     return Array.from(stats.values())
@@ -64,7 +94,7 @@ export default function HallOfFameModal({ isOpen, onClose }) {
         rank: index + 1,
         avatar: index === 0 ? "🏆" : index === 1 ? "🥈" : "🥉",
       }));
-  }, [allRequests, allPeople]);
+  }, [allRequests, allCoverages, allPeople]);
 
   if (!isOpen) return null;
 
