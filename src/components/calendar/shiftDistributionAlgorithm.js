@@ -176,7 +176,10 @@ function pickTogetherCandidate(people, justice, weekly, weekKey, excludeIds, { l
  * out in cap-sized chunks to a sequence of fairest people rather than ever
  * exceeding the cap for one person or rotating day-by-day. Either kind of
  * bundle that crosses a Sun-Sat week boundary is still split there (fairness
- * bookkeeping is per-week).
+ * bookkeeping is per-week). A "together" bundle that belongs to a holiday can
+ * be asked (via `holidayDivisions`) to split into N contiguous parts handed to
+ * N different people instead of one; a plain weekend carries no such config and
+ * always stays on a single person, per rule (b).
  *
  * Implementation note on (d): it's a soft preference, not a hard rule — if
  * avoiding adjacency would leave a day unstaffed, the day still gets staffed.
@@ -188,6 +191,8 @@ function pickTogetherCandidate(people, justice, weekly, weekKey, excludeIds, { l
  * @param {string} params.endDate - 'yyyy-MM-dd'
  * @param {Set<string>} [params.holidayDates] - Set of 'yyyy-MM-dd' holiday dates (chag days AND erev-chag days)
  * @param {Set<string>} [params.cholHamoedDates] - Set of 'yyyy-MM-dd' Chol HaMoed dates (subset of holidayDates that should NOT be treated as togetherness-worthy)
+ * @param {Map<string, number>} [params.holidayDivisions] - Map of 'yyyy-MM-dd' -> how many divisions (how many different people) that holiday's shifts should be split among. 1 (the default) keeps the whole chag on a single person, as before.
+ * @param {Array<{start_date: string, end_date?: string, divisions?: number}>} [params.holidays] - Holiday records (the Holiday entity). Their date ranges are the togetherness chag days, and each record's `divisions` is how many different people that chag's shifts should be split among.
  * @param {Map<number, Set<string>>} [params.protectedDates] - Map of serial_id -> Set of 'yyyy-MM-dd' dates the person set a constraint (אילוץ) for; they are never assigned a shift on those dates.
  * @param {Map<number, number>} [params.priorJustice] - Map of serial_id -> shift count from BEFORE the range (e.g. the past 6 months), used to seed the fairness table so recent history carries over. Only affects fairness ranking (and the returned justiceTable totals), never the weekly cap or adjacency, which are range-local.
  * @returns {{assignments: Array<{date: string, personId: number}>, skipped: Array<{date: string, reason: string}>, justiceTable: Array<{personId: number, name: string, totalShifts: number}>}}
@@ -199,9 +204,29 @@ export function distributeShifts({
   endDate,
   holidayDates = new Set(),
   cholHamoedDates = new Set(),
+  holidayDivisions = new Map(),
+  holidays = [],
   protectedDates = new Map(),
   priorJustice = new Map(),
 }) {
+  // The Holiday entity records are the source of truth for which dates are chag
+  // days and how many divisions each chag is split into, so they are expanded
+  // here into the per-date lookups the logic below uses. Explicit
+  // holidayDates/holidayDivisions still merge in (kept for the pure tests).
+  const holidayByDate = new Set(holidayDates);
+  const divisionByDate = new Map(holidayDivisions);
+  (holidays || []).forEach((holiday) => {
+    if (!holiday?.start_date) return;
+    const first = new Date(`${holiday.start_date}T00:00:00`);
+    const last = new Date(`${holiday.end_date || holiday.start_date}T00:00:00`);
+    if (Number.isNaN(first.getTime()) || Number.isNaN(last.getTime())) return;
+    for (const day = first; day <= last; day.setDate(day.getDate() + 1)) {
+      const key = toDateKey(day);
+      holidayByDate.add(key);
+      divisionByDate.set(key, Math.max(1, Number(holiday.divisions) || 1));
+    }
+  });
+
   // A person with a constraint (אילוץ) for a date must not be assigned a
   // shift on it. `protectedOnDate` gives everyone protected on a given day (to
   // exclude from candidate selection); `isProtected` checks one person/day (to
@@ -245,7 +270,8 @@ export function distributeShifts({
     // Chol HaMoed doesn't count as togetherness-worthy on its own, but a
     // Chol HaMoed day that's also a Friday/Saturday is still Shabbat, so the
     // weekend check wins regardless (rule b always applies to Shabbat).
-    const isChagTogetherness = holidayDates.has(key) && !cholHamoedDates.has(key);
+    const isChagTogetherness =
+      holidayByDate.has(key) && !cholHamoedDates.has(key);
     let kind = "regular";
     if (isWeekend || isChagTogetherness) kind = "together";
     else if (isCholHamoed) kind = "cholHamoed";
@@ -316,6 +342,86 @@ export function distributeShifts({
       );
 
       if (bundle.kind === "together") {
+        // A holiday can be split between several people: the admin sets, per
+        // holiday, how many divisions (how many different people) its shifts
+        // go to. A plain weekend carries no holiday config, so it stays at 1
+        // and the whole block goes to ONE person — rule (b), "not split".
+        const divisions = Math.max(
+          1,
+          ...emptyDays.map((d) => divisionByDate.get(d.key) || 1),
+        );
+
+        if (divisions > 1) {
+          // Hand the segment out in `divisions` contiguous parts, each to a
+          // DIFFERENT person (fairest first). The weekly cap stays soft here —
+          // same as the single-person case — because a holiday block is one
+          // deliberate decision, not an accidental back-to-back.
+          const chunkSize = Math.max(
+            1,
+            Math.ceil(emptyDays.length / divisions),
+          );
+          let remaining = emptyDays;
+          const tried = new Set();
+          while (remaining.length > 0) {
+            const anchorDay = remaining[0];
+            const excluded = new Set(tried);
+            protectedOnDate(anchorDay.key).forEach((id) => excluded.add(id));
+
+            let available = pickTogetherCandidate(
+              people,
+              justice,
+              weekly,
+              segment.weekKey,
+              excluded,
+              { lastAssignedDate, anchorDate: anchorDay.date },
+            );
+            // Once everyone available already took a part, let the fairest
+            // person take another one — a chag must not be left unstaffed just
+            // because more divisions were asked for than there are people.
+            if (!available && tried.size > 0) {
+              available = pickTogetherCandidate(
+                people,
+                justice,
+                weekly,
+                segment.weekKey,
+                protectedOnDate(anchorDay.key),
+                { lastAssignedDate, anchorDate: anchorDay.date },
+              );
+            }
+            if (!available) break;
+
+            let take = Math.min(chunkSize, remaining.length);
+            for (let i = 0; i < take; i++) {
+              if (isProtected(available.serial_id, remaining[i].key)) {
+                take = i;
+                break;
+              }
+            }
+            // `available` is never protected on remaining[0] (it was picked
+            // with that exclusion), so `take` is at least 1.
+            remaining.slice(0, take).forEach((d) => {
+              assignments.push({ date: d.key, personId: available.serial_id });
+              recordAssignment(
+                justice,
+                weekly,
+                lastAssignedDate,
+                available.serial_id,
+                segment.weekKey,
+                d.date,
+              );
+            });
+            remaining = remaining.slice(take);
+            tried.add(available.serial_id);
+          }
+          remaining.forEach((d) =>
+            skipped.push({
+              date: d.key,
+              reason: "לא אותר אדם זמין לחלוקת החג",
+            }),
+          );
+          return;
+        }
+
         // Togetherness block: always goes to ONE person for every day in
         // this segment — rule (a)'s weekly cap yields to "not split" here
         // (see pickTogetherCandidate). Only fails if there's truly nobody.

@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { differenceInCalendarDays } from "date-fns";
 
 const fetchHolidaysForYear = async (year) => {
   const url = `https://www.hebcal.com/hebcal?cfg=json&v=1&year=${year}&month=x&maj=on&min=on&mod=on&nx=off&s=off&c=off&i=on`;
@@ -87,4 +88,59 @@ export function useHolidays(years = []) {
     enabled: uniqueYears.length > 0,
     staleTime: 1000 * 60 * 60 * 24,
   });
+}
+
+// Hebrew labels carry an ordinal suffix for the individual days of a multi-day
+// chag ("סוכות ב׳", "פסח ג׳"). Stripping it gives the base name that ties
+// those days to one holiday, so they can be listed as a single date range.
+const baseHolidayName = (label = "") =>
+  label.replace(/[:\s]*[א-ת]{1,2}['\u05F3]\s*$/, "").trim() || label;
+
+const isNextCalendarDay = (dateStr, nextStr) =>
+  differenceInCalendarDays(
+    new Date(`${nextStr}T00:00:00`),
+    new Date(`${dateStr}T00:00:00`),
+  ) === 1;
+
+// Collapses a year's holidays into contiguous per-holiday ranges
+// ({name, start_date, end_date}) so the admin Holiday list can be filled with
+// one row per chag instead of one row per day. Chol HaMoed days and the
+// excluded/obscure hebcal entries are skipped — they are not togetherness
+// holidays for the shift distribution.
+export async function fetchHolidayGroupsForYear(year) {
+  const items = await fetchHolidaysForYear(year);
+  const days = items
+    .filter(
+      (item) =>
+        item?.date &&
+        !isExcludedHoliday(item.title) &&
+        !isCholHamoedTitle(item.title),
+    )
+    .map((item) => ({
+      date: item.date.slice(0, 10),
+      label: (item.hebrew || item.title || "")
+        .replace(/\s*\d{4}\s*$/, "")
+        .trim(),
+    }))
+    .filter((day) => day.label)
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+
+  const groups = [];
+  days.forEach((day) => {
+    const last = groups[groups.length - 1];
+    if (
+      last &&
+      baseHolidayName(last.name) === baseHolidayName(day.label) &&
+      isNextCalendarDay(last.end_date, day.date)
+    ) {
+      last.end_date = day.date;
+      return;
+    }
+    groups.push({
+      name: baseHolidayName(day.label),
+      start_date: day.date,
+      end_date: day.date,
+    });
+  });
+  return groups;
 }

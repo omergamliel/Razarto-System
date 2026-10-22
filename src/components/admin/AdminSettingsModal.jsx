@@ -13,7 +13,7 @@ import {
   syncAssignmentOwner,
   WHATSAPP_TEMPLATES,
 } from "../calendar/whatsappTemplates";
-import { useHolidays } from "../calendar/useHolidays";
+import HolidaysSection from "./HolidaysSection";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
@@ -935,20 +935,17 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     onError: () => toast.error("שגיאה בשמירת הודעות הוואטסאפ"),
   });
 
-  // Fetches all shifts (shares the ['shifts'] cache with the rest of the app),
-  // but shiftDistributionAlgorithm only ever looks at the ones that fall
-  // inside the chosen [startDate, endDate] range — it has no dependency on
-  // shift history from before the range.
+  // Fetches all shifts (shares the ['shifts'] cache with the app), but the
+  // algorithm only ever looks at the ones inside [startDate, endDate].
   const { data: rawShiftsForDistribution = [] } = useQuery({
     queryKey: ["shifts"],
     queryFn: () => base44.entities.Shift.list(),
     enabled: isOpen,
   });
 
-  // Ownership lives in the base "assignment" ShiftCoverage row (Phase 4). Join
-  // each shift with its resolved owner into an `original_user_id`-shaped field
-  // so the owner-based filters below (and the distribution algorithm, which
-  // reads s.original_user_id) keep working without a schema field.
+  // Ownership lives in the base "assignment" ShiftCoverage row (Phase 4): each
+  // shift is joined with its resolved owner into an `original_user_id` field so
+  // the filters below (and the algorithm, which reads s.original_user_id) work.
   const { data: allCoveragesForOwnership = [] } = useQuery({
     queryKey: ["coverages"],
     queryFn: () => base44.entities.ShiftCoverage.list(),
@@ -963,20 +960,13 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     [rawShiftsForDistribution, allCoveragesForOwnership],
   );
 
-  const distributionYears = useMemo(() => {
-    const { startDate, endDate } = distributionRange;
-    if (!startDate || !endDate) return [];
-    const startYear = new Date(startDate).getFullYear();
-    const endYear = new Date(endDate).getFullYear();
-    if (Number.isNaN(startYear) || Number.isNaN(endYear)) return [];
-    const years = [];
-    for (let y = startYear; y <= endYear; y++) years.push(y);
-    return years;
-  }, [distributionRange]);
-
-  const { data: holidaysData } = useHolidays(distributionYears);
-  const holidaysByDate = holidaysData?.labels || {};
-  const cholHamoedDates = holidaysData?.cholHamoedDates || new Set();
+  // Holidays come from the Holiday entity (the "חגים" section of this tab):
+  // both the chag dates and how many divisions each chag splits into are data.
+  const { data: distributionHolidays = [] } = useQuery({
+    queryKey: ["holidays"],
+    queryFn: () => base44.entities.Holiday.list(),
+    enabled: isOpen,
+  });
 
   // --- MUTATIONS ---
 
@@ -1645,8 +1635,6 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         );
       }
 
-      const holidayDates = new Set(Object.keys(holidaysByDate));
-
       // Seed the algorithm with existing shifts, but with each group's members
       // folded onto its representative so a group that already switched (or has
       // shifts under both members) is counted as one unit.
@@ -1681,8 +1669,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         existingShifts: remappedShifts,
         startDate,
         endDate,
-        holidayDates,
-        cholHamoedDates,
+        holidays: distributionHolidays,
         protectedDates,
         priorJustice,
       });
@@ -3294,6 +3281,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                   )}
                 </Button>
               </div>
+              <HolidaysSection DateInput={DateInputIL} />
 
               <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
                 <div className="flex items-center justify-between mb-4">
@@ -3302,10 +3290,9 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                       תקופת חסד להחלפה מתוזמנת
                     </p>
                     <p className="text-xs text-gray-500 max-w-xl">
-                      כאשר מתוזמנת החלפת משתמש פעיל בקבוצה (בלשונית "ניהול
-                      קבוצות"), המשתמש הנכנס יישאר פנוי ממשמרות למשך מספר הימים
-                      שנבחר מתאריך ההחלפה — חלוקת המשמרות תדלג עליו בתקופה זו. 0 =
-                      ללא תקופת חסד. ברירת המחדל: 30 ימים.
+                      כאשר מתוזמנת החלפת משתמש פעיל בקבוצה (בלשונית "ניהול קבוצות"),
+                      המשתמש הנכנס יישאר פנוי ממשמרות למשך מספר הימים שנבחר מתאריך
+                      ההחלפה. 0 = ללא תקופת חסד. ברירת המחדל: 30 ימים.
                     </p>
                   </div>
                   <CalendarDays className="w-5 h-5 text-blue-500 shrink-0" />
