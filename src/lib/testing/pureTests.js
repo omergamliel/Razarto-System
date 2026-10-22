@@ -285,8 +285,8 @@ function testDistributeShifts() {
     endDate,
   });
 
-  // Weekly cap: no person may get more than WEEKLY_CAP=2 *regular*
-  // (non Fri/Sat) assignments within the same Sun-Sat week. Weekend
+  // Weekly cap: no person may get more than WEEKLY_CAP=1 *regular*
+  // (non Fri/Sat) assignment within the same Sun-Sat week. Weekend
   // "togetherness" bundles are allowed to exceed this by design (rule
   // b/c overrides rule a), so they're excluded from this check.
   const regularCountByPersonWeek = new Map();
@@ -299,7 +299,7 @@ function testDistributeShifts() {
     regularCountByPersonWeek.set(key, (regularCountByPersonWeek.get(key) || 0) + 1);
   });
   regularCountByPersonWeek.forEach((count, key) => {
-    assert(count <= 2, `weekly cap exceeded for ${key}: ${count} regular-day assignments`);
+    assert(count <= 1, `weekly cap exceeded for ${key}: ${count} regular-day assignments`);
   });
 
   // Togetherness: whenever both Friday and Saturday of a week were

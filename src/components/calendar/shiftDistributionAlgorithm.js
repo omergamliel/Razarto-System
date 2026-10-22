@@ -1,8 +1,11 @@
 import { addDays, differenceInCalendarDays, format, startOfWeek } from "date-fns";
 
 // No one may be assigned more than this many shifts within a single
-// (Sunday-Saturday) calendar week — tasks.txt rule (a).
-const WEEKLY_CAP = 2;
+// (Sunday-Saturday) calendar week — tasks.txt rule (a). One shift per week.
+// A togetherness block (Fri+Sat, or a chag + its erev — rules b/c) is the
+// deliberate exception: it still goes to one person as a single unit even
+// though it spans two days that fall in the same week.
+const WEEKLY_CAP = 1;
 
 const toDateKey = (date) => format(date, "yyyy-MM-dd");
 
@@ -135,7 +138,9 @@ function pickTogetherCandidate(people, justice, weekly, weekKey, excludeIds, { l
  * algorithm has no dependency on shift history from before `startDate`.
  *
  * Rules (from tasks.txt), all applied together:
- *   a. No more than two shifts for one person within a single Sun-Sat week.
+ *   a. No more than one shift for one person within a single Sun-Sat week
+ *      (a Fri+Sat / chag togetherness block, rules b/c, is the deliberate
+ *      exception and still counts as that person's one unit for the week).
  *   b. Friday + Saturday go together to one person, not split.
  *   c. Same togetherness rule as (b), but for holidays — including the chag's
  *      erev (the evening the shift effectively starts, same idea as Friday
@@ -146,7 +151,7 @@ function pickTogetherCandidate(people, justice, weekly, weekKey, excludeIds, { l
  *      they are deliberately NOT pulled into this togetherness block (so a
  *      two-week chag doesn't pin one person down for its whole span), but a
  *      consecutive RUN of Chol HaMoed days is still grouped and handed out
- *      in weekly-cap-sized (~2 day) chunks per person, same as any other
+ *      in weekly-cap-sized chunks per person, same as any other
  *      multi-day stretch — not atomized to a different person every single
  *      day (that would fail rule (d)'s "not by accident" spirit too).
  *   d. Shifts should be spread out comfortably — a person shouldn't land two
@@ -336,7 +341,7 @@ export function distributeShifts({
       }
 
       // Ordinary day, or a Chol HaMoed run: strict weekly cap applies. The
-      // segment is assigned in cap-sized (~2 day) consecutive chunks to a
+      // segment is assigned in cap-sized consecutive chunks to a
       // sequence of the fairest available people, so a long Chol HaMoed run
       // doesn't pin one person down yet people aren't rotated one day at a
       // time either. Each chunk re-evaluates availability for its first open
