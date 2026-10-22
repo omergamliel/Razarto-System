@@ -2733,7 +2733,7 @@ export default function ShiftCalendar() {
         isOpen={showSuccessModal}
         onClose={closeAllModals}
         shift={lastUpdatedShift}
-        isGeneral={lastSwapWasGeneral}
+        isGeneral={lastSwapWasGeneral} requesterName={authorizedPerson?.full_name}
       />
 
       <HeadToHeadSelectorModal

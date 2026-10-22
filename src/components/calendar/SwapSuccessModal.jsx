@@ -7,13 +7,15 @@ import { buildShiftDeepLink, buildSwapTemplate, buildGeneralTemplate } from './w
 // `isGeneral` = the request is a whole-shift (General) swap, broadcast to the
 // whole team; those share the "general" template, while a partial-window swap
 // shares the "swap" (partial-coverage) template.
-export default function SwapSuccessModal({ isOpen, onClose, shift, isGeneral = false }) {
+export default function SwapSuccessModal({ isOpen, onClose, shift, isGeneral = false, requesterName }) {
   if (!isOpen || !shift) return null;
 
   const handleWhatsAppShare = () => {
     // Fixed: Changed to Query Param for deep linking to home page
     const approvalUrl = buildShiftDeepLink(shift.id);
-    const ownerName = shift.original_user_data?.full_name || shift.original_user_name || shift.user_name || shift.role;
+    // The requester is always the shift's owner. The raw shift record carries no
+    // name (ownership lives in the assignment row), so prefer the requester's own.
+    const ownerName = requesterName || shift.original_user_data?.full_name || shift.original_user_name || shift.user_name || shift.role;
     const shared = {
       startDate: shift.start_date || shift.date,
       startTime: shift.swap_start_time || shift.start_time || '09:00',
