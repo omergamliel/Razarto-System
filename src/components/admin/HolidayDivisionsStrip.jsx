@@ -153,6 +153,7 @@ export default function HolidayDivisionsStrip({
       </div>
       <span className="text-[11px] text-gray-500">
         {days.length} משמרות · {parts.length} חלוקות
+        {parts.length > 1 && " · גררו את הגבול כדי להזיז משמרת, ואז שמרו"}
       </span>
     </div>
   );
