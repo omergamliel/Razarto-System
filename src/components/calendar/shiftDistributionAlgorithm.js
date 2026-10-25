@@ -1,4 +1,5 @@
 import { addDays, differenceInCalendarDays, format, startOfWeek } from "date-fns";
+import { splitHolidayDays } from "@/lib/holidayDivisions";
 
 // No one may be assigned more than this many shifts within a single
 // (Sunday-Saturday) calendar week — tasks.txt rule (a). One shift per week.
@@ -132,19 +133,10 @@ function pickTogetherCandidate(people, justice, weekly, weekKey, excludeIds, { l
   );
 }
 
-// How a chag of `dayCount` days is divided into `divisions` parts — one part per
-// person. The days are shared out as evenly as possible (a 9-day chag with 8
-// divisions gives one person two days and seven people one day each), which is
-// what both the distribution below and the admin preview strip must agree on.
-export function planHolidayChunks(dayCount, divisions) {
-  const parts = Math.min(
-    Math.max(1, Math.floor(Number(divisions) || 1)),
-    Math.max(1, dayCount),
-  );
-  const base = Math.floor(dayCount / parts);
-  const extra = dayCount % parts;
-  return Array.from({ length: parts }, (_, i) => base + (i < extra ? 1 : 0));
-}
+// How a chag's days are shared between people — its חלוקות value (two shifts per
+// person by default) or the partitions the admin moved in the strip — lives in
+// src/lib/holidayDivisions.js (splitHolidayDays), so the admin preview and this
+// distribution always agree on the same parts.
 
 /**
  * Distributes shifts across [startDate, endDate] as fairly as possible.
@@ -206,7 +198,7 @@ export function planHolidayChunks(dayCount, divisions) {
  * @param {Set<string>} [params.holidayDates] - Set of 'yyyy-MM-dd' holiday dates (chag days AND erev-chag days)
  * @param {Set<string>} [params.cholHamoedDates] - Set of 'yyyy-MM-dd' Chol HaMoed dates (subset of holidayDates that should NOT be treated as togetherness-worthy)
  * @param {Map<string, number>} [params.holidayDivisions] - Map of 'yyyy-MM-dd' -> how many divisions (how many different people) that holiday's shifts should be split among. 1 (the default) keeps the whole chag on a single person, as before.
- * @param {Array<{start_date: string, end_date?: string, divisions?: number}>} [params.holidays] - Holiday records (the Holiday entity). Their date ranges are the togetherness chag days, and each record's `divisions` is how many different people that chag's shifts should be split among.
+ * @param {Array<{start_date: string, end_date?: string, divisions?: number, division_breaks?: string[]}>} [params.holidays] - Holiday records (the Holiday entity). Their date ranges are the togetherness chag days; `divisions` is how many different people that chag's shifts are split among (two shifts per person by default) and `division_breaks` are the dates where a division starts, when the admin moved a partition in the strip.
  * @param {Map<number, Set<string>>} [params.protectedDates] - Map of serial_id -> Set of 'yyyy-MM-dd' dates the person set a constraint (אילוץ) for; they are never assigned a shift on those dates.
  * @param {Map<number, number>} [params.priorJustice] - Map of serial_id -> shift count from BEFORE the range (e.g. the past 6 months), used to seed the fairness table so recent history carries over. Only affects fairness ranking (and the returned justiceTable totals), never the weekly cap or adjacency, which are range-local.
  * @param {{people: Array, existingShifts?: Array, groupRepOf?: Map<number, number>, protectedDates?: Map<number, Set<string>>}} [params.holidayUsers] - Per-USER pool for holiday blocks. Holidays are divided between individual people, not between group slots, so a chag's fairness is ranked on each user's OWN in-range shift count (a separate table from the per-group one used for ordinary days). `people` are the eligible users, `existingShifts` (raw, per owner) seeds them, `groupRepOf` maps a user to their group's representative so a holiday share a member takes still consumes the group's weekly slot, and `protectedDates` carries each user's own constraints and switch/deactivate windows.
@@ -231,6 +223,9 @@ export function distributeShifts({
   // holidayDates/holidayDivisions still merge in (kept for the pure tests).
   const holidayByDate = new Set(holidayDates);
   const divisionByDate = new Map(holidayDivisions);
+  // Partitions the admin moved by hand, per holiday date: a date listed here
+  // starts a new division instead of the even split.
+  const breaksByDate = new Map();
   (holidays || []).forEach((holiday) => {
     if (!holiday?.start_date) return;
     const first = new Date(`${holiday.start_date}T00:00:00`);
@@ -240,6 +235,8 @@ export function distributeShifts({
       const key = toDateKey(day);
       holidayByDate.add(key);
       divisionByDate.set(key, Math.max(1, Number(holiday.divisions) || 1));
+      const movedBreaks = (holiday.division_breaks || []).filter(Boolean);
+      if (movedBreaks.length > 0) breaksByDate.set(key, movedBreaks);
     }
   });
 
@@ -353,6 +350,36 @@ export function distributeShifts({
     const anchorShift = bundle.days.find((d) => d.existing)?.existing;
     const anchorId = anchorShift?.original_user_id ?? null;
 
+    // A chag (a togetherness run that covers holiday dates) is planned as ONE
+    // sequence across the whole bundle, not once per week: its shares are cut by
+    // the holiday's own חלוקות / moved partitions, and the state kept below
+    // carries a share across a week boundary so it stays with one person.
+    const isHolidayBundle =
+      bundle.kind === "together" &&
+      bundle.days.some((d) => holidayByDate.has(d.key));
+    const holidayEmpty = isHolidayBundle
+      ? bundle.days.filter((d) => !d.existing)
+      : [];
+    let holidayPartSizes = [];
+    if (holidayEmpty.length > 0) {
+      const breaks = new Set();
+      holidayEmpty.forEach((d) =>
+        (breaksByDate.get(d.key) || []).forEach((date) => breaks.add(date)),
+      );
+      const divisions = Math.max(
+        1,
+        ...holidayEmpty.map((d) => divisionByDate.get(d.key) || 1),
+      );
+      holidayPartSizes = splitHolidayDays(
+        holidayEmpty.map((d) => d.key),
+        { divisions, breaks: [...breaks] },
+      ).map((part) => part.length);
+    }
+    let holidayPartIndex = 0;
+    let holidayPartLeft = 0;
+    let holidayPartPersonId = null;
+    const holidayTried = new Set();
+
     // A bundle can't be assigned as one block if it crosses a week boundary
     // (fairness/capacity bookkeeping is per-week), so split it into per-week
     // segments first.
@@ -401,7 +428,7 @@ export function distributeShifts({
           fair.weekly,
           fair.lastAssignedDate,
           personId,
-          segment.weekKey,
+          day.weekKey,
           day.date,
         );
         // A holiday share taken by a group member also uses up that group's
@@ -413,82 +440,90 @@ export function distributeShifts({
             weekly,
             lastAssignedDate,
             repId,
-            segment.weekKey,
+            day.weekKey,
             day.date,
           );
         }
       };
 
-      if (bundle.kind === "together") {
-        // A holiday can be split between several people: the admin sets, per
-        // holiday, how many divisions (how many different people) its shifts
-        // go to. A plain weekend carries no holiday config, so it stays at 1
-        // and the whole block goes to ONE person — rule (b), "not split".
-        const divisions = Math.max(
-          1,
-          ...emptyDays.map((d) => divisionByDate.get(d.key) || 1),
-        );
+      if (isHolidayBundle) {
+        // The chag's shares, in order, each to a DIFFERENT person (fairest
+        // first) — planned above from the holiday's חלוקות or the partitions
+        // the admin moved. The weekly cap stays soft here, as before, because a
+        // chag block is one deliberate decision, not an accidental
+        // back-to-back, and a share that spans a week boundary stays with the
+        // person who already took its first day.
+        let day = 0;
+        while (day < emptyDays.length) {
+          if (holidayPartLeft <= 0) {
+            holidayPartLeft = holidayPartSizes[holidayPartIndex] || 1;
+            holidayPartIndex += 1;
+            holidayPartPersonId = null;
+          }
 
-        if (divisions > 1) {
-          // Hand the segment out in `divisions` contiguous parts, each to a
-          // DIFFERENT person (fairest first). The weekly cap stays soft here —
-          // same as the single-person case — because a holiday block is one
-          // deliberate decision, not an accidental back-to-back.
-          const chunkSizes = planHolidayChunks(emptyDays.length, divisions);
-          let chunkIndex = 0;
-          let remaining = emptyDays;
-          const tried = new Set();
-          while (remaining.length > 0) {
-            const anchorDay = remaining[0];
-            const excluded = new Set(tried);
-            protectedOnDate(anchorDay.key).forEach((id) => excluded.add(id));
-
-            let available = pickTogetherCandidate(
-              fairPool,
-              fair.justice,
-              fair.weekly,
-              segment.weekKey,
-              excluded,
-              { lastAssignedDate: fair.lastAssignedDate, anchorDate: anchorDay.date },
-            );
-            // Once everyone available already took a part, let the fairest
-            // person take another one — a chag must not be left unstaffed just
-            // because more divisions were asked for than there are people.
-            if (!available && tried.size > 0) {
-              available = pickTogetherCandidate(
+          const today = emptyDays[day];
+          if (holidayPartPersonId == null) {
+            const excluded = new Set(holidayTried);
+            protectedOnDate(today.key).forEach((id) => excluded.add(id));
+            // Keep the chag's first share with its existing owner while they
+            // still fit; otherwise the fairest person takes it.
+            const anchorFits =
+              holidayTried.size === 0 &&
+              anchorPerson &&
+              !excluded.has(anchorPerson.serial_id);
+            let chosen = anchorFits ? anchorPerson : null;
+            if (!chosen) {
+              chosen = pickTogetherCandidate(
                 fairPool,
                 fair.justice,
                 fair.weekly,
-                segment.weekKey,
-                protectedOnDate(anchorDay.key),
-                { lastAssignedDate: fair.lastAssignedDate, anchorDate: anchorDay.date },
+                today.weekKey,
+                excluded,
+                { lastAssignedDate: fair.lastAssignedDate, anchorDate: today.date },
               );
             }
-            if (!available) break;
-
-            let take = Math.min(chunkSizes[chunkIndex] || 1, remaining.length);
-            for (let i = 0; i < take; i++) {
-              if (isProtected(available.serial_id, remaining[i].key)) {
-                take = i;
-                break;
-              }
+            // Once everyone available already took a share, let the fairest
+            // person take another one — a chag must not be left unstaffed just
+            // because more divisions were asked for than there are people.
+            if (!chosen && holidayTried.size > 0) {
+              chosen = pickTogetherCandidate(
+                fairPool,
+                fair.justice,
+                fair.weekly,
+                today.weekKey,
+                protectedOnDate(today.key),
+                { lastAssignedDate: fair.lastAssignedDate, anchorDate: today.date },
+              );
             }
-            // `available` is never protected on remaining[0] (it was picked
-            // with that exclusion), so `take` is at least 1.
-            remaining.slice(0, take).forEach((d) => assign(available.serial_id, d));
-            remaining = remaining.slice(take);
-            chunkIndex += 1;
-            tried.add(available.serial_id);
+            if (!chosen) {
+              emptyDays.slice(day).forEach((d) =>
+                skipped.push({
+                  date: d.key,
+                  reason: "לא אותר אדם זמין לחלוקת החג",
+                }),
+              );
+              break;
+            }
+            holidayPartPersonId = chosen.serial_id;
+            holidayTried.add(chosen.serial_id);
           }
-          remaining.forEach((d) =>
-            skipped.push({
-              date: d.key,
-              reason: "לא אותר אדם זמין לחלוקת החג",
-            }),
-          );
-          return;
-        }
 
+          // A constraint on this day cuts the current share short: the rest of
+          // the share goes to the next fairest person.
+          if (isProtected(holidayPartPersonId, today.key)) {
+            holidayPartPersonId = null;
+            continue;
+          }
+
+          assign(holidayPartPersonId, today);
+          holidayPartLeft -= 1;
+          if (holidayPartLeft === 0) holidayPartPersonId = null;
+          day += 1;
+        }
+        return;
+      }
+
+      if (bundle.kind === "together") {
         // Togetherness block: always goes to ONE person for every day in
         // this segment — rule (a)'s weekly cap yields to "not split" here
         // (see pickTogetherCandidate). Only fails if there's truly nobody.

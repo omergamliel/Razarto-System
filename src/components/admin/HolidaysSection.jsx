@@ -8,15 +8,29 @@ import { toast } from "sonner";
 import { CalendarDays, Download, Loader2, Plus } from "lucide-react";
 import { fetchHolidayGroupsForYear } from "@/components/calendar/useHolidays";
 import HolidayRow from "@/components/admin/HolidayRow";
+import { defaultDivisions, holidayDayCount } from "@/lib/holidayDivisions";
 
-const EMPTY_NEW = { name: "", start_date: "", end_date: "", divisions: 1 };
+const EMPTY_NEW = { name: "", start_date: "", end_date: "", divisions: "" };
 
-const toPayload = (draft) => ({
-  name: (draft.name || "").trim(),
-  start_date: draft.start_date,
-  end_date: draft.end_date || draft.start_date,
-  divisions: Math.max(1, Number(draft.divisions) || 1),
-});
+// A holiday is stored with its split: `divisions` is how many different people
+// its shifts go to (an empty field means the default — two shifts per person),
+// and `division_breaks` the partitions moved by hand in the strip.
+const toPayload = (draft) => {
+  const end = draft.end_date || draft.start_date;
+  const breaks = (draft.division_breaks || []).filter(Boolean);
+  const divisions = Math.max(
+    1,
+    Number(draft.divisions) ||
+      defaultDivisions(holidayDayCount(draft.start_date, end)),
+  );
+  return {
+    name: (draft.name || "").trim(),
+    start_date: draft.start_date,
+    end_date: end,
+    divisions: breaks.length > 0 ? breaks.length + 1 : divisions,
+    division_breaks: breaks,
+  };
+};
 
 // The admin list of holidays that drives shift distribution. Every chag the
 // system treats as a togetherness block lives in the Holiday entity — nothing
@@ -83,7 +97,14 @@ export default function HolidaysSection({ DateInput }) {
       const existing = new Set(sorted.map((holiday) => holiday.start_date));
       const toCreate = groups
         .filter((group) => !existing.has(group.start_date))
-        .map((group) => ({ ...group, divisions: 1 }));
+        .map((group) => ({
+          ...group,
+          // Default split: two shifts per person.
+          divisions: defaultDivisions(
+            holidayDayCount(group.start_date, group.end_date),
+          ),
+          division_breaks: [],
+        }));
       if (toCreate.length > 0)
         await base44.entities.Holiday.bulkCreate(toCreate);
       return toCreate.length;
@@ -108,11 +129,13 @@ export default function HolidaysSection({ DateInput }) {
           <p className="text-sm font-semibold text-gray-800">חגים</p>
           <p className="text-xs text-gray-500 max-w-xl">
             רשימת החגים שמשפיעה על חלוקת המשמרות: כל חג שמופיע כאן הוא טווח
-            התאריכים שהחלוקה מתייחסת אליו. לכל חג קובעים לכמה אנשים שונים תתחלק
-            המשמרת שלו — 1 פירושו שכל החג נשאר אצל אותו אדם — והפס שמתחת לחג
-            מדגים מיד איך החלוקות מתפזרות בין האנשים. חגים ארוכים מיום אחד
-            מסומנים. הרשימה אינה קבועה בקוד: מייבאים שנה מהלוח העברי או מוסיפים
-            חג ידנית.
+            התאריכים שהחלוקה מתייחסת אליו, ויום ערב החג נכלל באותו טווח. לכל חג
+            קובעים לכמה אנשים שונים תתחלק המשמרת שלו — 1 פירושו שכל החג נשאר אצל
+            אותו אדם, 2 פירושו שתי משמרות לאדם — והפס שמתחת לחג מדגים מיד איך
+            החלוקות מתפזרות בין האנשים: כל צבע הוא אדם אחד, ואפשר לגרור את
+            הגבול שבין שני צבעים כדי להעביר משמרת מאחד לשני. ברירת המחדל היא
+            שתי משמרות לאדם. חגים ארוכים מיום אחד מסומנים. הרשימה אינה קבועה
+            בקוד: מייבאים שנה מהלוח העברי או מוסיפים חג ידנית.
           </p>
         </div>
         <CalendarDays className="w-5 h-5 text-blue-500 shrink-0" />
@@ -211,6 +234,7 @@ export default function HolidaysSection({ DateInput }) {
             type="number"
             min="1"
             step="1"
+            placeholder="אוטומטי · 2 משמרות לאדם"
             value={newHoliday.divisions}
             onChange={(e) =>
               setNewHoliday((prev) => ({ ...prev, divisions: e.target.value }))

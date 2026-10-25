@@ -102,9 +102,11 @@ const baseHolidayName = (label = "") =>
 // HaMoed marker ("סוכות ב׳ (חוה״מ)"), the counted part ("חנוכה: ב׳ נרות") and
 // the day ordinal ("סוכות ז׳", "פסח ג׳"), so a whole chag collapses to a single
 // name — and therefore to one holiday row covering all of its days.
+// The eve of a chag belongs to the chag itself: "ערב פסח" is named "פסח", so the
+// eve day joins the chag's range instead of becoming a holiday of its own.
 const canonicalHolidayName = (label = "") => {
   const base = label.split("(")[0].split(":")[0].trim();
-  return baseHolidayName(base) || base;
+  return baseHolidayName(base.replace(/^ערב\s+/, "")) || base;
 };
 
 const isNextCalendarDay = (dateStr, nextStr) =>

@@ -2,37 +2,35 @@ import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { differenceInCalendarDays } from "date-fns";
 import { Check, Loader2, Trash2 } from "lucide-react";
 import HolidayDivisionsStrip from "./HolidayDivisionsStrip";
+import { defaultDivisions, holidayDayCount } from "@/lib/holidayDivisions";
 
-const draftFrom = (holiday) => ({
-  name: holiday.name || "",
-  start_date: holiday.start_date || "",
-  end_date: holiday.end_date || "",
-  divisions: holiday.divisions ?? 1,
-});
-
-// How many days the draft currently spans (0 while its dates aren't usable).
-const draftDayCount = (draft) => {
-  const first = new Date(`${draft.start_date}T00:00:00`);
-  const last = new Date(`${draft.end_date || draft.start_date}T00:00:00`);
-  if (
-    Number.isNaN(first.getTime()) ||
-    Number.isNaN(last.getTime()) ||
-    last < first
-  ) {
-    return 0;
-  }
-  return differenceInCalendarDays(last, first) + 1;
+const draftFrom = (holiday) => {
+  const start_date = holiday.start_date || "";
+  const end_date = holiday.end_date || "";
+  return {
+    name: holiday.name || "",
+    start_date,
+    end_date,
+    // A holiday with no explicit number starts at the system default: two
+    // shifts per person, so the number follows the chag's length.
+    divisions:
+      holiday.divisions ??
+      defaultDivisions(holidayDayCount(start_date, end_date || start_date)),
+    division_breaks: holiday.division_breaks || [],
+  };
 };
 
-// One holiday in the admin list: its name and dates, plus "חלוקות" — how many
-// different people the holiday's shifts should be split among (1 = the whole
-// chag stays with one person). Multi-day chags are marked so they stand out,
-// and the strip under the fields shows — cell by cell, colour by colour — which
-// day goes to which person once the split is applied. Saving only lights up
-// once something changed.
+const breaksKey = (list) => (list || []).filter(Boolean).join("|");
+
+// One holiday in the admin list: its name and dates, plus the split of its
+// shifts — "חלוקות" is how many different people share the chag (1 = one person
+// takes every shift, 2 = two shifts per person, and so on, two shifts per person
+// by default). The strip under the fields shows, cell by cell, which shift goes
+// to which person, and the partition between two neighbours can be dragged to
+// move a shift from one person to the other. Saving lights up once something
+// changed.
 export default function HolidayRow({
   holiday,
   DateInput,
@@ -50,17 +48,33 @@ export default function HolidayRow({
     holiday.start_date,
     holiday.end_date,
     holiday.divisions,
+    holiday.division_breaks,
   ]);
 
   const changed =
     draft.name !== (holiday.name || "") ||
     draft.start_date !== (holiday.start_date || "") ||
     draft.end_date !== (holiday.end_date || "") ||
-    Number(draft.divisions || 1) !== Number(holiday.divisions ?? 1);
+    Number(draft.divisions || 1) !== Number(holiday.divisions ?? 1) ||
+    breaksKey(draft.division_breaks) !== breaksKey(holiday.division_breaks);
 
   const setField = (patch) => setDraft((prev) => ({ ...prev, ...patch }));
 
-  const dayCount = draftDayCount(draft);
+  // New dates mean new shift days: back to the default split (two shifts per
+  // person) with the partitions wherever they fall.
+  const setDates = (patch) =>
+    setDraft((prev) => {
+      const next = { ...prev, ...patch };
+      return {
+        ...next,
+        divisions: defaultDivisions(
+          holidayDayCount(next.start_date, next.end_date || next.start_date),
+        ),
+        division_breaks: [],
+      };
+    });
+
+  const dayCount = holidayDayCount(draft.start_date, draft.end_date || draft.start_date);
   const isMultiDay = dayCount > 1;
 
   return (
@@ -93,7 +107,7 @@ export default function HolidayRow({
           <Label className="text-xs text-gray-500">מתאריך</Label>
           <DateInput
             value={draft.start_date}
-            onChange={(iso) => setField({ start_date: iso })}
+            onChange={(iso) => setDates({ start_date: iso })}
             className="rounded-xl"
           />
         </div>
@@ -101,7 +115,7 @@ export default function HolidayRow({
           <Label className="text-xs text-gray-500">עד תאריך</Label>
           <DateInput
             value={draft.end_date}
-            onChange={(iso) => setField({ end_date: iso })}
+            onChange={(iso) => setDates({ end_date: iso })}
             className="rounded-xl"
           />
         </div>
@@ -112,7 +126,12 @@ export default function HolidayRow({
             min="1"
             step="1"
             value={draft.divisions}
-            onChange={(e) => setField({ divisions: e.target.value })}
+            title="1 = כל המשמרות לאדם אחד, 2 = שתי משמרות לאדם"
+            onChange={(e) =>
+              // Changing the number re-splits the chag evenly, discarding the
+              // partitions that were dragged by hand.
+              setField({ divisions: e.target.value, division_breaks: [] })
+            }
             className="rounded-xl"
           />
         </div>
@@ -147,6 +166,12 @@ export default function HolidayRow({
             startDate={draft.start_date}
             endDate={draft.end_date || draft.start_date}
             divisions={draft.divisions}
+            breaks={draft.division_breaks}
+            onBreaksChange={(list) =>
+              // Each partition adds one more share, so the number of חלוקות
+              // always matches what the strip shows.
+              setField({ division_breaks: list, divisions: list.length + 1 })
+            }
           />
         </div>
       )}
