@@ -24,6 +24,8 @@ const EXCLUDED_TITLES = [
   "Aliyah",
   "Family Day",
   "Hebrew Language Day",
+  // Rosh Chodesh Tevet women's festival — not a shift-relevant chag.
+  "Chag HaBanot",
 ];
 
 // "Erev X" entries are noise for most minor/obscure dates, but for the major
@@ -96,6 +98,15 @@ export function useHolidays(years = []) {
 const baseHolidayName = (label = "") =>
   label.replace(/[:\s]*[א-ת]{1,2}['\u05F3]\s*$/, "").trim() || label;
 
+// The canonical name that ties every day of ONE chag together: drops the Chol
+// HaMoed marker ("סוכות ב׳ (חוה״מ)"), the counted part ("חנוכה: ב׳ נרות") and
+// the day ordinal ("סוכות ז׳", "פסח ג׳"), so a whole chag collapses to a single
+// name — and therefore to one holiday row covering all of its days.
+const canonicalHolidayName = (label = "") => {
+  const base = label.split("(")[0].split(":")[0].trim();
+  return baseHolidayName(base) || base;
+};
+
 const isNextCalendarDay = (dateStr, nextStr) =>
   differenceInCalendarDays(
     new Date(`${nextStr}T00:00:00`),
@@ -103,26 +114,28 @@ const isNextCalendarDay = (dateStr, nextStr) =>
   ) === 1;
 
 // Collapses a year's holidays into contiguous per-holiday ranges
-// ({name, start_date, end_date}) so the admin Holiday list can be filled with
-// one row per chag instead of one row per day. Chol HaMoed days and the
-// excluded/obscure hebcal entries are skipped — they are not togetherness
-// holidays for the shift distribution.
+// ({name, start_date, end_date}) so the admin Holiday list is filled with one
+// row per chag. Chol HaMoed days are NOT dropped: a chag's row covers its whole
+// span (פסח from its first day through its last, חנוכה as a single "חנוכה" row),
+// and how many people it is shared between is the row's `divisions` — not
+// something the importer decides. Excluded/obscure hebcal entries are skipped.
 export async function fetchHolidayGroupsForYear(year) {
   const items = await fetchHolidaysForYear(year);
+  const seen = new Set();
   const days = items
-    .filter(
-      (item) =>
-        item?.date &&
-        !isExcludedHoliday(item.title) &&
-        !isCholHamoedTitle(item.title),
-    )
+    .filter((item) => item?.date && !isExcludedHoliday(item.title))
     .map((item) => ({
       date: item.date.slice(0, 10),
-      label: (item.hebrew || item.title || "")
-        .replace(/\s*\d{4}\s*$/, "")
-        .trim(),
+      name: canonicalHolidayName(
+        (item.hebrew || item.title || "").replace(/\s*\d{4}\s*$/, "").trim(),
+      ),
     }))
-    .filter((day) => day.label)
+    .filter((day) => {
+      const key = `${day.name}|${day.date}`;
+      if (!day.name || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
 
   const groups = [];
@@ -130,17 +143,13 @@ export async function fetchHolidayGroupsForYear(year) {
     const last = groups[groups.length - 1];
     if (
       last &&
-      baseHolidayName(last.name) === baseHolidayName(day.label) &&
+      last.name === day.name &&
       isNextCalendarDay(last.end_date, day.date)
     ) {
       last.end_date = day.date;
       return;
     }
-    groups.push({
-      name: baseHolidayName(day.label),
-      start_date: day.date,
-      end_date: day.date,
-    });
+    groups.push({ name: day.name, start_date: day.date, end_date: day.date });
   });
   return groups;
 }

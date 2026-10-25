@@ -132,6 +132,20 @@ function pickTogetherCandidate(people, justice, weekly, weekKey, excludeIds, { l
   );
 }
 
+// How a chag of `dayCount` days is divided into `divisions` parts — one part per
+// person. The days are shared out as evenly as possible (a 9-day chag with 8
+// divisions gives one person two days and seven people one day each), which is
+// what both the distribution below and the admin preview strip must agree on.
+export function planHolidayChunks(dayCount, divisions) {
+  const parts = Math.min(
+    Math.max(1, Math.floor(Number(divisions) || 1)),
+    Math.max(1, dayCount),
+  );
+  const base = Math.floor(dayCount / parts);
+  const extra = dayCount % parts;
+  return Array.from({ length: parts }, (_, i) => base + (i < extra ? 1 : 0));
+}
+
 /**
  * Distributes shifts across [startDate, endDate] as fairly as possible.
  * Only shifts that fall inside this range are ever looked at — the
@@ -195,6 +209,7 @@ function pickTogetherCandidate(people, justice, weekly, weekKey, excludeIds, { l
  * @param {Array<{start_date: string, end_date?: string, divisions?: number}>} [params.holidays] - Holiday records (the Holiday entity). Their date ranges are the togetherness chag days, and each record's `divisions` is how many different people that chag's shifts should be split among.
  * @param {Map<number, Set<string>>} [params.protectedDates] - Map of serial_id -> Set of 'yyyy-MM-dd' dates the person set a constraint (אילוץ) for; they are never assigned a shift on those dates.
  * @param {Map<number, number>} [params.priorJustice] - Map of serial_id -> shift count from BEFORE the range (e.g. the past 6 months), used to seed the fairness table so recent history carries over. Only affects fairness ranking (and the returned justiceTable totals), never the weekly cap or adjacency, which are range-local.
+ * @param {{people: Array, existingShifts?: Array, groupRepOf?: Map<number, number>, protectedDates?: Map<number, Set<string>>}} [params.holidayUsers] - Per-USER pool for holiday blocks. Holidays are divided between individual people, not between group slots, so a chag's fairness is ranked on each user's OWN in-range shift count (a separate table from the per-group one used for ordinary days). `people` are the eligible users, `existingShifts` (raw, per owner) seeds them, `groupRepOf` maps a user to their group's representative so a holiday share a member takes still consumes the group's weekly slot, and `protectedDates` carries each user's own constraints and switch/deactivate windows.
  * @returns {{assignments: Array<{date: string, personId: number}>, skipped: Array<{date: string, reason: string}>, justiceTable: Array<{personId: number, name: string, totalShifts: number}>}}
  */
 export function distributeShifts({
@@ -206,6 +221,7 @@ export function distributeShifts({
   cholHamoedDates = new Set(),
   holidayDivisions = new Map(),
   holidays = [],
+  holidayUsers = null,
   protectedDates = new Map(),
   priorJustice = new Map(),
 }) {
@@ -231,13 +247,20 @@ export function distributeShifts({
   // shift on it. `protectedOnDate` gives everyone protected on a given day (to
   // exclude from candidate selection); `isProtected` checks one person/day (to
   // stop a multi-day chunk from spilling onto a protected day).
+  // Constraints for the per-user holiday pool are keyed by the user's own
+  // serial_id (the group tables above fold them onto the group's
+  // representative), so both tables are consulted.
+  const holidayProtectedDates = holidayUsers?.protectedDates || new Map();
   const isProtected = (serialId, dateKey) =>
-    !!protectedDates.get(serialId)?.has(dateKey);
+    !!protectedDates.get(serialId)?.has(dateKey) ||
+    !!holidayProtectedDates.get(serialId)?.has(dateKey);
   const protectedOnDate = (dateKey) => {
     const ids = new Set();
-    protectedDates.forEach((dates, serialId) => {
-      if (dates.has(dateKey)) ids.add(serialId);
-    });
+    [protectedDates, holidayProtectedDates].forEach((table) =>
+      table.forEach((dates, serialId) => {
+        if (dates.has(dateKey)) ids.add(serialId);
+      }),
+    );
     return ids;
   };
   const start = new Date(startDate);
@@ -256,6 +279,25 @@ export function distributeShifts({
     inRangeShifts,
     priorJustice,
   );
+
+  // Holidays are divided between PEOPLE, not between group slots: when the
+  // caller supplies a per-user pool, a holiday block is ranked and recorded on
+  // each user's OWN in-range shift count — its own bookkeeping table, separate
+  // from the group-representative one used for ordinary days.
+  const holidayPool = (holidayUsers?.people || []).filter(
+    (p) => p?.serial_id != null,
+  );
+  const holidayByUser = holidayPool.length > 0;
+  const holidayState = holidayByUser
+    ? initState(
+        holidayPool,
+        (holidayUsers.existingShifts || existingShifts || []).filter(
+          (s) =>
+            s?.start_date && s.start_date >= startDate && s.start_date <= endDate,
+        ),
+      )
+    : null;
+  const holidayGroupRepOf = holidayUsers?.groupRepOf || new Map();
 
   const existingByDate = new Map();
   inRangeShifts.forEach((s) => existingByDate.set(s.start_date, s));
@@ -341,6 +383,42 @@ export function distributeShifts({
         protectedOnDate(d.key).forEach((id) => togetherExcluded.add(id)),
       );
 
+      // A "together" run that covers holiday dates is a chag: it is divided
+      // between individual USERS and ranked by their own shift counts, while a
+      // plain weekend keeps the per-group bookkeeping.
+      const useUserFairness =
+        bundle.kind === "together" &&
+        holidayByUser &&
+        bundle.days.some((d) => holidayByDate.has(d.key));
+      const fair = useUserFairness
+        ? holidayState
+        : { justice, weekly, lastAssignedDate };
+      const fairPool = useUserFairness ? holidayPool : people;
+      const assign = (personId, day) => {
+        assignments.push({ date: day.key, personId });
+        recordAssignment(
+          fair.justice,
+          fair.weekly,
+          fair.lastAssignedDate,
+          personId,
+          segment.weekKey,
+          day.date,
+        );
+        // A holiday share taken by a group member also uses up that group's
+        // weekly slot, so the group can't be handed a second shift that week.
+        const repId = useUserFairness ? holidayGroupRepOf.get(personId) : null;
+        if (repId != null && repId !== personId) {
+          recordAssignment(
+            justice,
+            weekly,
+            lastAssignedDate,
+            repId,
+            segment.weekKey,
+            day.date,
+          );
+        }
+      };
+
       if (bundle.kind === "together") {
         // A holiday can be split between several people: the admin sets, per
         // holiday, how many divisions (how many different people) its shifts
@@ -356,10 +434,8 @@ export function distributeShifts({
           // DIFFERENT person (fairest first). The weekly cap stays soft here —
           // same as the single-person case — because a holiday block is one
           // deliberate decision, not an accidental back-to-back.
-          const chunkSize = Math.max(
-            1,
-            Math.ceil(emptyDays.length / divisions),
-          );
+          const chunkSizes = planHolidayChunks(emptyDays.length, divisions);
+          let chunkIndex = 0;
           let remaining = emptyDays;
           const tried = new Set();
           while (remaining.length > 0) {
@@ -368,29 +444,29 @@ export function distributeShifts({
             protectedOnDate(anchorDay.key).forEach((id) => excluded.add(id));
 
             let available = pickTogetherCandidate(
-              people,
-              justice,
-              weekly,
+              fairPool,
+              fair.justice,
+              fair.weekly,
               segment.weekKey,
               excluded,
-              { lastAssignedDate, anchorDate: anchorDay.date },
+              { lastAssignedDate: fair.lastAssignedDate, anchorDate: anchorDay.date },
             );
             // Once everyone available already took a part, let the fairest
             // person take another one — a chag must not be left unstaffed just
             // because more divisions were asked for than there are people.
             if (!available && tried.size > 0) {
               available = pickTogetherCandidate(
-                people,
-                justice,
-                weekly,
+                fairPool,
+                fair.justice,
+                fair.weekly,
                 segment.weekKey,
                 protectedOnDate(anchorDay.key),
-                { lastAssignedDate, anchorDate: anchorDay.date },
+                { lastAssignedDate: fair.lastAssignedDate, anchorDate: anchorDay.date },
               );
             }
             if (!available) break;
 
-            let take = Math.min(chunkSize, remaining.length);
+            let take = Math.min(chunkSizes[chunkIndex] || 1, remaining.length);
             for (let i = 0; i < take; i++) {
               if (isProtected(available.serial_id, remaining[i].key)) {
                 take = i;
@@ -399,18 +475,9 @@ export function distributeShifts({
             }
             // `available` is never protected on remaining[0] (it was picked
             // with that exclusion), so `take` is at least 1.
-            remaining.slice(0, take).forEach((d) => {
-              assignments.push({ date: d.key, personId: available.serial_id });
-              recordAssignment(
-                justice,
-                weekly,
-                lastAssignedDate,
-                available.serial_id,
-                segment.weekKey,
-                d.date,
-              );
-            });
+            remaining.slice(0, take).forEach((d) => assign(available.serial_id, d));
             remaining = remaining.slice(take);
+            chunkIndex += 1;
             tried.add(available.serial_id);
           }
           remaining.forEach((d) =>
@@ -427,8 +494,8 @@ export function distributeShifts({
         // (see pickTogetherCandidate). Only fails if there's truly nobody.
         const chosen =
           anchorPerson ||
-          pickTogetherCandidate(people, justice, weekly, segment.weekKey, togetherExcluded, {
-            lastAssignedDate,
+          pickTogetherCandidate(fairPool, fair.justice, fair.weekly, segment.weekKey, togetherExcluded, {
+            lastAssignedDate: fair.lastAssignedDate,
             anchorDate: segmentAnchorDate,
           });
 
@@ -439,10 +506,7 @@ export function distributeShifts({
           return;
         }
 
-        emptyDays.forEach((d) => {
-          assignments.push({ date: d.key, personId: chosen.serial_id });
-          recordAssignment(justice, weekly, lastAssignedDate, chosen.serial_id, segment.weekKey, d.date);
-        });
+        emptyDays.forEach((d) => assign(chosen.serial_id, d));
         return;
       }
 

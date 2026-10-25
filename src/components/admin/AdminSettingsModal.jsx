@@ -1,60 +1,16 @@
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { format, addDays, subMonths } from "date-fns";
 import { distributeShifts } from "../calendar/shiftDistributionAlgorithm";
-import {
-  createAssignmentForShift,
-  resolveOwnerId,
-  syncAssignmentOwner,
-  WHATSAPP_TEMPLATES,
-} from "../calendar/whatsappTemplates";
+import { buildHolidayUserPool } from "./distributionHolidayPool";
+import { createAssignmentForShift, resolveOwnerId, syncAssignmentOwner, WHATSAPP_TEMPLATES } from "../calendar/whatsappTemplates";
 import HolidaysSection from "./HolidaysSection";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  X,
-  Menu,
-  Search,
-  Filter,
-  MoreVertical,
-  Edit2,
-  Trash2,
-  ArrowLeftRight,
-  ArrowLeft,
-  Shield,
-  UserX,
-  UserPlus,
-  AlertTriangle,
-  Archive,
-  Check,
-  Send,
-  CheckCircle2,
-  Palette,
-  HelpCircle,
-  ChevronUp,
-  ChevronDown,
-  Circle,
-  Plus,
-  CalendarDays,
-  Globe,
-  Scale,
-  Loader2,
-  FlaskConical,
-  XCircle,
-  Download,
-  Tag,
-  Users,
-  Star,
-  UserMinus,
-  Ban,
-  MessageSquare,
-  RotateCcw,
-  Eye,
-  History,
+  X, Menu, Search, Filter, MoreVertical, Edit2, Trash2, ArrowLeftRight,
+  ArrowLeft, Shield, UserX, UserPlus, AlertTriangle, Archive, Check, Send,
+  CheckCircle2, Palette, HelpCircle, ChevronUp, ChevronDown, Circle, Plus,
+  CalendarDays, Globe, Scale, Loader2, FlaskConical, XCircle, Download, Tag,
+  Users, Star, UserMinus, Ban, MessageSquare, RotateCcw, Eye, History,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1664,12 +1620,28 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         });
       }
 
+      // Holidays are divided between PEOPLE, not between group slots: alongside
+      // the group representatives that ordinary days are handed out to, the
+      // algorithm gets a per-user pool (every RR/Manager member of an active
+      // group, with their own constraints and switch/deactivate windows) and
+      // ranks holiday shares by each user's own shift count.
+      const holidayUsers = buildHolidayUserPool({
+        groups: activeGroupBySymbol,
+        members: membersBySymbol,
+        rawProtected,
+        shifts: allShiftsForDistribution,
+        startDate,
+        endDate,
+        grace,
+      });
+
       const result = distributeShifts({
         people: reps,
         existingShifts: remappedShifts,
         startDate,
         endDate,
         holidays: distributionHolidays,
+        holidayUsers,
         protectedDates,
         priorJustice,
       });
@@ -3181,14 +3153,14 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                     <p className="text-xs text-gray-500 max-w-xl">
                       מפזר משמרות רק על ימים פנויים בטווח שנבחר, בלי לגעת
                       במשמרות קיימות: משמרת אחת מוקצית לכל אדם בשבוע
-                      (א'-ש'); יוצא דופן הוא צירוף שישי-שבת, שמוקצה תמיד יחד לאותו אדם, וכך גם ערב חג
-                      וימי החג (למשל ערב חג שחל בחמישי — המשמרת נשארת אצל אותו
-                      אדם עד שבת). ימי חול המועד (בסוכות ובפסח) לא נכללים בצירוף
-                      הזה ומתחלקים כרגיל בין העובדים, כדי שמשמרת החג לא תימשך
-                      יותר מדי אצל אדם אחד. הפיזור בין המשמרות של כל אדם נשמר
-                      נוח ולא יום אחרי יום בטעות. הבחירה מתבססת על טבלת "צדק" —
-                      עדיפות ניתנת לפי מספר המשמרות הנמוך ביותר שנצבר בטווח
-                      שנבחר.
+                      (א'-ש'); יוצא דופן הוא צירוף שישי-שבת, שמוקצה תמיד יחד לאותו אדם.
+                      החגים נקבעים לפי רשימת החגים שלהלן: כל חג נכנס כטווח
+                      התאריכים שלו, ולפי מספר ה"חלוקות" שלו הוא מתחלק בין אנשים
+                      שונים (1 = כל החג נשאר אצל אותו אדם). חלקי החג מחולקים בין
+                      המשתמשים לפי מספר המשמרות שכל אחד צבר בטווח, בנפרד מחלוקת
+                      המשמרות הרגילה. הפיזור נשמר נוח ולא יום אחרי יום בטעות,
+                      והבחירה מתבססת על טבלת "צדק" — עדיפות לפי מספר המשמרות
+                      הנמוך ביותר.
                     </p>
                   </div>
                   <Scale className="w-5 h-5 text-blue-500 shrink-0" />
