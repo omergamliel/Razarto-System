@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { addDays, format } from "date-fns";
 import { splitHolidayDays } from "@/lib/holidayDivisions";
 
@@ -24,7 +24,7 @@ const dayKey = (date) => format(date, "yyyy-MM-dd");
 // The chag, cell by cell: one cell per shift day, every division (one person's
 // share) in its own colour, so the split is visible at a glance. The grip
 // between two neighbouring shares is draggable — moving it moves the partition,
-// which moves a day from one person to the other. Whatever is shown here is
+// which moves days from one person to the other. Whatever is shown here is
 // exactly what the distribution hands out (see planHolidayParts below).
 export default function HolidayDivisionsStrip({
   startDate,
@@ -58,8 +58,6 @@ export default function HolidayDivisionsStrip({
     [keys, divisions, breaks],
   );
 
-  if (days.length === 0) return null;
-
   const dayByKey = new Map(days.map((day) => [dayKey(day), day]));
   // Every internal boundary is the first day of one share — the day a new
   // division starts on.
@@ -83,30 +81,54 @@ export default function HolidayDivisionsStrip({
     return closest;
   };
 
+  // A boundary slides anywhere along the chag, not just one day either way: it
+  // stays at least one day past the boundary before it and one day before the
+  // boundary after it, so a share can grow or shrink freely while no share ever
+  // disappears and no two boundaries cross.
   const moveBoundary = (boundary, key) => {
     const index = keys.indexOf(key);
     if (index < 0) return;
-    // Both neighbours keep at least one day, so a share never disappears.
-    const lower = keys.indexOf(parts[boundary][0]) + 1;
-    const next = parts[boundary + 1];
-    const upper = keys.indexOf(next[next.length - 1]);
-    const target = keys[Math.min(Math.max(index, lower), upper)];
+    const min =
+      boundary === 0
+        ? 1
+        : Math.max(1, keys.indexOf(breakDates[boundary - 1]) + 1);
+    const maxIndex =
+      boundary === breakDates.length - 1
+        ? keys.length - 1
+        : keys.indexOf(breakDates[boundary + 1]) - 1;
+    const max = Math.max(min, maxIndex);
+    const target = keys[Math.min(Math.max(index, min), max)];
     const updated = [...breakDates];
     updated[boundary] = target;
     if (updated.join("|") === breakDates.join("|")) return;
     onBreaksChange(updated);
   };
 
+  // The drag is tracked on the window: the grip itself is re-created when the
+  // partition moves, so a listener on it would be lost after the first step.
+  useEffect(() => {
+    if (dragging == null) return undefined;
+    const handleMove = (event) => {
+      const key = keyAtX(event.clientX);
+      if (key) moveBoundary(dragging, key);
+    };
+    const stop = () => setDragging(null);
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+    return () => {
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dragging, keys, parts, breakDates]);
+
+  if (days.length === 0) return null;
+
   const startDrag = (boundary) => (event) => {
     event.preventDefault();
-    event.currentTarget.setPointerCapture?.(event.pointerId);
     setDragging(boundary);
-  };
-
-  const onDrag = (event) => {
-    if (dragging == null) return;
-    const key = keyAtX(event.clientX);
-    if (key) moveBoundary(dragging, key);
   };
 
   return (
@@ -119,9 +141,6 @@ export default function HolidayDivisionsStrip({
                 type="button"
                 title="גררו כדי להזיז את הגבול בין החלוקות"
                 onPointerDown={startDrag(partIndex - 1)}
-                onPointerMove={onDrag}
-                onPointerUp={() => setDragging(null)}
-                onPointerCancel={() => setDragging(null)}
                 className={`h-9 w-2.5 shrink-0 cursor-col-resize touch-none rounded-full transition-colors ${
                   dragging === partIndex - 1
                     ? "bg-blue-500"
@@ -153,7 +172,7 @@ export default function HolidayDivisionsStrip({
       </div>
       <span className="text-[11px] text-gray-500">
         {days.length} משמרות · {parts.length} חלוקות
-        {parts.length > 1 && " · גררו את הגבול כדי להזיז משמרת, ואז שמרו"}
+        {parts.length > 1 && " · גררו את הגבול כדי להזיז משמרות, ואז שמרו"}
       </span>
     </div>
   );

@@ -155,3 +155,18 @@ export async function fetchHolidayGroupsForYear(year) {
   });
   return groups;
 }
+
+// The chag ranges of a whole span of years at once — the holiday list is not
+// tied to any single year, so a span can be brought in with one action.
+export async function fetchHolidayGroupsForYears(years = []) {
+  const uniqueYears = [...new Set(years)].sort();
+  if (uniqueYears.length === 0) return [];
+  const perYear = await Promise.all(uniqueYears.map(fetchHolidayGroupsForYear));
+  const seen = new Set();
+  return perYear.flat().filter((group) => {
+    const key = `${group.name}|${group.start_date}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}

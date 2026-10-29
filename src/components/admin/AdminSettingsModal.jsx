@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { format, addDays, subMonths } from "date-fns";
 import { distributeShifts } from "../calendar/shiftDistributionAlgorithm";
 import { buildHolidayUserPool } from "./distributionHolidayPool";
+import { deleteShiftsInRange } from "@/lib/shiftDeletion";
 import { createAssignmentForShift, resolveOwnerId, syncAssignmentOwner, WHATSAPP_TEMPLATES } from "../calendar/whatsappTemplates";
 import HolidaysSection from "./HolidaysSection";
 import { motion, AnimatePresence } from "framer-motion";
@@ -1733,10 +1734,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   }, [allShiftsForDistribution, deleteShiftsRange]);
 
   const deleteShiftsRangeMutation = useMutation({
-    mutationFn: async (shiftIds) => {
-      await Promise.all(shiftIds.map((id) => base44.entities.Shift.delete(id)));
-      return shiftIds.length;
-    },
+    mutationFn: (shiftIds) => deleteShiftsInRange(shiftIds),
     onSuccess: (count) => {
       logActivity({
         action: `מחיקת ${count} משמרות בטווח תאריכים`,
@@ -1756,7 +1754,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
           })),
         },
       });
-      queryClient.invalidateQueries(["shifts"]);
+      ["shifts", "coverages", "swap-requests"].forEach((key) => queryClient.invalidateQueries([key]));
       toast.success(`נמחקו ${count} משמרות בהצלחה`);
       setIsDeleteShiftsConfirmOpen(false);
       setDeleteShiftsRange({ startDate: "", endDate: "" });

@@ -341,10 +341,29 @@ export function distributeShifts({
     }
   });
 
+  // Which bundle is staffed first: the chag's shifts, then the weekend
+  // (Friday–Saturday), then Thursday, and only then an ordinary day. The
+  // hardest days therefore get the fairest people while everyone is still
+  // free, and the ordinary days are filled from whoever is left.
+  const bundlePriority = (bundle) => {
+    if (bundle.days.some((d) => holidayByDate.has(d.key))) return 0;
+    if (bundle.kind === "together") return 1;
+    if (bundle.days.every((d) => d.date.getDay() === 4)) return 2;
+    return 3;
+  };
+  const orderedBundles = bundles
+    .map((bundle, index) => ({ bundle, index }))
+    .sort(
+      (a, b) =>
+        bundlePriority(a.bundle) - bundlePriority(b.bundle) ||
+        a.index - b.index,
+    )
+    .map((entry) => entry.bundle);
+
   const assignments = [];
   const skipped = [];
 
-  bundles.forEach((bundle) => {
+  orderedBundles.forEach((bundle) => {
     // If any day in the bundle already has an owner, prefer keeping the
     // rest of the bundle with that same person (best-effort togetherness).
     const anchorShift = bundle.days.find((d) => d.existing)?.existing;

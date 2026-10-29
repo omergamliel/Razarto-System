@@ -6,11 +6,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { CalendarDays, Download, Loader2, Plus } from "lucide-react";
-import { fetchHolidayGroupsForYear } from "@/components/calendar/useHolidays";
+import { fetchHolidayGroupsForYears } from "@/components/calendar/useHolidays";
 import HolidayRow from "@/components/admin/HolidayRow";
 import { defaultDivisions, holidayDayCount } from "@/lib/holidayDivisions";
 
 const EMPTY_NEW = { name: "", start_date: "", end_date: "", divisions: "" };
+
+// No year is fixed in the code: one import brings in the current year and the
+// next four, so the list is general and distribution works for any of them.
+const IMPORT_YEARS_AHEAD = 4;
 
 // A holiday is stored with its split: `divisions` is how many different people
 // its shifts go to (an empty field means the default — two shifts per person),
@@ -44,10 +48,12 @@ export default function HolidaysSection({ DateInput }) {
   });
 
   const [newHoliday, setNewHoliday] = useState(EMPTY_NEW);
-  const [importYear, setImportYear] = useState(
-    String(new Date().getFullYear()),
-  );
   const [savingId, setSavingId] = useState(null);
+
+  const importYears = useMemo(() => {
+    const first = new Date().getFullYear();
+    return Array.from({ length: IMPORT_YEARS_AHEAD + 1 }, (_, i) => first + i);
+  }, []);
 
   const sorted = useMemo(
     () =>
@@ -92,8 +98,8 @@ export default function HolidaysSection({ DateInput }) {
   });
 
   const importMutation = useMutation({
-    mutationFn: async (year) => {
-      const groups = await fetchHolidayGroupsForYear(year);
+    mutationFn: async (years) => {
+      const groups = await fetchHolidayGroupsForYears(years);
       const existing = new Set(sorted.map((holiday) => holiday.start_date));
       const toCreate = groups
         .filter((group) => !existing.has(group.start_date))
@@ -114,7 +120,7 @@ export default function HolidaysSection({ DateInput }) {
       toast.success(
         added > 0
           ? `נוספו ${added} חגים מהלוח העברי`
-          : "כל חגי השנה כבר נמצאים ברשימה",
+          : "כל החגים בשנים האלה כבר נמצאים ברשימה",
       );
     },
     onError: () => toast.error("ייבוא החגים נכשל"),
@@ -135,7 +141,8 @@ export default function HolidaysSection({ DateInput }) {
             החלוקות מתפזרות בין האנשים: כל צבע הוא אדם אחד, ואפשר לגרור את
             הגבול שבין שני צבעים כדי להעביר משמרת מאחד לשני. ברירת המחדל היא
             שתי משמרות לאדם. חגים ארוכים מיום אחד מסומנים. הרשימה אינה קבועה
-            בקוד: מייבאים שנה מהלוח העברי או מוסיפים חג ידנית.
+            בקוד ואינה מוגבלת לשנה מסוימת — הייבוא מכניס את החגים של השנים
+            הקרובות, ואפשר גם להוסיף חג ידנית.
           </p>
         </div>
         <CalendarDays className="w-5 h-5 text-blue-500 shrink-0" />
@@ -146,17 +153,13 @@ export default function HolidaysSection({ DateInput }) {
           <Label className="text-sm text-gray-700">
             ייבוא חגים מהלוח העברי
           </Label>
-          <Input
-            type="number"
-            dir="ltr"
-            value={importYear}
-            onChange={(e) => setImportYear(e.target.value)}
-            className="rounded-xl w-28"
-          />
+          <p className="text-xs text-gray-500" dir="ltr">
+            {`${importYears[0]}–${importYears[importYears.length - 1]}`}
+          </p>
         </div>
         <Button
-          onClick={() => importMutation.mutate(Number(importYear))}
-          disabled={importMutation.isPending || !importYear}
+          onClick={() => importMutation.mutate(importYears)}
+          disabled={importMutation.isPending}
           className="h-10 rounded-xl bg-blue-600 hover:bg-blue-700 text-white gap-2"
         >
           {importMutation.isPending ? (
@@ -178,18 +181,31 @@ export default function HolidaysSection({ DateInput }) {
         </p>
       ) : (
         <div className="space-y-2 mb-4">
-          {sorted.map((holiday) => (
-            <HolidayRow
-              key={holiday.id}
-              holiday={holiday}
-              DateInput={DateInput}
-              isSaving={savingId === holiday.id && saveMutation.isPending}
-              onSave={(target, draft) =>
-                saveMutation.mutate({ holiday: target, draft })
-              }
-              onDelete={(target) => deleteMutation.mutate(target.id)}
-            />
-          ))}
+          {sorted.map((holiday, index) => {
+            const year = (holiday.start_date || "").slice(0, 4);
+            const previousYear =
+              index > 0
+                ? (sorted[index - 1].start_date || "").slice(0, 4)
+                : "";
+            return (
+              <React.Fragment key={holiday.id}>
+                {year !== previousYear && (
+                  <p className="pt-1 text-[11px] font-semibold text-gray-400">
+                    {year}
+                  </p>
+                )}
+                <HolidayRow
+                  holiday={holiday}
+                  DateInput={DateInput}
+                  isSaving={savingId === holiday.id && saveMutation.isPending}
+                  onSave={(target, draft) =>
+                    saveMutation.mutate({ holiday: target, draft })
+                  }
+                  onDelete={(target) => deleteMutation.mutate(target.id)}
+                />
+              </React.Fragment>
+            );
+          })}
         </div>
       )}
 
