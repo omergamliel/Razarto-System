@@ -33,10 +33,21 @@ export function dayCategory(dateKey, holidayDates) {
 
 // Builds both presentations of one slice: the per-user list and the per-group
 // list (a group's count is the sum of its members').
-export function buildFairnessView({ counts, people, currentUser, shiftGroups }) {
+export function buildFairnessView({
+  counts,
+  people,
+  currentUser,
+  shiftGroups,
+  activeOnly = false,
+}) {
   const countOf = (serialId) => counts.get(serialId) || 0;
+  // The holidays tab lists only people who are currently active in a group —
+  // they are the ones the chags are actually divided between.
+  const pool = activeOnly
+    ? people.filter((p) => isActiveGroupMemberRule(p, shiftGroups))
+    : people;
 
-  const users = people
+  const users = pool
     .map((p) => ({
       id: p.id,
       name: p.full_name || "לא ידוע",
@@ -51,7 +62,7 @@ export function buildFairnessView({ counts, people, currentUser, shiftGroups }) 
     });
 
   const groupsMap = new Map(); // symbol -> { members: [], count }
-  people.forEach((p) => {
+  pool.forEach((p) => {
     if (!p.sign) return;
     if (!groupsMap.has(p.sign)) groupsMap.set(p.sign, { members: [], count: 0 });
     const g = groupsMap.get(p.sign);

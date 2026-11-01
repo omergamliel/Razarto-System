@@ -14,13 +14,46 @@ const toDateKey = (date) => format(date, "yyyy-MM-dd");
 // elsewhere in the app (CalendarGrid's { weekStartsOn: 0 }).
 const getWeekKey = (date) => toDateKey(startOfWeek(date, { weekStartsOn: 0 }));
 
-// Seeds the fairness ("justice") table, the per-week shift counts, and each
-// person's most recent assigned day — all from shifts that fall INSIDE
-// [startDate, endDate] only. The algorithm intentionally has no knowledge of
-// anything outside the given range: fairness is decided purely within the
-// range being distributed, not by anyone's shift history before it.
-function initState(people, inRangeShifts, priorJustice = new Map()) {
+// How heavy each kind of day is for the person working it. The policy order
+// (chag → weekend → Thursday → ordinary day) is also the order of effort, so
+// fairness is measured on weighted effort and not on a plain day count: two
+// people can hold the same number of shifts and still be very unequal if one
+// of them took the chags and the weekends.
+const CATEGORY_WEIGHT = { holidays: 3, weekends: 2.5, thursdays: 1.5, regular: 1 };
+
+// The fairness category of a day — a chag day wins over its weekday, matching
+// the tabs of טבלת צדק.
+const categorizeDay = (dateKey, holidayByDate) => {
+  if (holidayByDate.has(dateKey)) return "holidays";
+  const dow = new Date(`${dateKey}T00:00:00`).getDay();
+  if (dow === 5 || dow === 6) return "weekends";
+  if (dow === 4) return "thursdays";
+  return "regular";
+};
+
+const emptyCats = () => ({
+  holidays: 0,
+  weekends: 0,
+  thursdays: 0,
+  regular: 0,
+  load: 0,
+});
+
+const bumpCats = (cats, personId, category) => {
+  const c = cats.get(personId);
+  if (!c) return;
+  c[category] += 1;
+  c.load += CATEGORY_WEIGHT[category];
+};
+
+// Seeds the fairness ("justice") table, the per-day-type tallies, the per-week
+// shift counts, and each person's most recent assigned day — all from shifts
+// that fall INSIDE [startDate, endDate] only. The algorithm intentionally has
+// no knowledge of anything outside the given range: fairness is decided purely
+// within the range being distributed, not by anyone's shift history before it.
+function initState(people, inRangeShifts, priorJustice = new Map(), holidayByDate = new Set()) {
   const justice = new Map();
+  const cats = new Map();
   const weekly = new Map();
   const lastAssignedDate = new Map();
   people.forEach((p) => {
@@ -29,6 +62,7 @@ function initState(people, inRangeShifts, priorJustice = new Map()) {
     // count is seeded: the weekly cap and adjacency ("comfort") bookkeeping are
     // about days INSIDE the range and must ignore the far-past history.
     justice.set(p.serial_id, priorJustice.get(p.serial_id) || 0);
+    cats.set(p.serial_id, emptyCats());
     weekly.set(p.serial_id, new Map());
   });
 
@@ -36,6 +70,7 @@ function initState(people, inRangeShifts, priorJustice = new Map()) {
     const personId = s.original_user_id;
     if (!justice.has(personId)) return; // not an eligible/tracked person
     justice.set(personId, justice.get(personId) + 1);
+    bumpCats(cats, personId, categorizeDay(s.start_date, holidayByDate));
 
     const d = new Date(s.start_date);
     if (Number.isNaN(d.getTime())) return;
@@ -47,7 +82,7 @@ function initState(people, inRangeShifts, priorJustice = new Map()) {
     if (!prevLast || d > prevLast) lastAssignedDate.set(personId, d);
   });
 
-  return { justice, weekly, lastAssignedDate };
+  return { justice, cats, weekly, lastAssignedDate };
 }
 
 const remainingCapacity = (weekly, personId, weekKey) =>
@@ -64,8 +99,9 @@ const isAdjacentToLastAssignment = (lastAssignedDate, personId, date) => {
   return Math.abs(differenceInCalendarDays(date, last)) === 1;
 };
 
-function recordAssignment(justice, weekly, lastAssignedDate, personId, weekKey, date) {
+function recordAssignment(justice, cats, weekly, lastAssignedDate, personId, weekKey, date, category) {
   justice.set(personId, (justice.get(personId) || 0) + 1);
+  bumpCats(cats, personId, category);
   const perWeek = weekly.get(personId) || new Map();
   perWeek.set(weekKey, (perWeek.get(weekKey) || 0) + 1);
   weekly.set(personId, perWeek);
@@ -73,21 +109,43 @@ function recordAssignment(justice, weekly, lastAssignedDate, personId, weekKey, 
   if (!prevLast || date > prevLast) lastAssignedDate.set(personId, date);
 }
 
-const sortByFairness = (candidates) =>
+// The count that must stay balanced for the kind of block being handed out:
+// chags against chags, weekends against weekends, Thursdays against Thursdays,
+// and an ordinary day against the overall number of shifts.
+const kindCount = (row, kind) => {
+  if (kind === "holidays") return row.cats.holidays;
+  if (kind === "weekends") return row.cats.weekends;
+  if (kind === "thursdays") return row.cats.thursdays;
+  return row.count;
+};
+
+// Fairest first: the same kind of day balanced on its own, then the combined
+// chag+weekend burden (so whoever took the chags isn't handed the weekends
+// too), then the weighted effort, then the plain shift count.
+const sortByFairness = (candidates, kind = "regular") =>
   candidates.sort(
     (a, b) =>
+      kindCount(a, kind) - kindCount(b, kind) ||
+      a.hard - b.hard ||
+      a.load - b.load ||
       a.count - b.count ||
       (a.person.full_name || "").localeCompare(b.person.full_name || ""),
   );
 
-const buildCandidateRows = (people, justice, weekly, weekKey, excludeIds) =>
+const buildCandidateRows = (fair, people, weekKey, excludeIds) =>
   people
     .filter((p) => !excludeIds.has(p.serial_id))
-    .map((p) => ({
-      person: p,
-      capacity: remainingCapacity(weekly, p.serial_id, weekKey),
-      count: justice.get(p.serial_id) || 0,
-    }));
+    .map((p) => {
+      const cats = fair.cats.get(p.serial_id) || emptyCats();
+      return {
+        person: p,
+        capacity: remainingCapacity(fair.weekly, p.serial_id, weekKey),
+        count: fair.justice.get(p.serial_id) || 0,
+        cats,
+        load: cats.load,
+        hard: cats.holidays + cats.weekends,
+      };
+    });
 
 const notAdjacent = (row, lastAssignedDate, anchorDate) =>
   !lastAssignedDate ||
@@ -101,16 +159,19 @@ const notAdjacent = (row, lastAssignedDate, anchorDate) =>
 // still leaves someone to pick; an uncomfortable spread is allowed rather
 // than leaving a day unstaffed. Used for ordinary (non-togetherness) days,
 // where the weekly cap (rule a) is a hard limit.
-function pickCandidate(people, justice, weekly, weekKey, minCapacity, excludeIds, { lastAssignedDate, anchorDate } = {}) {
-  const rows = buildCandidateRows(people, justice, weekly, weekKey, excludeIds).filter(
+function pickCandidate(fair, people, weekKey, minCapacity, excludeIds, kind, { anchorDate } = {}) {
+  const rows = buildCandidateRows(fair, people, weekKey, excludeIds).filter(
     (c) => c.capacity >= minCapacity,
   );
 
-  if (lastAssignedDate && anchorDate) {
-    const comfortable = sortByFairness(rows.filter((r) => notAdjacent(r, lastAssignedDate, anchorDate)));
+  if (fair.lastAssignedDate && anchorDate) {
+    const comfortable = sortByFairness(
+      rows.filter((r) => notAdjacent(r, fair.lastAssignedDate, anchorDate)),
+      kind,
+    );
     if (comfortable.length > 0) return comfortable[0].person;
   }
-  return sortByFairness(rows)[0]?.person || null;
+  return sortByFairness(rows, kind)[0]?.person || null;
 }
 
 // Picks who a togetherness bundle (weekend, and/or a chag + its erev — see
@@ -120,15 +181,17 @@ function pickCandidate(people, justice, weekly, weekKey, minCapacity, excludeIds
 // with at least SOME room wins, and only if truly nobody has any room left
 // does it fall back to whoever's fairest regardless of the cap. Comfort
 // (rule d) is still preferred wherever it doesn't cost availability.
-function pickTogetherCandidate(people, justice, weekly, weekKey, excludeIds, { lastAssignedDate, anchorDate } = {}) {
-  const rows = buildCandidateRows(people, justice, weekly, weekKey, excludeIds);
-  const comfortableRows = rows.filter((r) => notAdjacent(r, lastAssignedDate, anchorDate));
+function pickTogetherCandidate(fair, people, weekKey, excludeIds, kind, { anchorDate } = {}) {
+  const rows = buildCandidateRows(fair, people, weekKey, excludeIds);
+  const comfortableRows = rows.filter((r) =>
+    notAdjacent(r, fair.lastAssignedDate, anchorDate),
+  );
 
   return (
-    sortByFairness(comfortableRows.filter((r) => r.capacity > 0))[0]?.person ||
-    sortByFairness(rows.filter((r) => r.capacity > 0))[0]?.person ||
-    sortByFairness(comfortableRows)[0]?.person ||
-    sortByFairness(rows)[0]?.person ||
+    sortByFairness(comfortableRows.filter((r) => r.capacity > 0), kind)[0]?.person ||
+    sortByFairness(rows.filter((r) => r.capacity > 0), kind)[0]?.person ||
+    sortByFairness(comfortableRows, kind)[0]?.person ||
+    sortByFairness(rows, kind)[0]?.person ||
     null
   );
 }
@@ -165,9 +228,13 @@ function pickTogetherCandidate(people, justice, weekly, weekKey, excludeIds, { l
  *
  * Only days with no existing Shift record (within the given range) are
  * touched — anything already assigned in-range is left alone. Fairness
- * ("justice") ranks people by their shift count within this range only, so
- * whoever has the fewest shifts so far in THIS distribution run is preferred
- * for each open slot.
+ * ("justice") ranks people by what they already took within this range only,
+ * so whoever carries the least so far in THIS distribution run is preferred
+ * for each open slot. The ranking follows the policy order — chags are
+ * balanced against chags, weekends against weekends, Thursdays against
+ * Thursdays, ordinary days against the overall count — and a weighted effort
+ * score makes a heavy day count for more than an ordinary one, so whoever took
+ * the chags and weekends gets fewer ordinary days instead of more shifts.
  *
  * Implementation note on (b)/(c): each day is classified as "together"
  * (Friday/Saturday, or a holiday day that isn't Chol HaMoed — covering both
@@ -271,11 +338,14 @@ export function distributeShifts({
     return s.start_date >= startDate && s.start_date <= endDate;
   });
 
-  const { justice, weekly, lastAssignedDate } = initState(
+  const { justice, cats, weekly, lastAssignedDate } = initState(
     people,
     inRangeShifts,
     priorJustice,
+    holidayByDate,
   );
+  // The per-group bookkeeping used for weekends, Thursdays and ordinary days.
+  const groupFair = { justice, cats, weekly, lastAssignedDate };
 
   // Holidays are divided between PEOPLE, not between group slots: when the
   // caller supplies a per-user pool, a holiday block is ranked and recorded on
@@ -292,6 +362,8 @@ export function distributeShifts({
           (s) =>
             s?.start_date && s.start_date >= startDate && s.start_date <= endDate,
         ),
+        new Map(),
+        holidayByDate,
       )
     : null;
   const holidayGroupRepOf = holidayUsers?.groupRepOf || new Map();
@@ -436,19 +508,20 @@ export function distributeShifts({
         bundle.kind === "together" &&
         holidayByUser &&
         bundle.days.some((d) => holidayByDate.has(d.key));
-      const fair = useUserFairness
-        ? holidayState
-        : { justice, weekly, lastAssignedDate };
+      const fair = useUserFairness ? holidayState : groupFair;
       const fairPool = useUserFairness ? holidayPool : people;
       const assign = (personId, day) => {
         assignments.push({ date: day.key, personId });
+        const category = categorizeDay(day.key, holidayByDate);
         recordAssignment(
           fair.justice,
+          fair.cats,
           fair.weekly,
           fair.lastAssignedDate,
           personId,
           day.weekKey,
           day.date,
+          category,
         );
         // A holiday share taken by a group member also uses up that group's
         // weekly slot, so the group can't be handed a second shift that week.
@@ -456,11 +529,13 @@ export function distributeShifts({
         if (repId != null && repId !== personId) {
           recordAssignment(
             justice,
+            cats,
             weekly,
             lastAssignedDate,
             repId,
             day.weekKey,
             day.date,
+            category,
           );
         }
       };
@@ -493,12 +568,12 @@ export function distributeShifts({
             let chosen = anchorFits ? anchorPerson : null;
             if (!chosen) {
               chosen = pickTogetherCandidate(
+                fair,
                 fairPool,
-                fair.justice,
-                fair.weekly,
                 today.weekKey,
                 excluded,
-                { lastAssignedDate: fair.lastAssignedDate, anchorDate: today.date },
+                "holidays",
+                { anchorDate: today.date },
               );
             }
             // Once everyone available already took a share, let the fairest
@@ -506,12 +581,12 @@ export function distributeShifts({
             // because more divisions were asked for than there are people.
             if (!chosen && holidayTried.size > 0) {
               chosen = pickTogetherCandidate(
+                fair,
                 fairPool,
-                fair.justice,
-                fair.weekly,
                 today.weekKey,
                 protectedOnDate(today.key),
-                { lastAssignedDate: fair.lastAssignedDate, anchorDate: today.date },
+                "holidays",
+                { anchorDate: today.date },
               );
             }
             if (!chosen) {
@@ -548,8 +623,7 @@ export function distributeShifts({
         // (see pickTogetherCandidate). Only fails if there's truly nobody.
         const chosen =
           anchorPerson ||
-          pickTogetherCandidate(fairPool, fair.justice, fair.weekly, segment.weekKey, togetherExcluded, {
-            lastAssignedDate: fair.lastAssignedDate,
+          pickTogetherCandidate(fair, fairPool, segment.weekKey, togetherExcluded, "weekends", {
             anchorDate: segmentAnchorDate,
           });
 
@@ -588,10 +662,15 @@ export function distributeShifts({
 
         const chosen = anchorUsable
           ? anchorPerson
-          : pickCandidate(people, justice, weekly, segment.weekKey, 1, excludeIds, {
-              lastAssignedDate,
-              anchorDate: anchorDay.date,
-            });
+          : pickCandidate(
+              groupFair,
+              people,
+              segment.weekKey,
+              1,
+              excludeIds,
+              categorizeDay(anchorDay.key, holidayByDate),
+              { anchorDate: anchorDay.date },
+            );
 
         if (!chosen) break;
 
@@ -608,7 +687,16 @@ export function distributeShifts({
         const toAssign = remaining.slice(0, take);
         toAssign.forEach((d) => {
           assignments.push({ date: d.key, personId: chosen.serial_id });
-          recordAssignment(justice, weekly, lastAssignedDate, chosen.serial_id, segment.weekKey, d.date);
+          recordAssignment(
+            justice,
+            cats,
+            weekly,
+            lastAssignedDate,
+            chosen.serial_id,
+            segment.weekKey,
+            d.date,
+            categorizeDay(d.key, holidayByDate),
+          );
         });
         remaining = remaining.slice(take);
         tried.add(chosen.serial_id);

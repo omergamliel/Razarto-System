@@ -121,6 +121,7 @@ export default function FairnessMatrixModal({
           people,
           currentUser,
           shiftGroups,
+          activeOnly: t.id === "holidays",
         }),
       ]),
     );

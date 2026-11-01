@@ -57,7 +57,7 @@ export default function DateFieldIL({
     <div
       dir="ltr"
       className={cn(
-        "flex items-center gap-1 rounded-xl border border-gray-200 bg-white pr-3",
+        "flex items-center gap-1 rounded-xl border border-gray-200 bg-white px-3",
         className,
       )}
     >
@@ -74,7 +74,7 @@ export default function DateFieldIL({
         }}
         placeholder={placeholder}
         inputMode="numeric"
-        className="h-10 w-full min-w-0 bg-transparent text-sm text-gray-800 outline-none placeholder:text-gray-400"
+        className="h-10 w-full min-w-0 bg-transparent text-left text-sm tabular-nums text-gray-800 outline-none placeholder:text-gray-400"
       />
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
