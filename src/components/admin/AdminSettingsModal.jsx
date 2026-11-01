@@ -56,13 +56,11 @@ import {
   LOG_TYPE_OPTIONS,
   DEFAULT_GROUP_SYMBOLS,
 } from "@/components/admin/adminConstants";
+import DateFieldIL from "@/components/DateFieldIL";
 
-// A native <input type="date"> keeps the OS/browser date picker (calendar
-// icon, click-to-pick, keyboard entry) — only its DISPLAYED format is
-// locale-dependent, which is what made it show up as mm/dd/yyyy for some
-// users. Setting lang="en-GB" on the input forces the dd/mm/yyyy display
-// Israeli users expect, in every Chromium/Firefox browser, while .value
-// keeps emitting/accepting the same 'yyyy-MM-dd' string as before.
+// Admin date fields all go through the shared DateFieldIL, which always shows
+// dd/MM/yyyy (with the calendar picker) while emitting the same 'yyyy-MM-dd'
+// strings the rest of the app expects.
 // Display an ISO 'yyyy-MM-dd' string as dd/MM/yyyy (the Israeli format), without
 // touching the underlying value. Returns the input unchanged if it isn't ISO.
 function formatILDate(iso) {
@@ -72,14 +70,7 @@ function formatILDate(iso) {
 
 function DateInputIL({ value, onChange, className = "" }) {
   return (
-    <Input
-      type="date"
-      lang="en-GB"
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      dir="ltr"
-      className={className}
-    />
+    <DateFieldIL value={value} onChange={onChange} className={className} />
   );
 }
 
