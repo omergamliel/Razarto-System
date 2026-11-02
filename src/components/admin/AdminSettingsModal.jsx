@@ -5,6 +5,13 @@ import { buildHolidayUserPool } from "./distributionHolidayPool";
 import { deleteShiftsInRange } from "@/lib/shiftDeletion";
 import { createAssignmentForShift, resolveOwnerId, syncAssignmentOwner, WHATSAPP_TEMPLATES } from "../calendar/whatsappTemplates";
 import HolidaysSection from "./HolidaysSection";
+import DeleteShiftsRangeSection from "./DeleteShiftsRangeSection";
+import ConsiderationThresholdSection from "./ConsiderationThresholdSection";
+import {
+  holidayDefinitions,
+  resolveHolidayRanges,
+  yearsOfRange,
+} from "@/lib/holidayRanges";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X, Menu, Search, Filter, MoreVertical, Edit2, Trash2, ArrowLeftRight,
@@ -908,8 +915,8 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
     [rawShiftsForDistribution, allCoveragesForOwnership],
   );
 
-  // Holidays come from the Holiday entity (the "חגים" section of this tab):
-  // both the chag dates and how many divisions each chag splits into are data.
+  // Holiday DEFINITIONS from the "חגים" section: name + divisions, no dates —
+  // the chag dates are resolved from the Hebrew calendar per distributed range.
   const { data: distributionHolidays = [] } = useQuery({
     queryKey: ["holidays"],
     queryFn: () => base44.entities.Holiday.list(),
@@ -1612,27 +1619,25 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         });
       }
 
-      // Holidays are divided between PEOPLE, not between group slots: alongside
-      // the group representatives that ordinary days are handed out to, the
-      // algorithm gets a per-user pool (every RR/Manager member of an active
-      // group, with their own constraints and switch/deactivate windows) and
-      // ranks holiday shares by each user's own shift count.
+      // Holidays are divided between PEOPLE: alongside the group
+      // representatives, the algorithm gets a per-user holiday pool.
       const holidayUsers = buildHolidayUserPool({
-        groups: activeGroupBySymbol,
-        members: membersBySymbol,
-        rawProtected,
-        shifts: allShiftsForDistribution,
-        startDate,
-        endDate,
-        grace,
+        groups: activeGroupBySymbol, members: membersBySymbol, rawProtected,
+        shifts: allShiftsForDistribution, startDate, endDate, grace,
       });
+
+      // The definitions carry no dates — resolve this range's chag dates.
+      const resolvedHolidays = await resolveHolidayRanges(
+        holidayDefinitions(distributionHolidays),
+        yearsOfRange(startDate, endDate),
+      );
 
       const result = distributeShifts({
         people: reps,
         existingShifts: remappedShifts,
         startDate,
         endDate,
-        holidays: distributionHolidays,
+        holidays: resolvedHolidays,
         holidayUsers,
         protectedDates,
         priorJustice,
@@ -3143,13 +3148,13 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                       מפזר משמרות רק על ימים פנויים בטווח שנבחר, בלי לגעת
                       במשמרות קיימות: משמרת אחת מוקצית לכל אדם בשבוע
                       (א'-ש'); יוצא דופן הוא צירוף שישי-שבת, שמוקצה תמיד יחד לאותו אדם.
-                      החגים נקבעים לפי רשימת החגים שלהלן: כל חג נכנס כטווח
-                      התאריכים שלו, ולפי מספר ה"חלוקות" שלו הוא מתחלק בין אנשים
-                      שונים (1 = כל החג נשאר אצל אותו אדם). חלקי החג מחולקים בין
-                      המשתמשים לפי מספר המשמרות שכל אחד צבר בטווח, בנפרד מחלוקת
-                      המשמרות הרגילה. הפיזור נשמר נוח ולא יום אחרי יום בטעות,
-                      והבחירה מתבססת על טבלת "צדק" — עדיפות לפי מספר המשמרות
-                      הנמוך ביותר.
+                      החגים נקבעים לפי רשימת החגים שלהלן, שאינה תלויה בתאריכים:
+                      כל חג מוגדר לפי שמו בלוח העברי ולפי מספר ה"חלוקות" שלו (1 =
+                      כל החג נשאר אצל אותו אדם), והתאריכים נגזרים מהלוח העברי בכל
+                      שנה מחדש. חלקי החג מחולקים בין המשתמשים לפי מספר המשמרות
+                      שכל אחד צבר בטווח. הפיזור נשמר נוח ולא יום אחרי יום בטעות,
+                      והבחירה מתבססת על טבלת "צדק" — איזון לפי סוג היום וניקוד
+                      מאמץ, כדי שמי שקיבל חגים וסופ"שים יקבל פחות ימים רגילים.
                     </p>
                   </div>
                   <Scale className="w-5 h-5 text-blue-500 shrink-0" />
@@ -3242,7 +3247,7 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                   )}
                 </Button>
               </div>
-              <HolidaysSection DateInput={DateInputIL} />
+              <HolidaysSection />
 
               <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
                 <div className="flex items-center justify-between mb-4">
@@ -3290,67 +3295,14 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                 </div>
               </div>
 
-              <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <p className="text-sm font-semibold text-gray-800">
-                      מחיקת משמרות בטווח תאריכים
-                    </p>
-                    <p className="text-xs text-gray-500 max-w-xl">
-                      מוחק לצמיתות את כל המשמרות בטווח שנבחר (כולל שני
-                      התאריכים). שימושי לניקוי טווח לפני הרצה מחדש של חלוקה
-                      הוגנת. פעולה זו אינה הפיכה.
-                    </p>
-                  </div>
-                  <Trash2 className="w-5 h-5 text-red-500 shrink-0" />
-                </div>
-
-                <div
-                  className="grid grid-cols-1 md:grid-cols-2 gap-3"
-                  dir="rtl"
-                >
-                  <div className="grid gap-1">
-                    <Label className="text-sm text-gray-700">תאריך התחלה</Label>
-                    <DateInputIL
-                      value={deleteShiftsRange.startDate}
-                      onChange={(iso) =>
-                        setDeleteShiftsRange((prev) => ({
-                          ...prev,
-                          startDate: iso,
-                        }))
-                      }
-                      className="rounded-xl"
-                    />
-                  </div>
-                  <div className="grid gap-1">
-                    <Label className="text-sm text-gray-700">תאריך סיום</Label>
-                    <DateInputIL
-                      value={deleteShiftsRange.endDate}
-                      onChange={(iso) =>
-                        setDeleteShiftsRange((prev) => ({
-                          ...prev,
-                          endDate: iso,
-                        }))
-                      }
-                      className="rounded-xl"
-                    />
-                  </div>
-                </div>
-
-                {deleteShiftsError && (
-                  <p className="mt-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-center">
-                    {deleteShiftsError}
-                  </p>
-                )}
-
-                <Button
-                  onClick={handleRequestDeleteShiftsRange}
-                  variant="destructive"
-                  className="w-full md:w-auto mt-4 h-11 rounded-xl gap-2"
-                >
-                  <Trash2 className="w-4 h-4" /> מחק משמרות בטווח
-                </Button>
-              </div>
+              <DeleteShiftsRangeSection
+                range={deleteShiftsRange}
+                onChange={(patch) =>
+                  setDeleteShiftsRange((prev) => ({ ...prev, ...patch }))
+                }
+                error={deleteShiftsError}
+                onRequest={handleRequestDeleteShiftsRange}
+              />
 
               <div className="bg-white p-4 rounded-2xl border border-gray-100 shadow-sm">
                 <div className="flex items-center justify-between mb-4">
@@ -3499,41 +3451,12 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
 
           {activeTab === "consideration" && (
             <div className="space-y-4 md:space-y-6 overflow-y-auto">
-              <div className="bg-white p-4 md:p-6 rounded-2xl border border-gray-100 shadow-sm max-w-xl">
-                <div className="flex items-center gap-2 mb-2">
-                  <Ban className="w-5 h-5 text-indigo-500" />
-                  <h3 className="font-bold text-gray-800">הגדרות אילוצים</h3>
-                </div>
-                <p className="text-sm text-gray-500 leading-relaxed mb-4">
-                  סף האילוצים החודשי (K). משתמשים רשאים להגדיר כמה אילוצים שירצו,
-                  והם נלקחים בחשבון בחלוקת המשמרות מיד וללא צורך באישור. כאשר משתמש
-                  חורג מ-K אילוצים בחודש בודד, המנהלים מקבלים על כך התראה (בלשונית
-                  זו ובסרגל ההודעות) כדי לבדוק את החריגה ולמחוק אילוצים במידת הצורך.
-                </p>
-                <div className="flex items-end gap-3">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs text-gray-500">
-                      סף אילוצים חודשי (K)
-                    </label>
-                    <input
-                      type="number"
-                      min="1"
-                      step="1"
-                      value={considerationMax}
-                      onChange={(e) => setConsiderationMax(e.target.value)}
-                      className="rounded-xl border border-gray-200 px-3 py-2 text-sm bg-white w-32"
-                      dir="ltr"
-                    />
-                  </div>
-                  <Button
-                    onClick={() => saveConsiderationMutation.mutate()}
-                    disabled={saveConsiderationMutation.isPending}
-                    className="rounded-xl h-10 bg-indigo-600 hover:bg-indigo-700 text-white"
-                  >
-                    {saveConsiderationMutation.isPending ? "שומר..." : "שמירה"}
-                  </Button>
-                </div>
-              </div>
+              <ConsiderationThresholdSection
+                value={considerationMax}
+                onChange={setConsiderationMax}
+                onSave={() => saveConsiderationMutation.mutate()}
+                isSaving={saveConsiderationMutation.isPending}
+              />
             </div>
           )}
 

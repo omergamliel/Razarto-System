@@ -16,6 +16,11 @@ import {
   holidayDateSet,
 } from "./fairnessCategories";
 import {
+  holidayDefinitions,
+  resolveHolidayRanges,
+  yearsOfRange,
+} from "@/lib/holidayRanges";
+import {
   format,
   startOfMonth,
   endOfMonth,
@@ -71,11 +76,21 @@ export default function FairnessMatrixModal({
     enabled: isOpen,
   });
 
-  // Chag ranges — a day inside one is counted as a holiday day.
-  const { data: holidays = [] } = useQuery({
-    queryKey: ["holidays"],
-    queryFn: () => base44.entities.Holiday.list(),
-    enabled: isOpen,
+  // Chag ranges — a day inside one is counted as a holiday day. The Holiday
+  // list holds the chag names and their splits only, so the dates of the
+  // selected range's years are resolved from the Hebrew calendar.
+  const rangeYears = useMemo(
+    () => yearsOfRange(startDate, endDate),
+    [startDate, endDate],
+  );
+  const { data: holidayRanges = [] } = useQuery({
+    queryKey: ["holiday-ranges", rangeYears.join(",")],
+    queryFn: async () =>
+      resolveHolidayRanges(
+        holidayDefinitions(await base44.entities.Holiday.list()),
+        rangeYears,
+      ),
+    enabled: isOpen && rangeYears.length > 0,
   });
 
   const isLoading = isShiftsLoading || isPeopleLoading;
@@ -90,7 +105,7 @@ export default function FairnessMatrixModal({
     // Every authorized person is part of the fairness picture. Who actually
     // takes shifts is governed by the ShiftGroup active-member rule.
     const serialIds = new Set(people.map((p) => p.serial_id));
-    const holidayDates = holidayDateSet(holidays);
+    const holidayDates = holidayDateSet(holidayRanges);
 
     // The rota has exactly one shift per calendar day, so a day must be counted
     // once. Guard against duplicate Shift rows for the same date (which would
@@ -129,7 +144,7 @@ export default function FairnessMatrixModal({
   }, [
     shifts,
     people,
-    holidays,
+    holidayRanges,
     coverages,
     shiftGroups,
     startDate,
