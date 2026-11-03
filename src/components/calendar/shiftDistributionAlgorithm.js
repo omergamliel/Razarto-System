@@ -463,6 +463,39 @@ export function splitCholHamoed(keys) {
   return parts;
 }
 
+// Nobody works more than this many chag days in a row. A longer share is cut
+// into another share, so a chag is spread across people instead of landing as
+// one long stretch. Friday+Saturday still stay together: a cut is never placed
+// between a Friday and the Saturday after it.
+export const MAX_SHARE_DAYS = 2;
+
+/**
+ * Cuts every share longer than `maxDays` into shares of at most that many
+ * consecutive days, never cutting between a Friday and the Saturday after it.
+ *
+ * @param {string[][]} parts - shares of 'yyyy-MM-dd' keys, in order
+ * @returns {string[][]}
+ */
+export function capShareLength(parts, maxDays = MAX_SHARE_DAYS) {
+  const out = [];
+  (parts || []).forEach((part) => {
+    const keys = part || [];
+    let i = 0;
+    while (i < keys.length) {
+      let take = Math.min(maxDays, keys.length - i);
+      while (take > 1 && i + take < keys.length) {
+        const last = parseDateKey(keys[i + take - 1]);
+        const next = parseDateKey(keys[i + take]);
+        if (last.getDay() === 5 && next.getDay() === 6) take -= 1;
+        else break;
+      }
+      out.push(keys.slice(i, i + take));
+      i += take;
+    }
+  });
+  return out.filter((part) => part.length > 0);
+}
+
 /**
  * Keeps a weekend inside one chag share (rules b/c). When a share boundary
  * falls between a Friday and the Saturday right after it — e.g. a two-day
@@ -775,7 +808,12 @@ export function distributeShifts({
           breaks: [...breaks].filter((b) => keys.includes(b)),
         });
       });
-      holidayPartSizes = keepWeekendsTogether(parts).map((part) => part.length);
+      // The weekend merge runs first (a Friday keeps its Saturday), then every
+      // share that grew past MAX_SHARE_DAYS is cut again — never between that
+      // Friday and Saturday — so a chag never hands one person a long stretch.
+      holidayPartSizes = capShareLength(keepWeekendsTogether(parts)).map(
+        (part) => part.length,
+      );
     }
     let holidayPartIndex = 0;
     let holidayPartLeft = 0;
