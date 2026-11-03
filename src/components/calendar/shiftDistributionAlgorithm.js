@@ -1,5 +1,6 @@
 import { addDays, differenceInCalendarDays, format, startOfWeek } from "date-fns";
 import { splitHolidayDays } from "@/lib/holidayDivisions";
+import { refineSpacing } from "@/components/calendar/spacingRefinement";
 
 // No one may be assigned more than this many shifts within a single
 // (Sunday-Saturday) calendar week — tasks.txt rule (a). One shift per week.
@@ -575,6 +576,7 @@ export function distributeShifts({
   protectedDates = new Map(),
   priorJustice = new Map(),
   history = null,
+  refine = true,
 }) {
   const holidayByDate = new Set(holidayDates);
   const divisionByDate = new Map(holidayDivisions);
@@ -700,6 +702,16 @@ export function distributeShifts({
     } else {
       current = { kind: day.kind, days: [day] };
       bundles.push(current);
+    }
+  });
+
+  // Dates that belong to a bundle holding a chag: those are staffed from the
+  // per-user pool (see the holiday branch below), and they are needed again
+  // when the fairness tables are rebuilt after spacing refinement.
+  const holidayBundleKeys = new Set();
+  bundles.forEach((bundle) => {
+    if (bundle.days.some((d) => holidayByDate.has(d.key))) {
+      bundle.days.forEach((d) => holidayBundleKeys.add(d.key));
     }
   });
 
@@ -984,6 +996,57 @@ export function distributeShifts({
     });
   });
 
+  // Spacing refinement: the greedy pass decides day by day, with spacing only
+  // as a soft tiebreaker, so it can still leave one person with two weekends (or
+  // two chag shares) in back-to-back weeks. Its result is kept as the seed and
+  // the blocks are moved/swapped a few times to even out the gaps per kind.
+  const refined = refine
+    ? refineSpacing(assignments, {
+        bundles,
+        people,
+        holidayPool,
+        holidayByDate,
+        protectedDates,
+        holidayProtectedDates,
+        startDate,
+        endDate,
+      })
+    : null;
+  const finalAssignments = refined ? refined.assignments : assignments;
+
+  // Rebuild the fairness tables from what was actually handed out, so they
+  // describe the refined calendar rather than the greedy one. The history seed
+  // is re-applied on top, exactly as before.
+  const repOf = (id) => holidayGroupRepOf.get(id) ?? id;
+  const finalGroupFair = initState(
+    people,
+    inRangeShifts.concat(
+      finalAssignments.map((a) => ({ original_user_id: repOf(a.personId), start_date: a.date })),
+    ),
+    priorJustice,
+    holidayByDate,
+  );
+  applyHistory(finalGroupFair, people, history, startDate, holidayByDate, (id) =>
+    holidayGroupRepOf.get(id),
+  );
+  const finalHolidayState = holidayState
+    ? initState(
+        holidayPool,
+        (holidayUsers.existingShifts || existingShifts || [])
+          .filter((s) => s?.start_date && s.start_date >= startDate && s.start_date <= endDate)
+          .concat(
+            finalAssignments
+              .filter((a) => holidayBundleKeys.has(a.date))
+              .map((a) => ({ original_user_id: a.personId, start_date: a.date })),
+          ),
+        new Map(),
+        holidayByDate,
+      )
+    : null;
+  if (finalHolidayState) {
+    applyHistory(finalHolidayState, holidayPool, holidayUsers.history, startDate, holidayByDate);
+  }
+
   const round2 = (x) => Math.round(x * 100) / 100;
   const table = (fair, pool, prior) =>
     pool
@@ -1009,10 +1072,11 @@ export function distributeShifts({
       .sort((a, b) => a.balance - b.balance);
 
   return {
-    assignments,
+    assignments: finalAssignments,
     skipped,
     relaxations,
-    justiceTable: table(groupFair, people, priorJustice),
-    holidayTable: holidayState ? table(holidayState, holidayPool, new Map()) : null,
+    justiceTable: table(finalGroupFair, people, priorJustice),
+    holidayTable: finalHolidayState ? table(finalHolidayState, holidayPool, new Map()) : null,
+    spacing: refined ? refined.stats : null,
   };
 }
