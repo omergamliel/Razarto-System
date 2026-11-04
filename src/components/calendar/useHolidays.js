@@ -104,7 +104,7 @@ const baseHolidayName = (label = "") =>
 // name — and therefore to one holiday row covering all of its days.
 // The eve of a chag belongs to the chag itself: "ערב פסח" is named "פסח", so the
 // eve day joins the chag's range instead of becoming a holiday of its own.
-const canonicalHolidayName = (label = "") => {
+export const canonicalHolidayName = (label = "") => {
   const base = label.split("(")[0].split(":")[0].trim();
   return baseHolidayName(base.replace(/^ערב\s+/, "")) || base;
 };
@@ -121,17 +121,23 @@ const isNextCalendarDay = (dateStr, nextStr) =>
 // span (פסח from its first day through its last, חנוכה as a single "חנוכה" row),
 // and how many people it is shared between is the row's `divisions` — not
 // something the importer decides. Excluded/obscure hebcal entries are skipped.
-export async function fetchHolidayGroupsForYear(year) {
+// `canonical: false` keeps each calendar entry under its own name ("סוכות ב׳
+// (חוה״מ)", "ערב פסח") instead of collapsing a whole chag onto one name, so
+// the admin list can show the individual entries and group them by hand.
+export async function fetchHolidayGroupsForYear(year, { canonical = true } = {}) {
   const items = await fetchHolidaysForYear(year);
   const seen = new Set();
   const days = items
     .filter((item) => item?.date && !isExcludedHoliday(item.title))
-    .map((item) => ({
-      date: item.date.slice(0, 10),
-      name: canonicalHolidayName(
-        (item.hebrew || item.title || "").replace(/\s*\d{4}\s*$/, "").trim(),
-      ),
-    }))
+    .map((item) => {
+      const label = (item.hebrew || item.title || "")
+        .replace(/\s*\d{4}\s*$/, "")
+        .trim();
+      return {
+        date: item.date.slice(0, 10),
+        name: canonical ? canonicalHolidayName(label) : label,
+      };
+    })
     .filter((day) => {
       const key = `${day.name}|${day.date}`;
       if (!day.name || seen.has(key)) return false;
@@ -158,10 +164,12 @@ export async function fetchHolidayGroupsForYear(year) {
 
 // The chag ranges of a whole span of years at once — the holiday list is not
 // tied to any single year, so a span can be brought in with one action.
-export async function fetchHolidayGroupsForYears(years = []) {
+export async function fetchHolidayGroupsForYears(years = [], options = {}) {
   const uniqueYears = [...new Set(years)].sort();
   if (uniqueYears.length === 0) return [];
-  const perYear = await Promise.all(uniqueYears.map(fetchHolidayGroupsForYear));
+  const perYear = await Promise.all(
+    uniqueYears.map((year) => fetchHolidayGroupsForYear(year, options)),
+  );
   const seen = new Set();
   return perYear.flat().filter((group) => {
     const key = `${group.name}|${group.start_date}`;

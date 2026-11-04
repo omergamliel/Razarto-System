@@ -309,12 +309,11 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
   });
   const [distributionResult, setDistributionResult] = useState(null);
   const [distributionError, setDistributionError] = useState("");
-  // When on (default), the fairness table is seeded with each group's shift
-  // count from the 6 months BEFORE the range start, so a group that already
-  // worked a lot recently is deprioritized. Counted by group (folded onto the
-  // representative), not by individual member. Off = fairness is decided purely
-  // within the selected range.
-  const [considerHistory, setConsiderHistory] = useState(true);
+  // How many months BEFORE the range start seed the fairness table (default 6),
+  // so a group that already worked a lot recently is deprioritized. Counted by
+  // group (folded onto the representative), not by individual member. 0 = the
+  // window is off and fairness is decided purely within the selected range.
+  const [historyMonths, setHistoryMonths] = useState("6");
   // Grace period (days) an incoming member is left free of shifts after a
   // scheduled group switch — honored by distribution. Persisted as the
   // AppSettings "switch_grace" row; defaults to 30.
@@ -1601,14 +1600,18 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
           : s;
       });
 
-      // Historical fairness baseline (toggle): when enabled, count each group's
-      // shifts in the 6 months BEFORE the range start and seed the fairness table
-      // with them, so a group that worked a lot recently is deprioritized. Counted
-      // BY GROUP — every shift is attributed to its owner's group representative,
-      // regardless of which member actually worked it — never per individual user.
+      // Historical fairness baseline: count each group's shifts in the chosen
+      // number of months BEFORE the range start (0 = off) and seed the fairness
+      // table with them, so a group that worked a lot recently is deprioritized.
+      // Counted BY GROUP — every shift is attributed to its owner's group
+      // representative, regardless of which member actually worked it.
+      const historyWindow = Math.max(0, Math.floor(Number(historyMonths)) || 0);
       const priorJustice = new Map();
-      if (considerHistory) {
-        const historyStart = format(subMonths(new Date(startDate), 6), "yyyy-MM-dd");
+      if (historyWindow > 0) {
+        const historyStart = format(
+          subMonths(new Date(startDate), historyWindow),
+          "yyyy-MM-dd",
+        );
         allShiftsForDistribution.forEach((s) => {
           if (!s.start_date) return;
           if (s.start_date >= startDate || s.start_date < historyStart) return;
@@ -3148,11 +3151,11 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                       מפזר משמרות רק על ימים פנויים בטווח שנבחר, בלי לגעת
                       במשמרות קיימות: משמרת אחת מוקצית לכל אדם בשבוע
                       (א'-ש'); יוצא דופן הוא צירוף שישי-שבת, שמוקצה תמיד יחד לאותו אדם.
-                      החגים נקבעים לפי רשימת החגים שלהלן, שאינה תלויה בתאריכים:
-                      כל חג מוגדר לפי שמו בלוח העברי ולפי מספר ה"חלוקות" שלו (1 =
-                      כל החג נשאר אצל אותו אדם), והתאריכים נגזרים מהלוח העברי בכל
-                      שנה מחדש. חלקי החג מחולקים בין המשתמשים לפי מספר המשמרות
-                      שכל אחד צבר בטווח. הפיזור נשמר נוח ולא יום אחרי יום בטעות,
+                      החגים נקבעים לפי הקבוצות שברשימת החגים שלהלן: כל קבוצה
+                      (שנוצרת מגרירת חגים אחד על השני) נחשבת לגוש אחד עם מספר
+                      ה"חלוקות" שלה (1 = כל הקבוצה נשארת אצל אותו אדם), והתאריכים
+                      נגזרים מהלוח העברי בכל שנה מחדש. חלקי הקבוצה מחולקים בין
+                      המשתמשים לפי מספר המשמרות שכל אחד צבר בטווח. הפיזור נשמר נוח ולא יום אחרי יום בטעות,
                       והבחירה מתבססת על טבלת "צדק" — איזון לפי סוג היום וניקוד
                       מאמץ, כדי שמי שקיבל חגים וסופ"שים יקבל פחות ימים רגילים.
                     </p>
@@ -3192,36 +3195,33 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
                   </div>
                 </div>
 
-                <div className="mt-4 flex items-start justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-3">
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-3">
                   <div className="flex items-start gap-2">
                     <History className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
                     <div>
                       <p className="text-sm font-medium text-gray-800">
-                        התחשבות ב-6 החודשים האחרונים
+                        התחשבות בחודשים האחרונים
                       </p>
                       <p className="text-xs text-gray-500 max-w-md">
-                        כאשר מופעל, החלוקה מתחשבת במספר המשמרות שכל קבוצה צברה
-                        ב-6 החודשים שקדמו לתאריך ההתחלה (לפי קבוצות, לא לפי
-                        משתמשים), כדי לאזן את העומס לאורך זמן. כבוי — הצדק מחושב
-                        רק בטווח שנבחר.
+                        החלוקה מתחשבת במספר המשמרות שכל קבוצה צברה במספר
+                        החודשים שתבחרו לפני תאריך ההתחלה (לפי קבוצות, לא לפי
+                        משתמשים), כדי לאזן את העומס לאורך זמן. 0 = ללא התחשבות
+                        בהיסטוריה — הצדק מחושב רק בטווח שנבחר. ברירת המחדל: 6.
                       </p>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={considerHistory}
-                    onClick={() => setConsiderHistory((prev) => !prev)}
-                    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
-                      considerHistory ? "bg-blue-600" : "bg-gray-300"
-                    }`}
-                  >
-                    <span
-                      className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
-                        considerHistory ? "-translate-x-5" : "-translate-x-1"
-                      }`}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={historyMonths}
+                      onChange={(e) => setHistoryMonths(e.target.value)}
+                      className="rounded-xl w-24 h-9"
+                      aria-label="מספר חודשי ההיסטוריה"
                     />
-                  </button>
+                    <span className="text-xs text-gray-500">חודשים</span>
+                  </div>
                 </div>
 
                 {distributionError && (

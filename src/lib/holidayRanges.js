@@ -1,12 +1,16 @@
-import { fetchHolidayGroupsForYears } from "@/components/calendar/useHolidays";
+import {
+  canonicalHolidayName,
+  fetchHolidayGroupsForYears,
+} from "@/components/calendar/useHolidays";
 import { defaultDivisions, holidayDayKeys } from "@/lib/holidayDivisions";
 
 const normalizeName = (name = "") => String(name).trim();
+const toDateKey = (value) => String(value || "").slice(0, 10);
 
-// The Holiday entity stores DEFINITIONS, not dates: a chag's name as it appears
-// in the Hebrew calendar plus how its shifts are divided. This module turns a
-// definition into the actual date ranges of a given span of years, so one row
-// keeps working year after year.
+// The Holiday entity stores DEFINITIONS, not one row per year: a chag entry's
+// name as it appears in the Hebrew calendar plus how its shifts are divided.
+// This module turns those definitions into the actual date ranges of a given
+// span of years, so one row keeps working year after year.
 
 // Every year touched by a date range, so the Hebrew calendar is asked for
 // exactly the years that range needs.
@@ -38,41 +42,117 @@ export function holidayDefinitions(holidays = []) {
   return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name, "he"));
 }
 
-// Resolves definitions into dated holiday records ({name, start_date,
-// end_date, divisions, division_breaks}) for the given years — the same shape
-// the distribution and the fairness table already work with. A definition whose
-// name the Hebrew calendar doesn't know is simply not resolved.
-export async function resolveHolidayRanges(definitions = [], years = []) {
-  const wanted = new Map();
-  (definitions || []).forEach((definition) => {
-    const name = normalizeName(definition?.name);
-    if (name) wanted.set(name, definition);
-  });
-  if (wanted.size === 0 || years.length === 0) return [];
+// The manual group a definition belongs to. A row that wasn't grouped stands
+// on its own, so its own name is its group.
+export function holidayGroupName(definition) {
+  return normalizeName(definition?.group_name) || normalizeName(definition?.name);
+}
 
-  const groups = await fetchHolidayGroupsForYears(years);
-  return groups
-    .map((group) => {
-      const definition = wanted.get(normalizeName(group.name));
-      if (!definition) return null;
-      const days = holidayDayKeys(group.start_date, group.end_date);
-      // Breaks are stored as day offsets, so they follow the chag into every
-      // year no matter which weekday it starts on.
-      const breaks = (definition.division_breaks || [])
-        .map((offset) => days[Number(offset)])
+// Sorted day keys → the date runs that are straight next to each other.
+export function contiguousRuns(keys = []) {
+  const runs = [];
+  (keys || []).forEach((key) => {
+    const last = runs[runs.length - 1];
+    const previous = last ? new Date(`${last.end_date}T00:00:00`) : null;
+    const day = new Date(`${key}T00:00:00`);
+    const consecutive =
+      previous && Math.round((day.getTime() - previous.getTime()) / 86400000) === 1;
+    if (consecutive) last.end_date = key;
+    else runs.push({ start_date: key, end_date: key });
+  });
+  return runs;
+}
+
+// An entry matches a definition by its own name, or — for a chag that is
+// still listed as one row — through its canonical name ("פסח" catches "פסח ד׳
+// (חוה״מ)" and "ערב פסח").
+const matchesEntry = (definitionName, entryName) =>
+  entryName === definitionName || canonicalHolidayName(entryName) === definitionName;
+
+// Every definition with the days it covers in `years`: the calendar entries
+// whose name matches it, plus the date it was added with. `entryNames` is the
+// list of individual entries a definition stands for — more than one means the
+// row is still a grouped chag that can be split.
+export async function resolveHolidayEntries(definitions = [], years = []) {
+  const rows = (definitions || []).filter((definition) => normalizeName(definition?.name));
+  if (rows.length === 0 || years.length === 0) return [];
+
+  const entries = await fetchHolidayGroupsForYears(years, { canonical: false });
+  const byDefinition = new Map(
+    rows.map((definition) => [
+      definition.id,
+      { definition, days: new Set(), entryNames: new Set() },
+    ]),
+  );
+
+  entries.forEach((entry) => {
+    const entryName = normalizeName(entry.name);
+    if (!entryName) return;
+    byDefinition.forEach((row) => {
+      if (!matchesEntry(normalizeName(row.definition.name), entryName)) return;
+      holidayDayKeys(entry.start_date, entry.end_date).forEach((key) => row.days.add(key));
+      row.entryNames.add(entryName);
+    });
+  });
+
+  return [...byDefinition.values()]
+    .map((row) => {
+      const own = toDateKey(row.definition.date);
+      if (own) row.days.add(own);
+      const days = [...row.days].sort();
+      return {
+        definition: row.definition,
+        entryNames: [...row.entryNames],
+        days,
+        runs: contiguousRuns(days),
+      };
+    })
+    .filter((row) => row.days.length > 0);
+}
+
+const configOf = (members = []) =>
+  members.find((member) => Number(member.definition.divisions) > 0)?.definition ||
+  members[0]?.definition ||
+  {};
+
+// Resolves definitions into dated holiday ranges ({name, start_date,
+// end_date, divisions, division_breaks}) for the given years — the same shape
+// the distribution and the fairness table already work with. Holidays grouped
+// by hand resolve as ONE range per contiguous stretch, named after the group,
+// so the group is what the distribution treats as a single block.
+export async function resolveHolidayRanges(definitions = [], years = []) {
+  const resolved = await resolveHolidayEntries(definitions, years);
+  const groups = new Map();
+  resolved.forEach((row) => {
+    const key = holidayGroupName(row.definition);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(row);
+  });
+
+  const ranges = [];
+  groups.forEach((members, name) => {
+    const config = configOf(members);
+    const days = [...new Set(members.flatMap((member) => member.days))].sort();
+    contiguousRuns(days).forEach((run) => {
+      const keys = holidayDayKeys(run.start_date, run.end_date);
+      // Breaks are stored as day offsets, so they follow the group into every
+      // year no matter which weekday its first day falls on.
+      const breaks = (config.division_breaks || [])
+        .map((offset) => keys[Number(offset)])
         .filter(Boolean);
       const divisions = Math.max(
         1,
-        Number(definition.divisions) ||
-          (breaks.length > 0 ? breaks.length + 1 : defaultDivisions(days.length)),
+        Number(config.divisions) ||
+          (breaks.length > 0 ? breaks.length + 1 : defaultDivisions(keys.length)),
       );
-      return {
-        name: group.name,
-        start_date: group.start_date,
-        end_date: group.end_date,
+      ranges.push({
+        name,
+        start_date: run.start_date,
+        end_date: run.end_date,
         divisions,
         division_breaks: breaks,
-      };
-    })
-    .filter(Boolean);
+      });
+    });
+  });
+  return ranges;
 }

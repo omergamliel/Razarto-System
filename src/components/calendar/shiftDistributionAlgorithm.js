@@ -614,6 +614,9 @@ export function distributeShifts({
   const holidayByDate = new Set(holidayDates);
   const divisionByDate = new Map(holidayDivisions);
   const breaksByDate = new Map();
+  // Which manual holiday group (the admin list's group name) a chag day
+  // belongs to — two different groups never merge into one block.
+  const groupByDate = new Map();
   (holidays || []).forEach((holiday) => {
     if (!holiday?.start_date) return;
     const first = parseDateKey(holiday.start_date);
@@ -622,6 +625,7 @@ export function distributeShifts({
     for (const day = first; day <= last; day.setDate(day.getDate() + 1)) {
       const key = toDateKey(day);
       holidayByDate.add(key);
+      groupByDate.set(key, String(holiday.name || ""));
       divisionByDate.set(key, Math.max(1, Number(holiday.divisions) || 1));
       const movedBreaks = (holiday.division_breaks || []).filter(Boolean);
       if (movedBreaks.length > 0) breaksByDate.set(key, movedBreaks);
@@ -690,6 +694,7 @@ export function distributeShifts({
       key,
       weekKey: getWeekKey(d),
       kind,
+      group: groupByDate.get(key) || null,
       existing: existingByDate.get(key) || null,
     });
   }
@@ -726,14 +731,24 @@ export function distributeShifts({
   const carryUserId = prevTogether ? (userOwners?.get(prevKey) ?? null) : null;
 
   // Group into bundles: consecutive days of the SAME kind chain into one
-  // bundle — except "regular" days, which always stay their own bundle.
+  // bundle — except "regular" days, which always stay their own bundle. A day
+  // that belongs to a manual holiday group never joins a bundle that already
+  // holds a DIFFERENT group, so each group is staffed as its own block (a
+  // weekend day carries no group of its own and stays with the chag next to it).
   const bundles = [];
   let current = null;
   days.forEach((day) => {
-    if (day.kind !== "regular" && current?.kind === day.kind) {
+    const nextToDay = current?.days[current.days.length - 1];
+    const sameGroup =
+      !nextToDay ||
+      !day.group ||
+      !current.holidayGroup ||
+      current.holidayGroup === day.group;
+    if (day.kind !== "regular" && current?.kind === day.kind && sameGroup) {
       current.days.push(day);
+      if (day.group && !current.holidayGroup) current.holidayGroup = day.group;
     } else {
-      current = { kind: day.kind, days: [day] };
+      current = { kind: day.kind, days: [day], holidayGroup: day.group || null };
       bundles.push(current);
     }
   });
