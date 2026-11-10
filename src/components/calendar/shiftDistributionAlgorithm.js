@@ -1,40 +1,51 @@
 import { addDays, differenceInCalendarDays, format, startOfWeek } from "date-fns";
-import { splitHolidayDays } from "@/lib/holidayDivisions";
+import {
+  MAX_SHARE_DAYS,
+  capShareLength,
+  keepWeekendsTogether,
+  splitCholHamoed,
+  splitHolidayDays,
+} from "@/lib/holidayDivisions";
 import { refineSpacing } from "@/components/calendar/spacingRefinement";
 
 // No one may be assigned more than this many shifts within a single
-// (Sunday-Saturday) calendar week — tasks.txt rule (a). One shift per week.
-// A togetherness block (Fri+Sat, or a chag + its erev — rules b/c) is the
-// deliberate exception: it still goes to one person as a single unit even
-// though it spans two days that fall in the same week.
+// (Sunday-Saturday) calendar week — rule (a). A togetherness block (Fri+Sat, or
+// a chag + its erev — rules b/c) is the deliberate exception: it still goes to
+// one person as a single unit even though it spans two days of the same week.
 const WEEKLY_CAP = 1;
 
 // Rule (e) — total-shifts regulation. When a slot is filled, candidates whose
-// total shift count is more than MAX_TOTAL_SPREAD above the lowest available
-// candidate are held back, and so is anyone who already reached their fair
-// quota for the range (ceil(days in range / people)). Both are relaxed only
-// when nobody inside them can take the slot.
+// total is more than MAX_TOTAL_SPREAD above the lowest are held back, and so is
+// anyone who already reached their quota for the range
+// (ceil(days in range / people)). Both are relaxed only when nobody inside them
+// can take the slot.
 const MAX_TOTAL_SPREAD = 1;
 
-// Rule (f) — spacing regulation per kind of day. If a kind of day occurs N
-// times in the range and P people share it, each person gets about N/P of
-// them, so the same person's occurrences should be about range/(N/P) days
-// apart. A candidate closer than SPACING_TOLERANCE of that ideal gap is held
-// back while someone better spaced is available.
+// Rule (f) — spacing regulation per kind of day: a candidate closer than
+// SPACING_TOLERANCE of the ideal gap of that kind is held back while someone
+// better spaced is available.
 const SPACING_TOLERANCE = 0.6;
 // Rule (d): two shifts closer than this (i.e. calendar-adjacent) are never
 // "comfortable".
 const MIN_GAP_ANY = 2;
 
-// Past shifts (the `history` option): shifts this many days before the range
-// start still count for spacing and the weekly cap, so whoever worked on
-// 31 Dec isn't handed 1 Jan. Older history only seeds the fairness counts.
+// Past shifts: shifts this many days before the range start still count for
+// spacing and the weekly cap, so whoever worked on 31 Dec isn't handed 1 Jan.
 const DEFAULT_LOOKBACK_DAYS = 42;
+
+// Thursdays and ordinary days are spread after the greedy pass by swapping
+// same-kind shifts (spreadWeekdayShifts). A gap of g days costs g^-POWER.
+const WEEKDAY_GAP_POWER = 3;
+const WEEKDAY_SPREAD_MAX_PASSES = 40;
+
+// Weekends: whole Fri+Sat blocks are swapped so each person's HEAVY shifts —
+// weekends and chag shares together — are spread evenly over the range.
+const WEEKEND_GAP_POWER = 3;
+const WEEKEND_SPREAD_MAX_PASSES = 40;
 const DAY_CATEGORIES = ["holidays", "weekends", "thursdays", "regular"];
 
 // Which spacing groups a newly assigned day is measured against.
-// "hard" = chags and weekends together, so whoever just took a chag isn't
-// handed a weekend right after it (and vice versa); "any" = every shift.
+// "hard" = chags and weekends together; "any" = every shift.
 const SPACING_GROUPS = {
   holidays: ["holidays", "hard", "any"],
   weekends: ["weekends", "hard", "any"],
@@ -49,27 +60,24 @@ const inSpacingGroup = (group, category) =>
 
 const toDateKey = (date) => format(date, "yyyy-MM-dd");
 
-// Parses 'yyyy-MM-dd' (or an ISO string starting with it) as LOCAL midnight,
-// so the weekday and week key never shift by a day across time zones.
+// Parses 'yyyy-MM-dd' (or an ISO string starting with it) as LOCAL midnight, so
+// the weekday and week key never shift by a day across time zones.
 const parseDateKey = (key) => new Date(`${String(key).slice(0, 10)}T00:00:00`);
 
 // A whole-day index (DST-safe) for fast gap arithmetic.
 const dayIndex = (date) =>
-  Math.round(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000);
+  Math.round(
+    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86400000,
+  );
 
-// Sunday-based week key, matching the week boundaries already used
-// elsewhere in the app (CalendarGrid's { weekStartsOn: 0 }).
+// Sunday-based week key, matching the week boundaries used elsewhere in the app.
 const getWeekKey = (date) => toDateKey(startOfWeek(date, { weekStartsOn: 0 }));
 
-// How heavy each kind of day is for the person working it. The policy order
-// (chag → weekend → Thursday → ordinary day) is also the order of effort, so
-// fairness is measured on weighted effort and not on a plain day count: two
-// people can hold the same number of shifts and still be very unequal if one
-// of them took the chags and the weekends.
+// How heavy each kind of day is for the person working it, so fairness is
+// measured on weighted effort and not on a plain day count.
 const CATEGORY_WEIGHT = { holidays: 3, weekends: 2.5, thursdays: 1.5, regular: 1 };
 
-// The fairness category of a day — a chag day wins over its weekday, matching
-// the tabs of טבלת צדק.
+// The fairness category of a day — a chag day wins over its weekday.
 const categorizeDay = (dateKey, holidayByDate) => {
   const key = String(dateKey).slice(0, 10);
   if (holidayByDate.has(key)) return "holidays";
@@ -111,19 +119,22 @@ function recordAssignment(fair, personId, weekKey, date, category) {
 }
 
 // Seeds the fairness ("justice") table, the per-day-type tallies, the per-week
-// shift counts, and every day each person already holds — all from shifts
-// that fall INSIDE [startDate, endDate] only. Only the justice count is seeded
-// with history from before the range (`priorJustice`); the quota, weekly cap
-// and spacing bookkeeping are about days INSIDE the range.
-function initState(people, inRangeShifts, priorJustice = new Map(), holidayByDate = new Set()) {
+// counts and every day each person already holds — all from shifts INSIDE
+// [startDate, endDate] only. Only the justice count is seeded with history
+// (`priorJustice`); quota, weekly cap and spacing are about this range.
+function initState(
+  people,
+  inRangeShifts,
+  priorJustice = new Map(),
+  holidayByDate = new Set(),
+) {
   const fair = {
     justice: new Map(),
     rangeCount: new Map(),
     cats: new Map(),
     weekly: new Map(),
     // personId -> [{ day, category }] — every assigned day, not just the latest,
-    // because bundles are staffed out of calendar order (chags first, then
-    // weekends, …) and the nearest neighbour can be before OR after a date.
+    // because bundles are staffed out of calendar order.
     assigned: new Map(),
     idealGaps: null,
     quota: null,
@@ -141,37 +152,55 @@ function initState(people, inRangeShifts, priorJustice = new Map(), holidayByDat
     if (!fair.justice.has(personId)) return; // not an eligible/tracked person
     const d = parseDateKey(s.start_date);
     if (Number.isNaN(d.getTime())) return;
-    recordAssignment(fair, personId, getWeekKey(d), d, categorizeDay(s.start_date, holidayByDate));
+    recordAssignment(
+      fair,
+      personId,
+      getWeekKey(d),
+      d,
+      categorizeDay(s.start_date, holidayByDate),
+    );
   });
 
   fair.pastRaw = new Map();
   fair.quotaAdj = new Map();
+  // Per-kind carry-over from history that counts ONLY in the fairness of that
+  // kind: personId -> { holidays: x, ... }.
+  fair.kindSeed = new Map();
   return fair;
 }
 
 /**
  * Seeds a fairness state with shifts from BEFORE the range (the `history`
- * option). Two modes:
- *   - "normalized" (default): each person is seeded with how far they are
- *     above or below their fair share of the past, per kind of day. The fair
- *     share is the pool's rate per active day × the days that person was
- *     active (from `activeFrom`, or the start of the window). Someone who
- *     joined yesterday starts at 0, neither owing nor owed, so a turnover of
- *     half the people doesn't dump every chag and weekend on the newcomers.
- *   - "raw": each person is seeded with their plain past counts, like
- *     `priorJustice`. Newcomers then look under-loaded and absorb shifts until
- *     they catch up with the veterans.
+ * option).
+ *
+ * mode "normalized" (default): each person is seeded with how far they are
+ * above or below their fair share of the past, per kind of day. Someone who
+ * joined yesterday starts at 0, neither owing nor owed.
+ * mode "raw": each person is seeded with their plain past counts.
+ *
+ * history.fairnessKinds:
+ *   - ["holidays"] (default): only chag fairness carries over.
+ *   - "all": every kind, the total, the load and the quota carry over.
+ *
  * Shifts within `lookbackDays` of the start are also recorded for spacing and
- * the weekly cap. People who are no longer in the pool are ignored, and a
- * shift owned by someone outside the pool is credited to `resolveId(owner)`
- * when that is in the pool (e.g. a group member → the group representative).
+ * the weekly cap, whatever fairnessKinds says.
  *
  * Returns the owner of each past date (used to carry a Fri+Sat or chag block
  * that the range start cuts in half), or null when there's no history.
  */
-function applyHistory(fair, pool, history, startDate, holidayByDate, resolveId = () => null) {
-  if (!history || !Array.isArray(history.shifts) || history.shifts.length === 0) return null;
+function applyHistory(
+  fair,
+  pool,
+  history,
+  startDate,
+  holidayByDate,
+  resolveId = () => null,
+) {
+  if (!history || !Array.isArray(history.shifts) || history.shifts.length === 0)
+    return null;
   const mode = history.mode === "raw" ? "raw" : "normalized";
+  const fairnessKinds = history.fairnessKinds ?? ["holidays"];
+  const allKinds = fairnessKinds === "all";
   const lookback = history.lookbackDays ?? DEFAULT_LOOKBACK_DAYS;
   const startIdx = dayIndex(parseDateKey(startDate));
   const ids = new Set(pool.map((p) => p.serial_id));
@@ -193,7 +222,9 @@ function applyHistory(fair, pool, history, startDate, holidayByDate, resolveId =
     const category = categorizeDay(key, holidayByDate);
     firstIdx = Math.min(firstIdx, idx);
     doneAll[category] += 1;
-    const id = ids.has(s.original_user_id) ? s.original_user_id : resolveId(s.original_user_id);
+    const id = ids.has(s.original_user_id)
+      ? s.original_user_id
+      : resolveId(s.original_user_id);
     if (!ids.has(id)) return;
     bumpCats(pastCats, id, category);
     owners.set(key, id);
@@ -229,26 +260,34 @@ function applyHistory(fair, pool, history, startDate, holidayByDate, resolveId =
     const cats = fair.cats.get(id);
     let seedTotal = 0;
     let rawTotal = 0;
+    const kindSeed = {};
     DAY_CATEGORIES.forEach((cat) => {
       const seed = mode === "raw" ? past[cat] : past[cat] - rate[cat] * days;
-      cats[cat] += seed;
-      cats.load += CATEGORY_WEIGHT[cat] * seed;
-      seedTotal += seed;
       rawTotal += past[cat];
+      if (allKinds) {
+        cats[cat] += seed;
+        cats.load += CATEGORY_WEIGHT[cat] * seed;
+        seedTotal += seed;
+      } else if (fairnessKinds.includes(cat)) {
+        // counts only when that kind of day is handed out (kindCount)
+        kindSeed[cat] = seed;
+      }
     });
-    fair.justice.set(id, (fair.justice.get(id) || 0) + seedTotal);
     fair.pastRaw.set(id, rawTotal);
-    // Someone owed shifts may go above the plain quota to catch up, and
-    // someone ahead stops earlier.
-    if (mode === "normalized") fair.quotaAdj.set(id, seedTotal);
+    fair.kindSeed.set(id, kindSeed);
+    if (allKinds) {
+      fair.justice.set(id, (fair.justice.get(id) || 0) + seedTotal);
+      // Someone owed shifts may go above the plain quota to catch up, and
+      // someone ahead stops earlier.
+      if (mode === "normalized") fair.quotaAdj.set(id, seedTotal);
+    }
   });
   return owners;
 }
 
 // Ideal per-person gap (in days) for each spacing group, for a pool of
 // `poolSize` people sharing the range. Occasions are counted in assignment
-// units: a weekend is one Fri+Sat block, a chag share is ~2 days (the default
-// חלוקות size).
+// units: a weekend is one Fri+Sat block, a chag share is ~2 days.
 function computeIdealGaps(days, poolSize, holidayByDate) {
   const totalDays = Math.max(1, days.length);
   const P = Math.max(1, poolSize);
@@ -302,8 +341,7 @@ const nearestGap = (fair, personId, dayIdxs, group) => {
 // How well a candidate is spaced for this kind of day:
 //   adjacent — would land calendar-adjacent to another of their shifts (rule d)
 //   spaced   — meets the minimum gap of every relevant group (rule f)
-//   penalty  — 0 when every gap is at least ideal, growing as gaps shrink; used
-//              as a soft tiebreaker so people rotate evenly within each kind.
+//   penalty  — 0 when every gap is at least ideal, growing as gaps shrink.
 function spacingFor(fair, personId, dayIdxs, category) {
   let penalty = 0;
   let spaced = true;
@@ -323,20 +361,20 @@ function spacingFor(fair, personId, dayIdxs, category) {
 const remainingCapacity = (weekly, personId, weekKey) =>
   WEEKLY_CAP - (weekly.get(personId)?.get(weekKey) || 0);
 
-// The count that must stay balanced for the kind of block being handed out:
-// chags against chags, weekends against weekends, Thursdays against Thursdays,
-// and an ordinary day against the overall number of shifts.
+// The count that must stay balanced for the kind of block being handed out.
+// A per-kind history carry-over (kindSeed) is added here only, so it weighs in
+// the fairness of that kind and nowhere else.
 const kindCount = (row, kind) => {
-  if (kind === "holidays") return row.cats.holidays;
-  if (kind === "weekends") return row.cats.weekends;
-  if (kind === "thursdays") return row.cats.thursdays;
+  const seed = row.kindSeed?.[kind] || 0;
+  if (kind === "holidays") return row.cats.holidays + seed;
+  if (kind === "weekends") return row.cats.weekends + seed;
+  if (kind === "thursdays") return row.cats.thursdays + seed;
   return row.count;
 };
 
 // Fairest first: the same kind of day balanced on its own, then the combined
-// chag+weekend burden (so whoever took the chags isn't handed the weekends
-// too), then spacing (whoever's last shift of this kind is furthest away),
-// then the weighted effort, then the plain shift count.
+// chag+weekend burden, then spacing, then the weighted effort, then the plain
+// shift count.
 const sortByFairness = (candidates, kind = "regular") =>
   candidates.sort(
     (a, b) =>
@@ -348,7 +386,14 @@ const sortByFairness = (candidates, kind = "regular") =>
       (a.person.full_name || "").localeCompare(b.person.full_name || ""),
   );
 
-const buildCandidateRows = (fair, people, weekKey, excludeIds, category, dayIdxs) =>
+const buildCandidateRows = (
+  fair,
+  people,
+  weekKey,
+  excludeIds,
+  category,
+  dayIdxs,
+) =>
   people
     .filter((p) => !excludeIds.has(p.serial_id))
     .map((p) => {
@@ -361,8 +406,12 @@ const buildCandidateRows = (fair, people, weekKey, excludeIds, category, dayIdxs
         quota:
           fair.quota == null
             ? null
-            : Math.max(1, Math.ceil(fair.quota - (fair.quotaAdj?.get(p.serial_id) || 0))),
+            : Math.max(
+                1,
+                Math.ceil(fair.quota - (fair.quotaAdj?.get(p.serial_id) || 0)),
+              ),
         cats,
+        kindSeed: fair.kindSeed?.get(p.serial_id) || null,
         load: cats.load,
         hard: cats.holidays + cats.weekends,
         ...spacingFor(fair, p.serial_id, dayIdxs, category),
@@ -370,13 +419,15 @@ const buildCandidateRows = (fair, people, weekKey, excludeIds, category, dayIdxs
     });
 
 // Rule (e): marks who is inside the total-shifts band — within
-// MAX_TOTAL_SPREAD of the lowest total among these candidates, and below the
-// range quota when the pool has one (adjusted per person by their history).
-// The band also covers the kind of day being handed out: a candidate is only
-// in band while they hold no more than one block (KIND_UNIT days) of that kind
-// above the lowest, so whoever has the fewest weekends (or chags, or
-// Thursdays) isn't passed over just because spacing prefers someone else.
-const KIND_UNIT = { holidays: 2, weekends: 2, thursdays: 1, regular: MAX_TOTAL_SPREAD };
+// MAX_TOTAL_SPREAD of the lowest total among these candidates, below the range
+// quota, and no more than one block (KIND_UNIT days) of the kind being handed
+// out above the lowest of that kind.
+const KIND_UNIT = {
+  holidays: 2,
+  weekends: 2,
+  thursdays: 1,
+  regular: MAX_TOTAL_SPREAD,
+};
 const markBand = (rows, kind = "regular") => {
   if (rows.length === 0) return rows;
   const minCount = Math.min(...rows.map((r) => r.count));
@@ -400,8 +451,8 @@ const TIERS = [
   () => true,
 ];
 
-// Which rules the chosen row breaks — reported back so the admin can see
-// where the distribution had to bend.
+// Which rules the chosen row breaks — reported back so the admin can see where
+// the distribution had to bend.
 const relaxedRules = (row) =>
   [
     !row.inBand && "total_band",
@@ -423,9 +474,17 @@ function pickByTiers(rows, kind) {
 
 // Picks the fairest eligible person who still has at least `minCapacity` free
 // slots in this week, under the total-band and spacing rules (relaxed tier by
-// tier only when nobody fits). Used for ordinary days,
-// where the weekly cap (rule a) is a hard limit.
-function pickCandidate(fair, people, weekKey, minCapacity, excludeIds, kind, dayIdxs) {
+// tier only when nobody fits). Used for ordinary days, where the weekly cap
+// (rule a) is a hard limit.
+function pickCandidate(
+  fair,
+  people,
+  weekKey,
+  minCapacity,
+  excludeIds,
+  kind,
+  dayIdxs,
+) {
   const rows = markBand(
     buildCandidateRows(fair, people, weekKey, excludeIds, kind, dayIdxs).filter(
       (r) => r.capacity >= minCapacity,
@@ -435,10 +494,10 @@ function pickCandidate(fair, people, weekKey, minCapacity, excludeIds, kind, day
   return pickByTiers(rows, kind);
 }
 
-// Picks who a togetherness bundle (weekend, and/or a chag + its erev — see
-// rules b/c) should go to as ONE block. The weekly cap is a soft preference
-// here: everyone with room is tried first (through all tiers), and only if
-// nobody has room does it fall back to the fairest person regardless of it.
+// Picks who a togetherness bundle (weekend, and/or a chag + its erev — rules
+// b/c) should go to as ONE block. The weekly cap is a soft preference here:
+// everyone with room is tried first, and only if nobody has room does it fall
+// back to the fairest person regardless of it.
 function pickTogetherCandidate(fair, people, weekKey, excludeIds, kind, dayIdxs) {
   const rows = buildCandidateRows(fair, people, weekKey, excludeIds, kind, dayIdxs);
   return (
@@ -447,154 +506,405 @@ function pickTogetherCandidate(fair, people, weekKey, excludeIds, kind, dayIdxs)
   );
 }
 
-// How a chag's days are shared between people — its חלוקות value (two shifts per
-// person by default) or the partitions the admin moved in the strip — lives in
-// src/lib/holidayDivisions.js (splitHolidayDays), so the admin preview and this
-// distribution always agree on the same parts.
-
-// Splits a run of Chol HaMoed days into two-day shares; an odd last day joins
-// the share before it (a three-day share) instead of standing alone.
-export function splitCholHamoed(keys) {
-  const parts = [];
-  for (let i = 0; i < keys.length; i += 2) parts.push(keys.slice(i, i + 2));
-  if (parts.length > 1 && parts[parts.length - 1].length === 1) {
-    parts[parts.length - 2].push(parts.pop()[0]);
-  }
-  return parts;
-}
-
-// Nobody works more than this many chag days in a row. A longer share is cut
-// into another share, so a chag is spread across people instead of landing as
-// one long stretch. Friday+Saturday still stay together: a cut is never placed
-// between a Friday and the Saturday after it.
-export const MAX_SHARE_DAYS = 2;
+// A holiday share is cut by splitHolidayDays (its חלוקות value or the cuts the
+// admin moved in the holiday list), kept together across a Friday/Saturday and
+// capped at MAX_SHARE_DAYS days — see src/lib/holidayDivisions.js.
+export {
+  MAX_SHARE_DAYS,
+  capShareLength,
+  keepWeekendsTogether,
+  splitCholHamoed,
+};
 
 /**
- * Cuts every share longer than `maxDays` into shares of at most that many
- * consecutive days, never cutting between a Friday and the Saturday after it.
+ * Spreads Thursday and ordinary-day shifts as far as possible from each
+ * person's other shifts, by swapping them between people.
  *
- * @param {string[][]} parts - shares of 'yyyy-MM-dd' keys, in order
- * @returns {string[][]}
+ * Only two shifts of the SAME kind are ever swapped (a Thursday with a
+ * Thursday, an ordinary day with an ordinary day), so every person keeps
+ * exactly the same number of shifts of each kind and fairness counts do not
+ * change. Chag shares and weekends never move. A swap is made only if both
+ * people may take their new day: no constraint (אילוץ) on it, and no other
+ * shift in that Sunday–Saturday week (rule a).
+ *
+ * @param {Array<{date: string, personId: number}>} assignments
+ * @param {Object} ctx
+ * @param {(key: string) => boolean} ctx.isWeekday
+ * @param {(key: string) => boolean} ctx.isTogether
+ * @param {(personId: number) => number} [ctx.ownerOf]
+ * @param {(personId: number, key: string) => boolean} [ctx.isProtected]
+ * @param {Array<{original_user_id: number, start_date: string}>} [ctx.fixedShifts]
  */
-export function capShareLength(parts, maxDays = MAX_SHARE_DAYS) {
-  const out = [];
-  (parts || []).forEach((part) => {
-    const keys = part || [];
-    let i = 0;
-    while (i < keys.length) {
-      let take = Math.min(maxDays, keys.length - i);
-      while (take > 1 && i + take < keys.length) {
-        const last = parseDateKey(keys[i + take - 1]);
-        const next = parseDateKey(keys[i + take]);
-        if (last.getDay() === 5 && next.getDay() === 6) take -= 1;
-        else break;
-      }
-      out.push(keys.slice(i, i + take));
-      i += take;
+export function spreadWeekdayShifts(assignments, ctx) {
+  const {
+    isWeekday,
+    isTogether,
+    ownerOf = (id) => id,
+    isProtected = () => false,
+    fixedShifts = [],
+    power = WEEKDAY_GAP_POWER,
+    maxPasses = WEEKDAY_SPREAD_MAX_PASSES,
+  } = ctx;
+  const out = assignments.map((a) => ({ ...a }));
+  const idxOf = (key) => dayIndex(parseDateKey(key));
+  const weekOf = (key) => getWeekKey(parseDateKey(key));
+  const gapCost = (g) => Math.pow(Math.max(1, g), -power);
+
+  // Every day each owner holds, and the shifts that may move.
+  const days = new Map(); // owner -> [{ idx, key, weekday }]
+  const addDay = (owner, key, weekday) => {
+    if (!days.has(owner)) days.set(owner, []);
+    days.get(owner).push({ idx: idxOf(key), key, weekday });
+  };
+  fixedShifts.forEach(
+    (s) =>
+      s?.start_date &&
+      addDay(ownerOf(s.original_user_id), String(s.start_date).slice(0, 10), false),
+  );
+  const movable = [];
+  out.forEach((a, i) => {
+    const weekday = isWeekday(a.date);
+    addDay(ownerOf(a.personId), a.date, weekday);
+    if (weekday) {
+      const dow = parseDateKey(a.date).getDay();
+      movable.push({
+        i,
+        kind: dow === 4 ? "thursdays" : "regular",
+        idx: idxOf(a.date),
+        week: weekOf(a.date),
+      });
     }
   });
-  return out.filter((part) => part.length > 0);
+
+  // Timeline per owner: [start, end, movableKey|null], sorted. Consecutive
+  // weekend/chag days form one fixed block; a weekday shift is always its own.
+  const timelines = new Map();
+  const weekCount = new Map(); // owner -> Map(week -> days)
+  const buildTimeline = (owner) => {
+    const list = days.get(owner).slice().sort((x, y) => x.idx - y.idx);
+    const tl = [];
+    list.forEach((d) => {
+      const last = tl[tl.length - 1];
+      if (
+        last &&
+        !d.weekday &&
+        last[2] == null &&
+        d.idx - last[1] === 1 &&
+        isTogether(d.key)
+      )
+        last[1] = d.idx;
+      else tl.push([d.idx, d.idx, d.weekday ? d.key : null]);
+    });
+    timelines.set(owner, tl);
+  };
+  const costOf = (tl) => {
+    let c = 0;
+    for (let k = 1; k < tl.length; k++) c += gapCost(tl[k][0] - tl[k - 1][1]);
+    return c;
+  };
+  // Cost of a timeline with the single-day block at `removeIdx` replaced by a
+  // single day at `addIdx`, without building a new array.
+  const costReplaced = (tl, removeIdx, addIdx) => {
+    let c = 0;
+    let prevEnd = null;
+    let added = false;
+    const step = (start, end) => {
+      if (prevEnd != null) c += gapCost(start - prevEnd);
+      prevEnd = end;
+    };
+    for (let k = 0; k < tl.length; k++) {
+      const [st, en, mk] = tl[k];
+      if (mk != null && st === removeIdx) continue;
+      if (!added && addIdx < st) {
+        step(addIdx, addIdx);
+        added = true;
+      }
+      step(st, en);
+    }
+    if (!added) step(addIdx, addIdx);
+    return c;
+  };
+  days.forEach((list, owner) => {
+    buildTimeline(owner);
+    const wk = new Map();
+    list.forEach((d) => wk.set(weekOf(d.key), (wk.get(weekOf(d.key)) || 0) + 1));
+    weekCount.set(owner, wk);
+  });
+  const cost = new Map([...timelines].map(([o, tl]) => [o, costOf(tl)]));
+  const costBefore = [...cost.values()].reduce((a, b) => a + b, 0);
+
+  const moved = new Set();
+  let swaps = 0;
+  let passes = 0;
+  for (; passes < maxPasses; passes++) {
+    let improved = false;
+    for (let x = 0; x < movable.length; x++) {
+      for (let y = x + 1; y < movable.length; y++) {
+        const A = movable[x];
+        const B = movable[y];
+        if (A.kind !== B.kind) continue;
+        const a = out[A.i];
+        const b = out[B.i];
+        const u = ownerOf(a.personId);
+        const v = ownerOf(b.personId);
+        if (u === v) continue;
+        // both may take their new day: no constraint, nothing else that week
+        if (isProtected(a.personId, b.date) || isProtected(b.personId, a.date))
+          continue;
+        const sameWeek = A.week === B.week;
+        if (!sameWeek) {
+          if ((weekCount.get(u).get(B.week) || 0) > 0) continue;
+          if ((weekCount.get(v).get(A.week) || 0) > 0) continue;
+        }
+        const tu = timelines.get(u);
+        const tv = timelines.get(v);
+        const newU = costReplaced(tu, A.idx, B.idx);
+        const newV = costReplaced(tv, B.idx, A.idx);
+        const delta = newU + newV - cost.get(u) - cost.get(v);
+        if (delta >= -1e-12) continue;
+        // apply the swap
+        const pa = a.personId;
+        a.personId = b.personId;
+        b.personId = pa;
+        const du = days.get(u).find((d) => d.key === a.date);
+        const dv = days.get(v).find((d) => d.key === b.date);
+        du.key = b.date;
+        du.idx = B.idx;
+        dv.key = a.date;
+        dv.idx = A.idx;
+        const wu = weekCount.get(u);
+        const wv = weekCount.get(v);
+        wu.set(A.week, wu.get(A.week) - 1);
+        wu.set(B.week, (wu.get(B.week) || 0) + 1);
+        wv.set(B.week, wv.get(B.week) - 1);
+        wv.set(A.week, (wv.get(A.week) || 0) + 1);
+        buildTimeline(u);
+        buildTimeline(v);
+        cost.set(u, newU);
+        cost.set(v, newV);
+        moved.add(a.date);
+        moved.add(b.date);
+        swaps += 1;
+        improved = true;
+      }
+    }
+    if (!improved) {
+      passes += 1;
+      break;
+    }
+  }
+  const costAfter = [...cost.values()].reduce((a, b) => a + b, 0);
+  return {
+    assignments: out,
+    stats: { passes, swaps, costBefore, costAfter, moved },
+  };
 }
 
 /**
- * Keeps a weekend inside one chag share (rules b/c). When a share boundary
- * falls between a Friday and the Saturday right after it — e.g. a two-day
- * share on Thursday–Friday with Saturday starting the next share — the
- * Saturday moves into the share that holds the Friday, so nobody comes in for
- * a lone Saturday. A share left empty by the move is dropped.
+ * Spreads each person's weekends evenly over the range, as far as possible from
+ * their other HEAVY shifts — weekends and chag shares together — by swapping
+ * whole weekends (Friday+Saturday) between people.
  *
- * Exported so the admin preview of the divisions can show the same parts:
- * call it on the result of splitHolidayDays there too.
+ * Only plain weekends move (a Fri+Sat block with no chag day in it, both days
+ * worked by one person). Chag shares stay where they are but count in every
+ * gap. A swap is made only if both people may take their new weekend: no
+ * constraint on either day, no other shift in that Sunday–Saturday week, and no
+ * shift on the Sunday right after it.
  *
- * @param {string[][]} parts - consecutive shares of 'yyyy-MM-dd' keys, in order
- * @returns {string[][]}
+ * @param {Array<{date: string, personId: number}>} assignments
+ * @param {Object} ctx
+ * @param {Array<{keys: string[]}>} ctx.weekends
+ * @param {(key: string) => boolean} ctx.isHeavy
+ * @param {string} ctx.startDate
+ * @param {string} ctx.endDate
+ * @param {(personId: number) => number} [ctx.ownerOf]
+ * @param {(personId: number, key: string) => boolean} [ctx.isProtected]
+ * @param {Array<{original_user_id: number, start_date: string}>} [ctx.fixedShifts]
  */
-export function keepWeekendsTogether(parts) {
-  const out = parts.map((part) => [...part]).filter((part) => part.length > 0);
-  for (let i = 0; i < out.length - 1; i++) {
-    const last = out[i][out[i].length - 1];
-    const next = out[i + 1][0];
-    if (!last || !next) continue;
-    const fri = parseDateKey(last);
-    const sat = parseDateKey(next);
-    const consecutive = dayIndex(sat) - dayIndex(fri) === 1;
-    if (consecutive && fri.getDay() === 5 && sat.getDay() === 6) {
-      out[i].push(out[i + 1].shift());
-      if (out[i + 1].length === 0) {
-        out.splice(i + 1, 1);
-        i -= 1;
+export function spreadWeekendShifts(assignments, ctx) {
+  const {
+    weekends,
+    isHeavy,
+    startDate,
+    endDate,
+    ownerOf = (id) => id,
+    isProtected = () => false,
+    fixedShifts = [],
+    power = WEEKEND_GAP_POWER,
+    maxPasses = WEEKEND_SPREAD_MAX_PASSES,
+  } = ctx;
+  const out = assignments.map((a) => ({ ...a }));
+  const byDate = new Map(out.map((a) => [a.date, a]));
+  const idxOf = (key) => dayIndex(parseDateKey(key));
+  const weekOf = (key) => getWeekKey(parseDateKey(key));
+  const first = idxOf(startDate);
+  const last = idxOf(endDate);
+  const gapCost = (g) => Math.pow(Math.max(1, g), -power);
+
+  // Every day each owner holds (for the week / Sunday checks) and their heavy
+  // days (for the cost).
+  const allDays = new Map(); // owner -> Set(dayIdx)
+  const weekCount = new Map(); // owner -> Map(week -> days)
+  const heavy = new Map(); // owner -> Set(dayIdx)
+  const add = (owner, key) => {
+    if (!allDays.has(owner)) {
+      allDays.set(owner, new Set());
+      weekCount.set(owner, new Map());
+      heavy.set(owner, new Set());
+    }
+    allDays.get(owner).add(idxOf(key));
+    const wk = weekCount.get(owner);
+    wk.set(weekOf(key), (wk.get(weekOf(key)) || 0) + 1);
+    if (isHeavy(key)) heavy.get(owner).add(idxOf(key));
+  };
+  const remove = (owner, key) => {
+    allDays.get(owner).delete(idxOf(key));
+    const wk = weekCount.get(owner);
+    wk.set(weekOf(key), wk.get(weekOf(key)) - 1);
+    heavy.get(owner).delete(idxOf(key));
+  };
+  fixedShifts.forEach(
+    (s) =>
+      s?.start_date &&
+      add(ownerOf(s.original_user_id), String(s.start_date).slice(0, 10)),
+  );
+  out.forEach((a) => add(ownerOf(a.personId), a.date));
+
+  // Cost of a set of heavy days: consecutive days form one block. Each gap
+  // between blocks costs gap^-power; the stretch before the first block and
+  // after the last count double, which spreads the blocks over the whole range.
+  const costOf = (daySet, removeA = null, addB = null) => {
+    const list = [...daySet].filter((d) => !removeA || !removeA.includes(d));
+    if (addB) list.push(...addB);
+    list.sort((x, y) => x - y);
+    if (list.length === 0) return 0;
+    let c = gapCost(2 * (list[0] - first + 1));
+    let blockEnd = list[0];
+    for (let k = 1; k < list.length; k++) {
+      if (list[k] - blockEnd === 1) {
+        blockEnd = list[k];
+        continue;
+      }
+      c += gapCost(list[k] - blockEnd);
+      blockEnd = list[k];
+    }
+    c += gapCost(2 * (last - blockEnd + 1));
+    return c;
+  };
+  const cost = new Map([...heavy].map(([o, set]) => [o, costOf(set)]));
+  const costBefore = [...cost.values()].reduce((a, b) => a + b, 0);
+
+  const blocks = weekends
+    .filter((w) => w.keys.length === 2 && w.keys.every((k) => byDate.has(k)))
+    .filter(
+      (w) => byDate.get(w.keys[0]).personId === byDate.get(w.keys[1]).personId,
+    )
+    .map((w) => ({
+      keys: w.keys,
+      idx: w.keys.map(idxOf),
+      week: weekOf(w.keys[0]),
+    }));
+
+  // May `owner` (as `personId`) take block B after giving up block A?
+  const mayTake = (owner, personId, A, B) => {
+    if (B.keys.some((k) => isProtected(personId, k))) return false;
+    if ((weekCount.get(owner).get(B.week) || 0) > 0) return false;
+    const sunday = B.idx[1] + 1;
+    if (allDays.get(owner).has(sunday) && !A.idx.includes(sunday)) return false;
+    return true;
+  };
+
+  const moved = new Set();
+  let swaps = 0;
+  let passes = 0;
+  for (; passes < maxPasses; passes++) {
+    let improved = false;
+    for (let x = 0; x < blocks.length; x++) {
+      for (let y = x + 1; y < blocks.length; y++) {
+        const A = blocks[x];
+        const B = blocks[y];
+        const pa = byDate.get(A.keys[0]).personId;
+        const pb = byDate.get(B.keys[0]).personId;
+        const u = ownerOf(pa);
+        const v = ownerOf(pb);
+        if (u === v) continue;
+        if (!mayTake(u, pa, A, B) || !mayTake(v, pb, B, A)) continue;
+        const newU = costOf(heavy.get(u), A.idx, B.idx);
+        const newV = costOf(heavy.get(v), B.idx, A.idx);
+        const delta = newU + newV - cost.get(u) - cost.get(v);
+        if (delta >= -1e-12) continue;
+        A.keys.forEach((k) => {
+          remove(u, k);
+          byDate.get(k).personId = pb;
+          add(v, k);
+          moved.add(k);
+        });
+        B.keys.forEach((k) => {
+          remove(v, k);
+          byDate.get(k).personId = pa;
+          add(u, k);
+          moved.add(k);
+        });
+        cost.set(u, newU);
+        cost.set(v, newV);
+        swaps += 1;
+        improved = true;
       }
     }
+    if (!improved) {
+      passes += 1;
+      break;
+    }
   }
-  return out;
+  const costAfter = [...cost.values()].reduce((a, b) => a + b, 0);
+  return {
+    assignments: out,
+    stats: { passes, swaps, costBefore, costAfter, moved },
+  };
 }
 
 /**
  * Distributes shifts across [startDate, endDate] as fairly as possible.
- * Only shifts that fall inside this range are ever looked at — the
- * algorithm has no dependency on shift history from before `startDate`
- * (except `priorJustice`, which only seeds the fairness ranking).
  *
- * Rules (from tasks.txt), all applied together:
- *   a. No more than one shift for one person within a single Sun-Sat week
- *      (a Fri+Sat / chag togetherness block, rules b/c, is the deliberate
- *      exception and still counts as that person's one unit for the week).
+ * Rules, all applied together:
+ *   a. One shift per person per Sun–Sat week (a Fri+Sat / chag block is the
+ *      deliberate exception and still counts as that person's unit for the week).
  *   b. Friday + Saturday go together to one person, not split.
- *   c. Same togetherness rule as (b), but for holidays — including the chag's
- *      erev. Holiday days that are straight next to each other — erev, chag,
- *      Chol HaMoed and any weekend among them — form one block, which is
- *      divided into shares (the chag's חלוקות, two-day shares across Chol
- *      HaMoed), each share to one person, so a long Pesach or Sukkot is shared
- *      out without anyone working a lone Chol HaMoed day.
- *      When a chag share touches a weekend, the Friday and Saturday stay in
- *      the same share (a Thu–Fri share takes the Saturday too — see
- *      keepWeekendsTogether), and a share goes to someone free on all its days
- *      whenever possible, so a constraint doesn't leave a lone Saturday.
- *   d. Shifts should be spread out comfortably — a person shouldn't land two
- *      calendar-adjacent days by accident from two separate decisions.
+ *   c. A chag block — erev, chag, Chol HaMoed and any weekend among them — is
+ *      divided into shares (the chag's חלוקות, or the cuts the admin set),
+ *      each share to one person. A Friday keeps its Saturday, a share is at
+ *      most MAX_SHARE_DAYS days, and a share goes to someone free on all its
+ *      days whenever possible.
+ *   d. A person shouldn't land two calendar-adjacent days by accident.
  *   e. Total shifts stay balanced: nobody is handed a slot while someone
- *      available holds more than MAX_TOTAL_SPREAD fewer shifts, or after
- *      reaching their range quota (ceil(days / people)).
- *   f. Each kind of day is spaced per person: chags from chags, weekends from
- *      weekends, chags+weekends from each other ("hard" days), Thursdays from
- *      Thursdays, and any shift from any shift — each against an ideal gap
- *      derived from how often that kind occurs in the range.
+ *      available holds more than MAX_TOTAL_SPREAD fewer, or after reaching
+ *      their range quota (ceil(days / people)).
+ *   f. Each kind of day is spaced per person against an ideal gap derived from
+ *      how often that kind occurs in the range.
+ *   g. Thursdays and ordinary days are spread from every other shift of that
+ *      person by swapping same-kind shifts (spreadWeekdayShifts).
+ *   h. No day is left empty while someone without a constraint could work it
+ *      (a last resort: a second shift that week, or a split weekend/chag day).
+ *   i. Weekends are spread evenly over the range, chag shares included in the
+ *      measurement (spreadWeekendShifts).
  *
- * Rules (d), (e) and (f) are soft: they are relaxed in the order f → e → d
- * only when no candidate satisfies them, so a day is never left unstaffed
- * because of them. Every relaxation is reported in `relaxations`.
- *
- * Past shifts (`history`, and `holidayUsers.history` for the per-user chag
- * pool) are optional. Without them the range is distributed on its own, as
- * before. With them, past fairness carries over per kind of day (see
- * applyHistory), recent shifts count for spacing across the range start, and
- * a Fri+Sat or chag block that the range start cuts in half stays with the
- * person who worked its first part.
+ * Rules (d), (e) and (f) are soft: they are relaxed in the order f → e → d only
+ * when no candidate satisfies them, so a day is never left unstaffed because of
+ * them. Every relaxation is reported in `relaxations`.
  *
  * @param {Object} params
- * @param {Array<{serial_id: number, full_name: string}>} params.people - eligible people
- * @param {Array<{original_user_id: number, start_date: string}>} params.existingShifts - shifts to check against; only ones inside [startDate, endDate] are used
+ * @param {Array<{serial_id: number, full_name: string}>} params.people
+ * @param {Array<{original_user_id: number, start_date: string}>} params.existingShifts
  * @param {string} params.startDate - 'yyyy-MM-dd'
  * @param {string} params.endDate - 'yyyy-MM-dd'
- * @param {Set<string>} [params.holidayDates] - Set of 'yyyy-MM-dd' holiday dates (chag days AND erev-chag days)
- * @param {Set<string>} [params.cholHamoedDates] - Set of 'yyyy-MM-dd' Chol HaMoed dates; they join the holiday block around them and count as holiday days for fairness
- * @param {Map<string, number>} [params.holidayDivisions] - Map of 'yyyy-MM-dd' -> how many divisions that holiday's shifts are split among.
- * @param {Array<{start_date: string, end_date?: string, divisions?: number, division_breaks?: string[]}>} [params.holidays] - Holiday records (the Holiday entity).
- * @param {Map<number, Set<string>>} [params.protectedDates] - Map of serial_id -> Set of 'yyyy-MM-dd' dates the person set a constraint (אילוץ) for.
- * @param {Map<number, number>} [params.priorJustice] - Map of serial_id -> shift count from BEFORE the range; seeds the fairness ranking only.
- * @param {{shifts: Array<{original_user_id: number, start_date: string}>, from?: string, activeFrom?: Map<number, string>, headcount?: number, mode?: "normalized"|"raw", lookbackDays?: number}} [params.history] - Shifts BEFORE startDate for the group pool, owned the same way as existingShifts (group representative). Include shifts by people who have since left: they set the fair rate. `from` is the first day the history covers; `activeFrom` maps a person to the day they joined (missing = active for the whole window); `headcount` is how many people shared the past work (default: the current pool size); `mode` defaults to "normalized"; `lookbackDays` (default 42) is how far back shifts still count for spacing. A shift owned by a group member is credited to their group through `holidayUsers.groupRepOf`.
- * @param {{people: Array, existingShifts?: Array, groupRepOf?: Map<number, number>, protectedDates?: Map<number, Set<string>>, history?: Object}} [params.holidayUsers] - Per-USER pool for holiday blocks. `history` has the same shape as params.history, with each user's own past chag shares and each user's join date.
- * @returns {{
- *   assignments: Array<{date: string, personId: number}>,
- *   skipped: Array<{date: string, reason: string}>,
- *   relaxations: Array<{date: string, personId: number, rules: string[]}>,
- *   justiceTable: Array<{personId: number, name: string, totalShifts: number, pastShifts: number, rangeShifts: number, balance: number, holidays: number, weekends: number, thursdays: number, regular: number, load: number}>,
- *   holidayTable: Array<same as justiceTable> | null
- * }}
- * In the tables, totalShifts = prior + past + in-range shift days, and the
- * per-kind columns and `balance` are the fairness scores the algorithm ranks
- * on (in "normalized" mode they include the carried-over surplus or deficit,
- * so they can be fractional or negative).
+ * @param {Set<string>} [params.holidayDates]
+ * @param {Set<string>} [params.cholHamoedDates]
+ * @param {Map<string, number>} [params.holidayDivisions]
+ * @param {Array<{name: string, start_date: string, end_date?: string, divisions?: number, division_breaks?: string[]}>} [params.holidays]
+ * @param {Map<number, Set<string>>} [params.protectedDates]
+ * @param {Map<number, number>} [params.priorJustice]
+ * @param {Object} [params.history]
+ * @param {{people: Array, existingShifts?: Array, groupRepOf?: Map<number, number>, protectedDates?: Map<number, Set<string>>, history?: Object}} [params.holidayUsers]
  */
 export function distributeShifts({
   people,
@@ -610,6 +920,9 @@ export function distributeShifts({
   priorJustice = new Map(),
   history = null,
   refine = true,
+  spreadWeekdays = true,
+  spreadWeekends = true,
+  allowWeeklyOverflow = true,
 }) {
   const holidayByDate = new Set(holidayDates);
   const divisionByDate = new Map(holidayDivisions);
@@ -632,9 +945,10 @@ export function distributeShifts({
     }
   });
   // Chol HaMoed days are holiday days too: a run of holiday days that are
-  // straight next to each other (erev, chag, Chol HaMoed, and the weekends
-  // among them) is one block, divided into shares between people.
-  const cholHamoedKeys = new Set([...cholHamoedDates].map((k) => String(k).slice(0, 10)));
+  // straight next to each other is one block, divided into shares.
+  const cholHamoedKeys = new Set(
+    [...cholHamoedDates].map((k) => String(k).slice(0, 10)),
+  );
   cholHamoedKeys.forEach((key) => holidayByDate.add(key));
 
   const holidayProtectedDates = holidayUsers?.protectedDates || new Map();
@@ -663,7 +977,9 @@ export function distributeShifts({
   const groupFair = initState(people, inRangeShifts, priorJustice, holidayByDate);
 
   // Holidays are divided between PEOPLE, not between group slots.
-  const holidayPool = (holidayUsers?.people || []).filter((p) => p?.serial_id != null);
+  const holidayPool = (holidayUsers?.people || []).filter(
+    (p) => p?.serial_id != null,
+  );
   const holidayByUser = holidayPool.length > 0;
   const holidayState = holidayByUser
     ? initState(
@@ -699,51 +1015,48 @@ export function distributeShifts({
     });
   }
 
-  // Rule (e)/(f) parameters, derived from the range itself. The quota is
-  // rounded up per person (after their history adjustment) in
-  // buildCandidateRows.
+  // Rule (e)/(f) parameters, derived from the range itself.
   groupFair.idealGaps = computeIdealGaps(days, people.length, holidayByDate);
   groupFair.quota = days.length / Math.max(1, people.length);
   if (holidayState) {
     holidayState.idealGaps = computeIdealGaps(days, holidayPool.length, holidayByDate);
-    // Holiday users share only the chag days, so they are held to the
-    // relative band (rule e) without an absolute quota.
+    // Holiday users share only the chag days, so they are held to the relative
+    // band (rule e) without an absolute quota.
     holidayState.quota = null;
   }
 
   // Past shifts: seed fairness, spacing and the weekly cap from before the range.
-  const groupOwners = applyHistory(groupFair, people, history, startDate, holidayByDate, (id) =>
-    holidayGroupRepOf.get(id),
+  const groupOwners = applyHistory(
+    groupFair,
+    people,
+    history,
+    startDate,
+    holidayByDate,
+    (id) => holidayGroupRepOf.get(id),
   );
   const userOwners = holidayState
     ? applyHistory(holidayState, holidayPool, holidayUsers.history, startDate, holidayByDate)
     : null;
-  // If the range starts in the middle of a Fri+Sat or chag block (e.g. a
-  // range starting on a Saturday), the first block stays with whoever worked
-  // the day before (rules b/c).
+  // If the range starts in the middle of a Fri+Sat or chag block (e.g. a range
+  // starting on a Saturday), the first block stays with whoever worked the day
+  // before (rules b/c).
   const prevKey = toDateKey(addDays(start, -1));
   const prevDow = parseDateKey(prevKey).getDay();
   const prevTogether =
-    prevDow === 5 ||
-    prevDow === 6 ||
-    holidayByDate.has(prevKey);
+    prevDow === 5 || prevDow === 6 || holidayByDate.has(prevKey);
   const carryGroupId = prevTogether ? (groupOwners?.get(prevKey) ?? null) : null;
   const carryUserId = prevTogether ? (userOwners?.get(prevKey) ?? null) : null;
 
-  // Group into bundles: consecutive days of the SAME kind chain into one
-  // bundle — except "regular" days, which always stay their own bundle. A day
-  // that belongs to a manual holiday group never joins a bundle that already
-  // holds a DIFFERENT group, so each group is staffed as its own block (a
-  // weekend day carries no group of its own and stays with the chag next to it).
+  // Group into bundles: consecutive days of the same kind chain into one bundle
+  // — except "regular" days, which always stay their own bundle. A day that
+  // belongs to a manual holiday group never joins a bundle that already holds a
+  // DIFFERENT group, so each group is staffed as its own block.
   const bundles = [];
   let current = null;
   days.forEach((day) => {
     const nextToDay = current?.days[current.days.length - 1];
     const sameGroup =
-      !nextToDay ||
-      !day.group ||
-      !current.holidayGroup ||
-      current.holidayGroup === day.group;
+      !nextToDay || !day.group || !current.holidayGroup || current.holidayGroup === day.group;
     if (day.kind !== "regular" && current?.kind === day.kind && sameGroup) {
       current.days.push(day);
       if (day.group && !current.holidayGroup) current.holidayGroup = day.group;
@@ -753,9 +1066,9 @@ export function distributeShifts({
     }
   });
 
-  // Dates that belong to a bundle holding a chag: those are staffed from the
-  // per-user pool (see the holiday branch below), and they are needed again
-  // when the fairness tables are rebuilt after spacing refinement.
+  // Dates that belong to a bundle holding a chag: staffed from the per-user
+  // pool (see the holiday branch below), and needed again when the fairness
+  // tables are rebuilt after spacing refinement.
   const holidayBundleKeys = new Set();
   bundles.forEach((bundle) => {
     if (bundle.days.some((d) => holidayByDate.has(d.key))) {
@@ -770,15 +1083,19 @@ export function distributeShifts({
     if (bundle.days.every((d) => d.date.getDay() === 4)) return 2;
     return 3;
   };
-  // Within the same priority, ordinary days that more people are blocked on
-  // (constraints) go first, while there is still a choice of who takes them —
-  // otherwise the weekly cap can leave nobody free for them at the end.
+  // Within the same priority, ordinary days that more people are blocked on go
+  // first, while there is still a choice of who takes them.
   const pressure = (bundle) =>
     bundlePriority(bundle) >= 2
       ? Math.max(...bundle.days.map((d) => protectedOnDate(d.key).size))
       : 0;
   const orderedBundles = bundles
-    .map((bundle, index) => ({ bundle, index, prio: bundlePriority(bundle), load: pressure(bundle) }))
+    .map((bundle, index) => ({
+      bundle,
+      index,
+      prio: bundlePriority(bundle),
+      load: pressure(bundle),
+    }))
     .sort((a, b) => a.prio - b.prio || b.load - a.load || a.index - b.index)
     .map((entry) => entry.bundle);
 
@@ -800,9 +1117,8 @@ export function distributeShifts({
       // The block is cut into pieces that are split on their own: runs of Chol
       // HaMoed days, and runs of the other days (erev, chag and the weekend
       // around them). A chag piece follows its Holiday record's חלוקות / moved
-      // partitions as before; a Chol HaMoed piece gets two-day shares, with an
-      // odd day joining a neighbouring share instead of standing alone. Then a
-      // Friday and its Saturday are kept in one share across all pieces.
+      // partitions; a Chol HaMoed piece gets two-day shares. Then a Friday and
+      // its Saturday are kept in one share across all pieces.
       const pieces = [];
       holidayEmpty.forEach((d) => {
         const chm = cholHamoedKeys.has(d.key);
@@ -825,7 +1141,7 @@ export function distributeShifts({
       });
       // The weekend merge runs first (a Friday keeps its Saturday), then every
       // share that grew past MAX_SHARE_DAYS is cut again — never between that
-      // Friday and Saturday — so a chag never hands one person a long stretch.
+      // Friday and Saturday.
       holidayPartSizes = capShareLength(keepWeekendsTogether(parts)).map(
         (part) => part.length,
       );
@@ -892,8 +1208,8 @@ export function distributeShifts({
 
           const today = emptyDays[day];
           if (holidayPartPersonId == null) {
-            // The share this person would take (the rest of it, if a
-            // constraint cut the previous holder short).
+            // The share this person would take (the rest of it, if a constraint
+            // cut the previous holder short).
             const shareDays = emptyDays.slice(day, day + Math.max(1, holidayPartLeft));
             // Prefer someone free for the WHOLE share, so a constraint doesn't
             // cut it and leave a lone day (such as the Saturday) to someone
@@ -908,7 +1224,11 @@ export function distributeShifts({
               holidayTried.size === 0 && anchorPerson && !firstDayExcluded.has(anchorPerson.serial_id);
             const carryId = useUserFairness ? carryUserId : carryGroupId;
             const carryPerson =
-              continuesPast && day === 0 && holidayTried.size === 0 && carryId != null && !firstDayExcluded.has(carryId)
+              continuesPast &&
+              day === 0 &&
+              holidayTried.size === 0 &&
+              carryId != null &&
+              !firstDayExcluded.has(carryId)
                 ? fairPool.find((p) => p.serial_id === carryId)
                 : null;
             let pick = anchorFits
@@ -917,7 +1237,14 @@ export function distributeShifts({
                 ? { person: carryPerson, relaxed: [] }
                 : null;
             if (!pick) {
-              pick = pickTogetherCandidate(fair, fairPool, today.weekKey, excluded, "holidays", shareIdxs);
+              pick = pickTogetherCandidate(
+                fair,
+                fairPool,
+                today.weekKey,
+                excluded,
+                "holidays",
+                shareIdxs,
+              );
             }
             if (!pick) {
               pick = pickTogetherCandidate(
@@ -973,13 +1300,13 @@ export function distributeShifts({
           : carryPerson
             ? { person: carryPerson, relaxed: [] }
             : pickTogetherCandidate(
-              fair,
-              fairPool,
-              segment.weekKey,
-              togetherExcluded,
-              "weekends",
-              emptyDays.map((d) => dayIndex(d.date)),
-            );
+                fair,
+                fairPool,
+                segment.weekKey,
+                togetherExcluded,
+                "weekends",
+                emptyDays.map((d) => dayIndex(d.date)),
+              );
 
         if (!pick) {
           emptyDays.forEach((d) => skipped.push({ date: d.key, reason: "לא אותר אדם זמין בכלל" }));
@@ -1049,12 +1376,120 @@ export function distributeShifts({
     });
   });
 
+  // Last resort for a day that nobody could take under the normal rules —
+  // rather than leave it empty, it is given fairly:
+  //   - a Thursday or ordinary day nobody is free for under the
+  //     one-shift-per-week rule (rule a) → a second shift that week;
+  //   - a weekend (or chag) block nobody is free for on ALL its days → its days
+  //     are given one by one, so Friday and Saturday can go to two people.
+  // Among the people without a constraint on that day, only those within
+  // MAX_TOTAL_SPREAD of the fewest shifts are considered (rule e); of those, the
+  // day goes to the one whose nearest shift is furthest from it.
+  const lastResortDates = new Set();
+  if (allowWeeklyOverflow) {
+    const dayByKey = new Map(days.map((d) => [d.key, d]));
+    const stillSkipped = [];
+    skipped
+      .slice()
+      .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+      .forEach((entry) => {
+        const day = dayByKey.get(entry.date);
+        if (!day) {
+          stillSkipped.push(entry);
+          return;
+        }
+        const userPool = holidayByUser && holidayBundleKeys.has(day.key);
+        const fair = userPool ? holidayState : groupFair;
+        const pool = userPool ? holidayPool : people;
+        const idx = dayIndex(day.date);
+        const rows = pool
+          .filter((p) => !isProtected(p.serial_id, day.key))
+          .map((p) => ({
+            person: p,
+            near: nearestGap(fair, p.serial_id, [idx], "any"),
+            count: fair.justice.get(p.serial_id) || 0,
+            load: fair.cats.get(p.serial_id)?.load || 0,
+          }));
+        if (rows.length === 0) {
+          stillSkipped.push(entry);
+          return;
+        }
+        const fewest = Math.min(...rows.map((r) => r.count));
+        const band = rows.filter((r) => r.count <= fewest + MAX_TOTAL_SPREAD);
+        band.sort(
+          (a, b) =>
+            (b.near > a.near ? 1 : b.near < a.near ? -1 : 0) ||
+            a.count - b.count ||
+            a.load - b.load ||
+            (a.person.full_name || "").localeCompare(b.person.full_name || ""),
+        );
+        const chosen = band[0].person;
+        const rules = [];
+        if (remainingCapacity(fair.weekly, chosen.serial_id, day.weekKey) <= 0)
+          rules.push("weekly_cap");
+        if (day.kind === "together") rules.push("split_block");
+        lastResortDates.add(day.key);
+        assignments.push({ date: day.key, personId: chosen.serial_id });
+        relaxations.push({ date: day.key, personId: chosen.serial_id, rules });
+        const category = categorizeDay(day.key, holidayByDate);
+        recordAssignment(fair, chosen.serial_id, day.weekKey, day.date, category);
+        const repId = userPool ? holidayGroupRepOf.get(chosen.serial_id) : null;
+        if (repId != null && repId !== chosen.serial_id) {
+          recordAssignment(groupFair, repId, day.weekKey, day.date, category);
+        }
+      });
+    skipped.length = 0;
+    stillSkipped.forEach((entry) => skipped.push(entry));
+  }
+
+  // Thursdays and ordinary days: swap same-kind shifts between people while it
+  // spreads everyone's shifts further apart (counts per kind don't change).
+  const togetherKeys = new Set(days.filter((d) => d.kind === "together").map((d) => d.key));
+  const weekdayKeys = new Set(days.filter((d) => d.kind === "regular").map((d) => d.key));
+
+  // Weekends first: swap whole Fri+Sat blocks so each person's heavy shifts
+  // (weekends + chag shares) are spread evenly and as far apart as possible.
+  const plainWeekends = bundles
+    .filter((b) => b.kind === "together" && !b.days.some((d) => holidayByDate.has(d.key) || d.existing))
+    .filter((b) => b.days.length === 2 && b.days[0].date.getDay() === 5 && b.days[1].date.getDay() === 6)
+    .filter((b) => !b.days.some((d) => lastResortDates.has(d.key)))
+    .map((b) => ({ keys: b.days.map((d) => d.key) }));
+  const weekendSpread = spreadWeekends
+    ? spreadWeekendShifts(assignments, {
+        weekends: plainWeekends,
+        isHeavy: (key) => togetherKeys.has(key),
+        startDate,
+        endDate,
+        ownerOf: (id) => holidayGroupRepOf.get(id) ?? id,
+        isProtected,
+        fixedShifts: inRangeShifts,
+      })
+    : null;
+  const afterWeekends = weekendSpread ? weekendSpread.assignments : assignments;
+
+  const spread = spreadWeekdays
+    ? spreadWeekdayShifts(afterWeekends, {
+        isWeekday: (key) => weekdayKeys.has(key),
+        isTogether: (key) => togetherKeys.has(key),
+        ownerOf: (id) => holidayGroupRepOf.get(id) ?? id,
+        isProtected,
+        fixedShifts: inRangeShifts,
+      })
+    : null;
+  const spreadAssignments = spread ? spread.assignments : afterWeekends;
+  // A relaxation recorded for a day that has since changed hands no longer
+  // describes who works it, so it is dropped.
+  const movedDays = new Set([
+    ...(weekendSpread ? weekendSpread.stats.moved : []),
+    ...(spread ? spread.stats.moved : []),
+  ]);
+  const keptRelaxations = relaxations.filter((r) => !movedDays.has(r.date));
+
   // Spacing refinement: the greedy pass decides day by day, with spacing only
-  // as a soft tiebreaker, so it can still leave one person with two weekends (or
-  // two chag shares) in back-to-back weeks. Its result is kept as the seed and
-  // the blocks are moved/swapped a few times to even out the gaps per kind.
+  // as a soft tiebreaker, so its result is kept as the seed and the blocks are
+  // moved/swapped a few times to even out the gaps per kind.
   const refined = refine
-    ? refineSpacing(assignments, {
+    ? refineSpacing(spreadAssignments, {
         bundles,
         people,
         holidayPool,
@@ -1065,7 +1500,7 @@ export function distributeShifts({
         endDate,
       })
     : null;
-  const finalAssignments = refined ? refined.assignments : assignments;
+  const finalAssignments = refined ? refined.assignments : spreadAssignments;
 
   // Rebuild the fairness tables from what was actually handed out, so they
   // describe the refined calendar rather than the greedy one. The history seed
@@ -1116,6 +1551,7 @@ export function distributeShifts({
           rangeShifts: range,
           balance: round2(fair.justice.get(id) || 0),
           holidays: round2(c.holidays),
+          holidayCarry: round2(fair.kindSeed.get(id)?.holidays || 0),
           weekends: round2(c.weekends),
           thursdays: round2(c.thursdays),
           regular: round2(c.regular),
@@ -1127,9 +1563,31 @@ export function distributeShifts({
   return {
     assignments: finalAssignments,
     skipped,
-    relaxations,
+    relaxations: keptRelaxations,
     justiceTable: table(finalGroupFair, people, priorJustice),
     holidayTable: finalHolidayState ? table(finalHolidayState, holidayPool, new Map()) : null,
     spacing: refined ? refined.stats : null,
+    // Days that would have stayed empty and were filled by the last resort.
+    weeklyOverflow: finalAssignments
+      .filter((a) => lastResortDates.has(a.date))
+      .map((a) => ({ date: a.date, personId: a.personId })),
+    weekendSpread: weekendSpread
+      ? {
+          passes: weekendSpread.stats.passes,
+          swaps: weekendSpread.stats.swaps,
+          movedWeekends: weekendSpread.stats.moved.size / 2,
+          costBefore: weekendSpread.stats.costBefore,
+          costAfter: weekendSpread.stats.costAfter,
+        }
+      : null,
+    weekdaySpread: spread
+      ? {
+          passes: spread.stats.passes,
+          swaps: spread.stats.swaps,
+          movedDays: spread.stats.moved.size,
+          costBefore: spread.stats.costBefore,
+          costAfter: spread.stats.costAfter,
+        }
+      : null,
   };
 }

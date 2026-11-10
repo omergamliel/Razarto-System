@@ -9,7 +9,7 @@ import DeleteShiftsRangeSection from "./DeleteShiftsRangeSection";
 import ConsiderationThresholdSection from "./ConsiderationThresholdSection";
 import {
   holidayDefinitions,
-  resolveHolidayRanges,
+  resolveDistributionHolidays,
   yearsOfRange,
 } from "@/lib/holidayRanges";
 import { motion, AnimatePresence } from "framer-motion";
@@ -1629,21 +1629,14 @@ export default function AdminSettingsModal({ isOpen, onClose }) {
         shifts: allShiftsForDistribution, startDate, endDate, grace,
       });
 
-      // The definitions carry no dates — resolve this range's chag dates.
-      const resolvedHolidays = await resolveHolidayRanges(
-        holidayDefinitions(distributionHolidays),
-        yearsOfRange(startDate, endDate),
+      // Chag dates for this range, plus the Chol HaMoed days no row covers.
+      const { holidays: resolvedHolidays, cholHamoedDates } = await resolveDistributionHolidays(
+        holidayDefinitions(distributionHolidays), yearsOfRange(startDate, endDate),
       );
-
       const result = distributeShifts({
-        people: reps,
-        existingShifts: remappedShifts,
-        startDate,
-        endDate,
-        holidays: resolvedHolidays,
-        holidayUsers,
-        protectedDates,
-        priorJustice,
+        people: reps, existingShifts: remappedShifts, startDate, endDate,
+        holidays: resolvedHolidays, cholHamoedDates, holidayUsers,
+        protectedDates, priorJustice,
       });
 
       // Remap each assignment from the representative to the member who is

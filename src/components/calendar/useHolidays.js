@@ -136,6 +136,7 @@ export async function fetchHolidayGroupsForYear(year, { canonical = true } = {})
       return {
         date: item.date.slice(0, 10),
         name: canonical ? canonicalHolidayName(label) : label,
+        chm: isCholHamoedTitle(item.title),
       };
     })
     .filter((day) => {
@@ -155,9 +156,15 @@ export async function fetchHolidayGroupsForYear(year, { canonical = true } = {})
       isNextCalendarDay(last.end_date, day.date)
     ) {
       last.end_date = day.date;
+      last.chm = last.chm || day.chm;
       return;
     }
-    groups.push({ name: day.name, start_date: day.date, end_date: day.date });
+    groups.push({
+      name: day.name,
+      start_date: day.date,
+      end_date: day.date,
+      chm: day.chm,
+    });
   });
   return groups;
 }

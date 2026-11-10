@@ -71,13 +71,19 @@ const matchesEntry = (definitionName, entryName) =>
 
 // Every definition with the days it covers in `years`: the calendar entries
 // whose name matches it, plus the date it was added with. `entryNames` is the
-// list of individual entries a definition stands for — more than one means the
-// row is still a grouped chag that can be split.
-export async function resolveHolidayEntries(definitions = [], years = []) {
+// list of individual entries a definition stands for. `preloadedEntries` lets a
+// caller reuse one Hebrew-calendar fetch for several resolutions.
+export async function resolveHolidayEntries(
+  definitions = [],
+  years = [],
+  preloadedEntries = null,
+) {
   const rows = (definitions || []).filter((definition) => normalizeName(definition?.name));
-  if (rows.length === 0 || years.length === 0) return [];
+  if (rows.length === 0 || (years.length === 0 && !preloadedEntries)) return [];
 
-  const entries = await fetchHolidayGroupsForYears(years, { canonical: false });
+  const entries =
+    preloadedEntries ||
+    (await fetchHolidayGroupsForYears(years, { canonical: false }));
   const byDefinition = new Map(
     rows.map((definition) => [
       definition.id,
@@ -115,13 +121,15 @@ const configOf = (members = []) =>
   members[0]?.definition ||
   {};
 
-// Resolves definitions into dated holiday ranges ({name, start_date,
-// end_date, divisions, division_breaks}) for the given years — the same shape
-// the distribution and the fairness table already work with. Holidays grouped
-// by hand resolve as ONE range per contiguous stretch, named after the group,
-// so the group is what the distribution treats as a single block.
-export async function resolveHolidayRanges(definitions = [], years = []) {
-  const resolved = await resolveHolidayEntries(definitions, years);
+// Definitions → dated holiday ranges ({name, start_date, end_date, divisions,
+// division_breaks}) for the given years. Holidays grouped by hand resolve as ONE
+// range per contiguous stretch, named after the group, so the group is what the
+// distribution treats as a single block.
+//
+// `division_breaks` are stored as day OFFSETS inside the group's own list of
+// days, so the cuts follow the group into every year; here they are turned into
+// the actual dates the algorithm works with.
+function rangesFromResolved(resolved = []) {
   const groups = new Map();
   resolved.forEach((row) => {
     const key = holidayGroupName(row.definition);
@@ -133,13 +141,12 @@ export async function resolveHolidayRanges(definitions = [], years = []) {
   groups.forEach((members, name) => {
     const config = configOf(members);
     const days = [...new Set(members.flatMap((member) => member.days))].sort();
+    const offsets = (config.division_breaks || []).map(Number);
     contiguousRuns(days).forEach((run) => {
       const keys = holidayDayKeys(run.start_date, run.end_date);
-      // Breaks are stored as day offsets, so they follow the group into every
-      // year no matter which weekday its first day falls on.
-      const breaks = (config.division_breaks || [])
-        .map((offset) => keys[Number(offset)])
-        .filter(Boolean);
+      // Cuts are stored as day offsets inside the group's own list of days, so
+      // they follow the group into every year.
+      const breaks = offsets.map((offset) => keys[offset]).filter(Boolean);
       const divisions = Math.max(
         1,
         Number(config.divisions) ||
@@ -155,4 +162,30 @@ export async function resolveHolidayRanges(definitions = [], years = []) {
     });
   });
   return ranges;
+}
+
+export async function resolveHolidayRanges(definitions = [], years = []) {
+  const resolved = await resolveHolidayEntries(definitions, years);
+  return rangesFromResolved(resolved);
+}
+
+// Everything the distribution needs from the holiday list in one go: the dated
+// ranges of the manual groups, plus the Chol HaMoed days that are NOT part of
+// any holiday row — those stay "days of a chag" for the algorithm and join the
+// chag beside them, while a Chol HaMoed day that IS in a row must not be pulled
+// out of its own group's block.
+export async function resolveDistributionHolidays(definitions = [], years = []) {
+  const entries = years.length
+    ? await fetchHolidayGroupsForYears(years, { canonical: false })
+    : [];
+  const resolved = await resolveHolidayEntries(definitions, years, entries);
+  const covered = new Set(resolved.flatMap((row) => row.days));
+  const cholHamoedDates = new Set();
+  entries.forEach((entry) => {
+    if (!entry.chm) return;
+    holidayDayKeys(entry.start_date, entry.end_date).forEach((key) => {
+      if (!covered.has(key)) cholHamoedDates.add(key);
+    });
+  });
+  return { holidays: rangesFromResolved(resolved), cholHamoedDates };
 }

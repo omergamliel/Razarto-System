@@ -2,8 +2,7 @@ import { addDays, differenceInCalendarDays, format } from "date-fns";
 
 // The default split for a chag: TWO shifts per person. A 9-day chag therefore
 // starts out divided between five people (2,2,2,2,1) and an 8-day chag between
-// four (2,2,2,2). The admin can change the number of חלוקות or drag the
-// partition between two neighbouring shares in the strip under the holiday.
+// four (2,2,2,2). The admin can also cut the chag by hand in the holiday list.
 export function defaultDivisions(dayCount) {
   const days = Math.max(0, Number(dayCount) || 0);
   if (days <= 1) return 1;
@@ -50,9 +49,9 @@ export function planHolidayChunks(dayCount, divisions) {
 }
 
 // How a holiday's days are shared between people: consecutive days per person,
-// cut where `breaks` says a new share starts (a partition the admin moved in the
-// strip), and otherwise split evenly into `divisions` parts. Returns one array of
-// day keys per person — the same parts the distribution algorithm hands out.
+// cut where `breaks` says a new share starts, and otherwise split evenly into
+// `divisions` parts. Returns one array of day keys per person — the same parts
+// the distribution algorithm hands out.
 export function splitHolidayDays(dayKeys, { divisions = 1, breaks = [] } = {}) {
   const keys = dayKeys || [];
   if (keys.length === 0) return [];
@@ -81,4 +80,100 @@ export function splitHolidayDays(dayKeys, { divisions = 1, breaks = [] } = {}) {
     cursor += count;
   });
   return parts;
+}
+
+const parseKey = (key) => new Date(`${String(key).slice(0, 10)}T00:00:00`);
+const dayIdx = (key) =>
+  Math.round(
+    Date.UTC(
+      parseKey(key).getFullYear(),
+      parseKey(key).getMonth(),
+      parseKey(key).getDate(),
+    ) / 86400000,
+  );
+
+// Nobody works more than this many chag days in a row. A longer share is cut
+// into another share, so a chag is spread across people instead of landing as
+// one long stretch. Friday+Saturday still stay together.
+export const MAX_SHARE_DAYS = 2;
+
+/**
+ * Cuts every share longer than `maxDays` into shares of at most that many
+ * consecutive days, never cutting between a Friday and the Saturday after it.
+ *
+ * @param {string[][]} parts - shares of 'yyyy-MM-dd' keys, in order
+ * @returns {string[][]}
+ */
+export function capShareLength(parts, maxDays = MAX_SHARE_DAYS) {
+  const out = [];
+  (parts || []).forEach((part) => {
+    const keys = part || [];
+    let i = 0;
+    while (i < keys.length) {
+      let take = Math.min(maxDays, keys.length - i);
+      while (take > 1 && i + take < keys.length) {
+        const last = parseKey(keys[i + take - 1]);
+        const next = parseKey(keys[i + take]);
+        if (last.getDay() === 5 && next.getDay() === 6) take -= 1;
+        else break;
+      }
+      out.push(keys.slice(i, i + take));
+      i += take;
+    }
+  });
+  return out.filter((part) => part.length > 0);
+}
+
+/**
+ * Keeps a weekend inside one chag share (rules b/c). When a share boundary
+ * falls between a Friday and the Saturday right after it, the Saturday moves
+ * into the share that holds the Friday, so nobody comes in for a lone Saturday.
+ * A share left empty by the move is dropped.
+ *
+ * @param {string[][]} parts - consecutive shares of 'yyyy-MM-dd' keys, in order
+ * @returns {string[][]}
+ */
+export function keepWeekendsTogether(parts) {
+  const out = parts.map((part) => [...part]).filter((part) => part.length > 0);
+  for (let i = 0; i < out.length - 1; i++) {
+    const last = out[i][out[i].length - 1];
+    const next = out[i + 1][0];
+    if (!last || !next) continue;
+    const fri = parseKey(last);
+    const sat = parseKey(next);
+    const consecutive = dayIdx(sat) - dayIdx(fri) === 1;
+    if (consecutive && fri.getDay() === 5 && sat.getDay() === 6) {
+      out[i].push(out[i + 1].shift());
+      if (out[i + 1].length === 0) {
+        out.splice(i + 1, 1);
+        i -= 1;
+      }
+    }
+  }
+  return out;
+}
+
+// Splits a run of Chol HaMoed days into two-day shares; an odd last day joins
+// the share before it (a three-day share) instead of standing alone.
+export function splitCholHamoed(keys) {
+  const parts = [];
+  for (let i = 0; i < keys.length; i += 2) parts.push(keys.slice(i, i + 2));
+  if (parts.length > 1 && parts[parts.length - 1].length === 1) {
+    parts[parts.length - 2].push(parts.pop()[0]);
+  }
+  return parts;
+}
+
+// The shares a holiday group actually ends up with: the admin's cuts (or an
+// even split), never separating a Friday from its Saturday, and never longer
+// than MAX_SHARE_DAYS days. This is what the admin list previews, so the
+// preview and the distribution always agree.
+export function previewHolidayShares(dayKeys = [], { divisions = 1, breaks = [] } = {}) {
+  const keys = [...(dayKeys || [])].sort();
+  if (keys.length === 0) return [];
+  const parts = splitHolidayDays(keys, {
+    divisions: Math.max(1, Number(divisions) || defaultDivisions(keys.length)),
+    breaks,
+  });
+  return capShareLength(keepWeekendsTogether(parts));
 }
