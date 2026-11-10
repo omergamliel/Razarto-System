@@ -922,7 +922,10 @@ export function distributeShifts({
   refine = true,
   spreadWeekdays = true,
   spreadWeekends = true,
-  allowWeeklyOverflow = true,
+  // Off by default: a day nobody can take under the one-shift-per-week rule is
+  // reported as unassigned (the admin panel lists it) instead of silently giving
+  // someone a second shift that week.
+  allowWeeklyOverflow = false,
 }) {
   const holidayByDate = new Set(holidayDates);
   const divisionByDate = new Map(holidayDivisions);

@@ -141,7 +141,7 @@ export function keepWeekendsTogether(parts) {
     if (!last || !next) continue;
     const fri = parseKey(last);
     const sat = parseKey(next);
-    const consecutive = dayIdx(sat) - dayIdx(fri) === 1;
+    const consecutive = dayIdx(next) - dayIdx(last) === 1;
     if (consecutive && fri.getDay() === 5 && sat.getDay() === 6) {
       out[i].push(out[i + 1].shift());
       if (out[i + 1].length === 0) {
