@@ -19,6 +19,7 @@ import {
   activeMemberSerialIdOnDate,
 } from "@/lib/utils";
 import { assert, assertEqual } from "./assert";
+import { holidayDistributionTests } from "./holidayDistributionTests";
 
 // No backend I/O in this file — every test here is a plain function call
 // against already-exported, already-pure helpers.
@@ -1184,6 +1185,7 @@ export const pureTests = [
     category: "pure",
     run: testDistributeShifts,
   },
+  ...holidayDistributionTests,
   {
     id: "pure-compute-notification-events",
     name: "computeNotificationEvents: relevant-to-me detection + fingerprint stability",
