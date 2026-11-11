@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Ban, Trash2, AlertTriangle } from "lucide-react";
+import { Ban, Trash2, Users } from "lucide-react";
 import {
   format,
   parseISO,
@@ -90,14 +90,17 @@ export default function ConsiderationPanel({ currentUser, isAdmin }) {
     return { myRequests: mine, myDates: dates };
   }, [requests, mySerial]);
 
-  // Manager signal: users who set MORE THAN the monthly threshold of
-  // constraints in a single calendar month. Grouped by user+month, each group
-  // carrying its own constraint rows so ranges/counts can be shown and deleted.
-  const flaggedGroups = useMemo(() => {
+  // Manager view: every OTHER user's constraints, grouped by user+month, each
+  // group carrying its own rows so ranges/counts can be shown and deleted. The
+  // current user's own constraints are excluded — they are listed above under
+  // "האילוצים שלי". A group that crossed the monthly threshold is marked (amber)
+  // as a signal, but all of them are listed so a manager can review anyone.
+  const otherGroups = useMemo(() => {
     if (!isAdmin) return [];
     const byUserMonth = new Map();
     requests.forEach((r) => {
       if (!r.date || r.serial_id == null) return;
+      if (mySerial != null && Number(r.serial_id) === Number(mySerial)) return;
       const key = `${r.serial_id}|${monthKeyOf(r.date)}`;
       if (!byUserMonth.has(key)) {
         byUserMonth.set(key, {
@@ -109,10 +112,11 @@ export default function ConsiderationPanel({ currentUser, isAdmin }) {
       }
       byUserMonth.get(key).rows.push({ id: r.id, date: r.date });
     });
-    const flagged = Array.from(byUserMonth.values()).filter(
-      (g) => g.rows.length > monthlyThreshold,
-    );
-    flagged.sort((a, b) => {
+    const groups = Array.from(byUserMonth.values()).map((g) => ({
+      ...g,
+      over: g.rows.length > monthlyThreshold,
+    }));
+    groups.sort((a, b) => {
       if (sortMode === "date") {
         return (
           b.month.localeCompare(a.month) ||
@@ -124,8 +128,13 @@ export default function ConsiderationPanel({ currentUser, isAdmin }) {
         b.month.localeCompare(a.month)
       );
     });
-    return flagged;
-  }, [requests, isAdmin, monthlyThreshold, sortMode]);
+    return groups;
+  }, [requests, isAdmin, monthlyThreshold, sortMode, mySerial]);
+
+  const overCount = useMemo(
+    () => otherGroups.filter((g) => g.over).length,
+    [otherGroups],
+  );
 
   const createMutation = useMutation({
     mutationFn: async (dates) => {
@@ -321,17 +330,22 @@ export default function ConsiderationPanel({ currentUser, isAdmin }) {
         )}
       </div>
 
-      {/* Manager: users who crossed the monthly threshold */}
+      {/* Manager: every other user's constraints, threshold breakers marked */}
       {isAdmin && (
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <div className="flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-amber-500" />
+              <Users className="w-4 h-4 text-indigo-500" />
               <h3 className="font-bold text-gray-800 text-sm">
-                חריגות ממכסת האילוצים ({flaggedGroups.length})
+                אילוצים של משתמשים אחרים ({otherGroups.length})
               </h3>
+              {overCount > 0 && (
+                <span className="text-[11px] font-semibold text-amber-800 bg-amber-100 rounded-full px-2 py-0.5">
+                  {overCount} חריגות ממכסה
+                </span>
+              )}
             </div>
-            {flaggedGroups.length > 0 && (
+            {otherGroups.length > 0 && (
               <div className="flex items-center bg-gray-100 rounded-lg p-0.5 text-xs">
                 <button
                   onClick={() => setSortMode("user")}
@@ -357,20 +371,24 @@ export default function ConsiderationPanel({ currentUser, isAdmin }) {
             )}
           </div>
           <p className="text-xs text-gray-500 leading-relaxed">
-            משתמשים שהגדירו יותר מ-{monthlyThreshold} אילוצים בחודש בודד. האילוצים
-            תקפים ונלקחים בחשבון בחלוקה — זהו סימון בלבד; אפשר למחוק אילוצים כאן אם
-            תרצו.
+            כל האילוצים שהגדירו שאר המשתמשים, לפי משתמש וחודש. אילוצים אלה תקפים
+            ונלקחים בחשבון בחלוקה; קבוצה שחצתה יותר מ-{monthlyThreshold} אילוצים
+            בחודש מסומנת בכתום (חריגה ממכסה). אפשר למחוק אילוצים כאן אם תרצו.
           </p>
-          {flaggedGroups.length === 0 ? (
+          {otherGroups.length === 0 ? (
             <div className="text-center py-6 bg-gray-50 rounded-2xl border border-dashed border-gray-200 text-gray-500 text-sm">
-              אין חריגות ממכסת האילוצים
+              אין אילוצים של משתמשים אחרים
             </div>
           ) : (
             <div className="space-y-2">
-              {flaggedGroups.map((g) => (
+              {otherGroups.map((g) => (
                 <div
                   key={`${g.serial_id}-${g.month}`}
-                  className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5"
+                  className={`rounded-xl border px-3 py-2.5 ${
+                    g.over
+                      ? "border-amber-200 bg-amber-50"
+                      : "border-gray-200 bg-gray-50"
+                  }`}
                 >
                   <div className="flex items-center justify-between gap-2 flex-wrap mb-1.5">
                     <div className="flex items-center gap-2 min-w-0">
@@ -381,15 +399,25 @@ export default function ConsiderationPanel({ currentUser, isAdmin }) {
                         {fmtMonth(g.month)}
                       </span>
                     </div>
-                    <span className="text-[11px] font-semibold text-amber-800 bg-amber-100 rounded-full px-2 py-0.5">
-                      {g.rows.length} אילוצים (מכסה: {monthlyThreshold})
+                    <span
+                      className={`text-[11px] font-semibold rounded-full px-2 py-0.5 ${
+                        g.over
+                          ? "text-amber-800 bg-amber-100"
+                          : "text-gray-600 bg-gray-100"
+                      }`}
+                    >
+                      {g.over
+                        ? `${g.rows.length} אילוצים — חריגה (מכסה: ${monthlyThreshold})`
+                        : `${g.rows.length} אילוצים`}
                     </span>
                   </div>
                   <div className="space-y-1">
                     {collapseRanges(g.rows).map((range) => (
                       <div
                         key={`${range.startDate}-${range.endDate}`}
-                        className="flex items-center justify-between gap-2 rounded-lg bg-white/70 border border-amber-100 px-2.5 py-1.5"
+                        className={`flex items-center justify-between gap-2 rounded-lg bg-white border px-2.5 py-1.5 ${
+                          g.over ? "border-amber-100" : "border-gray-100"
+                        }`}
                       >
                         <span className="text-xs text-gray-700">
                           {range.startDate === range.endDate
