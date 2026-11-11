@@ -319,11 +319,27 @@ export default function DistributionTab({
       });
       cholHamoedDates.forEach((key) => holidayKeys.push(String(key).slice(0, 10)));
 
+      // Shifts already in the calendar inside the range. The distribution only
+      // fills free days, so these are not reassigned — but the preview calendar
+      // shows them (grey) so an already-scheduled range doesn't look empty.
+      const existingInRange = (shifts || [])
+        .filter(
+          (s) =>
+            s.start_date >= startDate &&
+            s.start_date <= endDate &&
+            s.original_user_id != null,
+        )
+        .map((s) => ({
+          date: String(s.start_date).slice(0, 10),
+          personId: Number(s.original_user_id),
+        }));
+
       // NOTHING is written here: this is the preview. The shifts are created
       // only when the result is approved in the preview window.
       return {
         ...distribution,
         assignments: finalAssignments,
+        existing: existingInRange,
         startDate,
         endDate,
         holidayKeys,

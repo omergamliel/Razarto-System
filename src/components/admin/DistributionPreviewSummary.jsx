@@ -36,8 +36,9 @@ export default function DistributionPreviewSummary({ model, relaxations, skipped
 
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
         <Tile label="משמרות בחלוקה" value={model.totals.assignments} />
+        <Tile label="משובצים קיימים" value={model.totals.existing} />
         <Tile label="ימים בטווח" value={model.totals.days} />
         <Tile label="משתתפים בחלוקה" value={model.totals.pool} />
         <Tile
@@ -86,7 +87,9 @@ export default function DistributionPreviewSummary({ model, relaxations, skipped
       ) : (
         <p className="text-[11px] text-emerald-700 flex items-center gap-1.5">
           <CheckCircle2 className="w-3.5 h-3.5" />
-          כל יום בטווח קיבל משמרת — אין חורים בלוח.
+          {model.totals.assignments === 0
+            ? "אין ימים פנויים בטווח — כל הימים כבר משובצים ביומן (מוצגים באפור)."
+            : "כל יום פנוי בטווח שובץ — אין חורים בלוח."}
         </p>
       )}
 

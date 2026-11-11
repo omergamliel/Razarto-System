@@ -12,6 +12,7 @@ function DayCell({ cell, dimmed }) {
 
   const style = {};
   if (cell.hue != null) style.background = personColor(cell.hue);
+  else if (cell.existing) style.background = MARK_COLORS.existing;
   if (cell.category === "holidays") {
     style.boxShadow = `inset 0 0 0 1.5px ${MARK_COLORS.holiday}`;
   }
@@ -28,7 +29,13 @@ function DayCell({ cell, dimmed }) {
       }`}
     >
       <span className="text-[8px] text-gray-500">{cell.day}</span>
-      <span className="text-[9px] font-bold text-gray-800">{cell.short}</span>
+      <span
+        className={`text-[9px] font-bold ${
+          cell.short ? "text-gray-800" : "text-gray-500"
+        }`}
+      >
+        {cell.short || cell.existingShort}
+      </span>
       {cell.overflow && (
         <span
           className="absolute bottom-0 left-0 right-0 h-[3px]"

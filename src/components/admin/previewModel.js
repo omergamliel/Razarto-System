@@ -33,6 +33,7 @@ export const CATEGORY_LABELS = {
 export const MARK_COLORS = {
   holiday: "hsl(276 45% 47%)",
   warning: "hsl(4 62% 47%)",
+  existing: "hsl(210 16% 92%)",
 };
 
 const keyOf = (value) => String(value ?? "").slice(0, 10);
@@ -72,6 +73,7 @@ export function buildPreviewModel({
   skipped = [],
   weeklyOverflow = [],
   holidayKeys = [],
+  existing = [],
   people = [],
   startDate,
   endDate,
@@ -92,6 +94,16 @@ export function buildPreviewModel({
     const id = Number(assignment.personId);
     ownerByKey.set(key, id);
     ids.add(id);
+  });
+
+  // Shifts already in the calendar for this range: they are NOT part of the run
+  // (the distribution only fills free days), but the calendar must show them —
+  // otherwise a range that is already scheduled looks completely empty.
+  const existingByKey = new Map();
+  (existing || []).forEach((entry) => {
+    const key = keyOf(entry.date);
+    if (!key || existingByKey.has(key)) return;
+    existingByKey.set(key, Number(entry.personId));
   });
 
   const rowsById = new Map();
@@ -189,6 +201,11 @@ export function buildPreviewModel({
       const owner = ownerByKey.get(key) ?? null;
       const row = owner != null ? rowsById.get(owner) : null;
       if (row) count += 1;
+      const existingOwner = owner == null ? existingByKey.get(key) ?? null : null;
+      const existingName =
+        existingOwner != null
+          ? peopleBySerial.get(existingOwner)?.full_name || `#${existingOwner}`
+          : "";
       cells.push({
         id: key,
         key,
@@ -198,11 +215,18 @@ export function buildPreviewModel({
         short: row?.short || "",
         hue: row?.hue ?? null,
         name: row?.name || "",
-        unfilled: owner == null,
+        existing: existingOwner != null,
+        existingShort: existingOwner != null ? shortName(existingName) : "",
+        existingName,
+        unfilled: owner == null && existingOwner == null,
         overflow: overflowSet.has(key),
         skipped: skippedSet.has(key),
         title: `${format(date, "dd/MM/yyyy")} · ${CATEGORY_LABELS[category]}${
-          row?.name ? ` · ${row.name}` : " · לא מאויש"
+          row?.name
+            ? ` · ${row.name}`
+            : existingOwner != null
+              ? ` · ${existingName} (משובץ קיים)`
+              : " · לא מאויש"
         }`,
       });
     }
@@ -225,6 +249,7 @@ export function buildPreviewModel({
     holidaySet,
     totals: {
       assignments: (assignments || []).length,
+      existing: existingByKey.size,
       days: totalDays,
       people: rows.length,
       pool,

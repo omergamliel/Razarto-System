@@ -90,6 +90,13 @@ export default function DistributionPreviewModal({
                   <span className="inline-flex items-center gap-1">
                     <span
                       className="w-3 h-3 rounded"
+                      style={{ background: MARK_COLORS.existing }}
+                    />
+                    משובץ קיים
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span
+                      className="w-3 h-3 rounded"
                       style={{
                         boxShadow: `inset 0 0 0 1.5px ${MARK_COLORS.holiday}`,
                       }}
