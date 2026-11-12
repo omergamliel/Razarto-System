@@ -34,6 +34,7 @@ export const MARK_COLORS = {
   holiday: "hsl(276 45% 47%)",
   warning: "hsl(4 62% 47%)",
   existing: "hsl(210 16% 92%)",
+  constraint: "hsl(38 92% 45%)",
 };
 
 const keyOf = (value) => String(value ?? "").slice(0, 10);
@@ -74,6 +75,7 @@ export function buildPreviewModel({
   weeklyOverflow = [],
   holidayKeys = [],
   existing = [],
+  constraints = [],
   people = [],
   startDate,
   endDate,
@@ -104,6 +106,16 @@ export function buildPreviewModel({
     const key = keyOf(entry.date);
     if (!key || existingByKey.has(key)) return;
     existingByKey.set(key, Number(entry.personId));
+  });
+
+  // The constraints (אילוצים) this run respected, indexed by day, so the
+  // calendar shows whose request blocked the date and can delete it in place.
+  const constraintByKey = new Map();
+  (constraints || []).forEach((constraint) => {
+    const key = keyOf(constraint.date);
+    if (!key) return;
+    if (!constraintByKey.has(key)) constraintByKey.set(key, []);
+    constraintByKey.get(key).push(constraint);
   });
 
   const rowsById = new Map();
@@ -198,6 +210,7 @@ export function buildPreviewModel({
         continue;
       }
       const category = categorize(key, holidaySet);
+      const dayConstraints = constraintByKey.get(key) || [];
       const owner = ownerByKey.get(key) ?? null;
       const row = owner != null ? rowsById.get(owner) : null;
       if (row) count += 1;
@@ -221,12 +234,19 @@ export function buildPreviewModel({
         unfilled: owner == null && existingOwner == null,
         overflow: overflowSet.has(key),
         skipped: skippedSet.has(key),
+        constraints: dayConstraints,
         title: `${format(date, "dd/MM/yyyy")} · ${CATEGORY_LABELS[category]}${
           row?.name
             ? ` · ${row.name}`
             : existingOwner != null
               ? ` · ${existingName} (משובץ קיים)`
               : " · לא מאויש"
+        }${
+          dayConstraints.length
+            ? ` · אילוץ: ${dayConstraints
+                .map((constraint) => constraint.user_name)
+                .join(", ")}`
+            : ""
         }`,
       });
     }
@@ -247,6 +267,7 @@ export function buildPreviewModel({
     fair,
     kindTotals,
     holidaySet,
+    constraintByKey,
     totals: {
       assignments: (assignments || []).length,
       existing: existingByKey.size,

@@ -129,11 +129,22 @@ export default function DistributionPreviewModal({
                     <span className="w-3 h-[3px] rounded" style={{ background: MARK_COLORS.warning }} />
                     מילוי אחרון
                   </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span
+                      className="w-2 h-2 rounded-full"
+                      style={{ background: MARK_COLORS.constraint }}
+                    />
+                    אילוץ (ריחוף למחיקה)
+                  </span>
                 </div>
               </div>
               <DistributionPreviewCalendar
                 months={model.months}
                 highlight={highlight}
+                constraintByKey={model.constraintByKey}
+                onDeleteConstraint={onDeleteConstraint}
+                deletingId={deletingConstraintId}
+                isRunning={isRunning}
               />
             </div>
 
