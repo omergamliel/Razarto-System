@@ -26,18 +26,30 @@ const dayGap = (a, b) => {
   return differenceInCalendarDays(to, from);
 };
 
-// Consecutive calendar days collapse into one range, so a manager reads
-// "05/03 – 08/03 (4 ימים)" and removes the run in one action.
+const noteOf = (row) => String(row.constraint?.note || "").trim();
+
+// Consecutive calendar days with the same note collapse into one range, so a
+// manager reads "05/03 – 08/03 (4 ימים)" with its comment, and removes the run
+// in one action.
 const collapseRanges = (rows) => {
   const sorted = [...rows].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   const ranges = [];
   sorted.forEach((row) => {
     const last = ranges[ranges.length - 1];
-    if (last && dayGap(last.endDate, row.date) === 1) {
+    if (
+      last &&
+      dayGap(last.endDate, row.date) === 1 &&
+      last.note === noteOf(row)
+    ) {
       last.endDate = row.date;
       last.rows.push(row);
     } else {
-      ranges.push({ startDate: row.date, endDate: row.date, rows: [row] });
+      ranges.push({
+        startDate: row.date,
+        endDate: row.date,
+        note: noteOf(row),
+        rows: [row],
+      });
     }
   });
   return ranges;
@@ -177,10 +189,7 @@ export default function DistributionPreviewConstraintsByUser({
                   isRunning ||
                   (deletingId != null &&
                     activeRows.some((row) => row.id === deletingId));
-                const count = activeRows.length || range.rows.length;
-                const noted = range.rows.filter((row) =>
-                  Boolean(row.constraint?.note?.trim()),
-                );
+                const count = range.rows.length;
                 const rangeLabel =
                   range.startDate === range.endDate
                     ? fmtHe(range.startDate)
@@ -222,29 +231,17 @@ export default function DistributionPreviewConstraintsByUser({
                         )}
                       </button>
                     </div>
-                    {noted.length > 0 && (
-                      <div className="mt-1 space-y-0.5 pr-1">
-                        {noted.map((row) => {
-                          const note = row.constraint.note.trim();
-                          const label =
-                            noted.length > 1 || range.startDate !== range.endDate
-                              ? `${fmtHe(row.date)} — ${note}`
-                              : note;
-                          return (
-                            <p
-                              key={row.id}
-                              title={note}
-                              className={`text-[10px] leading-snug truncate ${
-                                row.ignored
-                                  ? "text-gray-400 line-through"
-                                  : "text-gray-500"
-                              }`}
-                            >
-                              {label}
-                            </p>
-                          );
-                        })}
-                      </div>
+                    {range.note && (
+                      <p
+                        title={range.note}
+                        className={`mt-0.5 pr-1 text-[10px] leading-snug truncate ${
+                          activeRows.length === 0
+                            ? "text-gray-400 line-through"
+                            : "text-gray-500"
+                        }`}
+                      >
+                        {range.note}
+                      </p>
                     )}
                   </div>
                 );
