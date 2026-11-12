@@ -499,13 +499,18 @@ export default function DistributionTab({
     });
   };
 
-  const handleIgnoreConstraint = (constraint) => {
-    const next = ignoredConstraints.some((c) => c.id === constraint.id)
-      ? ignoredConstraints
-      : [...ignoredConstraints, constraint];
+  const handleIgnoreConstraints = (items) => {
+    const list = (Array.isArray(items) ? items : [items]).filter(Boolean);
+    if (!list.length) return;
+    const known = new Set(ignoredConstraints.map((c) => c.id));
+    const next = [...ignoredConstraints, ...list.filter((c) => !known.has(c.id))];
     setIgnoredConstraints(next);
-    setPendingIgnoreId(constraint.id);
-    toast.success("האילוץ הוסר מהחלוקה הזו — מחשב מחדש");
+    setPendingIgnoreId(list[0].id);
+    toast.success(
+      list.length > 1
+        ? `${list.length} אילוצים הוסרו מהחלוקה הזו — מחשב מחדש`
+        : "האילוץ הוסר מהחלוקה הזו — מחשב מחדש",
+    );
     rerunWith(next);
   };
 
@@ -1027,7 +1032,8 @@ export default function DistributionTab({
         isSaving={commitMutation.isPending}
         isRunning={runMutation.isPending}
         deletingConstraintId={pendingIgnoreId}
-        onDeleteConstraint={handleIgnoreConstraint}
+        onDeleteConstraint={handleIgnoreConstraints}
+        ignoredConstraints={ignoredConstraints}
         ignoredCount={ignoredConstraints.length}
         onRestoreIgnored={handleRestoreIgnored}
         onRerun={handleRerun}

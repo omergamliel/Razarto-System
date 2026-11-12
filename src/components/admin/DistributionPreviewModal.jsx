@@ -34,6 +34,7 @@ export default function DistributionPreviewModal({
   isRunning,
   deletingConstraintId,
   onDeleteConstraint,
+  ignoredConstraints = [],
   ignoredCount = 0,
   onRestoreIgnored,
   onRerun,
@@ -88,6 +89,7 @@ export default function DistributionPreviewModal({
 
             <DistributionPreviewConstraints
               constraints={preview.constraints}
+              ignored={ignoredConstraints}
               onDelete={onDeleteConstraint}
               deletingId={deletingConstraintId}
               isRunning={isRunning}
