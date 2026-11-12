@@ -178,43 +178,74 @@ export default function DistributionPreviewConstraintsByUser({
                   (deletingId != null &&
                     activeRows.some((row) => row.id === deletingId));
                 const count = activeRows.length || range.rows.length;
+                const noted = range.rows.filter((row) =>
+                  Boolean(row.constraint?.note?.trim()),
+                );
+                const rangeLabel =
+                  range.startDate === range.endDate
+                    ? fmtHe(range.startDate)
+                    : `${fmtHe(range.startDate)} – ${fmtHe(range.endDate)} (${count} ימים)`;
                 return (
                   <div
                     key={`${range.startDate}-${range.endDate}`}
-                    className={`flex items-center justify-between gap-2 rounded-lg bg-white border px-2 py-1 ${
+                    className={`rounded-lg bg-white border px-2 py-1 ${
                       group.over ? "border-amber-100" : "border-gray-100"
                     }`}
                   >
-                    <span
-                      className={`text-[11px] ${
-                        activeRows.length === 0
-                          ? "text-gray-400 line-through"
-                          : "text-gray-700"
-                      }`}
-                    >
-                      {range.startDate === range.endDate
-                        ? fmtHe(range.startDate)
-                        : `${fmtHe(range.startDate)} – ${fmtHe(range.endDate)} (${count} ימים)`}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onDelete(activeRows.map((row) => row.constraint))
-                      }
-                      disabled={busy || activeRows.length === 0}
-                      className="p-1 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors shrink-0 disabled:opacity-40 disabled:hover:text-gray-400 disabled:hover:bg-transparent"
-                      title={
-                        activeRows.length === 0
-                          ? "האילוץ כבר הוסר מהחלוקה הזו"
-                          : "הסרה מהחלוקה הזו (האילוץ עצמו נשאר במערכת)"
-                      }
-                    >
-                      {busy && activeRows.length > 0 ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      ) : (
-                        <Trash2 className="w-3.5 h-3.5" />
-                      )}
-                    </button>
+                    <div className="flex items-center justify-between gap-2">
+                      <span
+                        className={`text-[11px] ${
+                          activeRows.length === 0
+                            ? "text-gray-400 line-through"
+                            : "text-gray-700"
+                        }`}
+                      >
+                        {rangeLabel}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          onDelete(activeRows.map((row) => row.constraint))
+                        }
+                        disabled={busy || activeRows.length === 0}
+                        className="p-1 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors shrink-0 disabled:opacity-40 disabled:hover:text-gray-400 disabled:hover:bg-transparent"
+                        title={
+                          activeRows.length === 0
+                            ? "האילוץ כבר הוסר מהחלוקה הזו"
+                            : "הסרה מהחלוקה הזו (האילוץ עצמו נשאר במערכת)"
+                        }
+                      >
+                        {busy && activeRows.length > 0 ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="w-3.5 h-3.5" />
+                        )}
+                      </button>
+                    </div>
+                    {noted.length > 0 && (
+                      <div className="mt-1 space-y-0.5 pr-1">
+                        {noted.map((row) => {
+                          const note = row.constraint.note.trim();
+                          const label =
+                            noted.length > 1 || range.startDate !== range.endDate
+                              ? `${fmtHe(row.date)} — ${note}`
+                              : note;
+                          return (
+                            <p
+                              key={row.id}
+                              title={note}
+                              className={`text-[10px] leading-snug truncate ${
+                                row.ignored
+                                  ? "text-gray-400 line-through"
+                                  : "text-gray-500"
+                              }`}
+                            >
+                              {label}
+                            </p>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 );
               })}
