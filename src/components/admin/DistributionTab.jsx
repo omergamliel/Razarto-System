@@ -73,6 +73,11 @@ export default function DistributionTab({
   // The parameters of the last run, so a constraint deleted in the preview can
   // re-run the same distribution.
   const [lastRunParams, setLastRunParams] = useState(null);
+  // Constraints removed inside the preview window. Removing one affects ONLY
+  // this run: nothing is deleted from the system, the request is just ignored
+  // here and can be restored before the distribution is committed.
+  const [ignoredConstraints, setIgnoredConstraints] = useState([]);
+  const [pendingIgnoreId, setPendingIgnoreId] = useState(null);
   // The last COMMITTED run (its summary stays on screen), and the run that is
   // only being previewed — nothing is written for the latter.
   const [result, setResult] = useState(null);
@@ -106,7 +111,9 @@ export default function DistributionTab({
       endDate,
       respectConstraints: useConstraints = true,
       overwriteExisting: overwrite = false,
+      ignoredConstraintIds = [],
     }) => {
+      const ignored = new Set(ignoredConstraintIds);
       const grace = Math.max(0, Math.floor(Number(switchGraceDays)) || 0);
       const peopleBySerial = new Map(
         people.map((p) => [Number(p.serial_id), p]),
@@ -119,7 +126,13 @@ export default function DistributionTab({
       // just-added constraint is respected without relying on cache warmth.
       const activeRequests = (
         await base44.entities.ConsiderationRequest.list()
-      ).filter((r) => r.status !== "rejected" && r.serial_id != null && r.date);
+      ).filter(
+        (r) =>
+          r.status !== "rejected" &&
+          r.serial_id != null &&
+          r.date &&
+          !ignored.has(r.id),
+      );
       // With "התחשבות באילוצים" off the run ignores them entirely (they are
       // kept in the system, they just don't block dates in this run).
       const rawProtected = new Map(); // serial_id -> Set(dates)
@@ -411,6 +424,7 @@ export default function DistributionTab({
     },
     onSuccess: (computed) => {
       setPreview(computed);
+      setPendingIgnoreId(null);
       setError("");
     },
     onError: (e) => {
@@ -474,31 +488,36 @@ export default function DistributionTab({
     },
   });
 
-  // 5. Delete a constraint straight from the preview and recompute the same
-  // distribution, so the freed date is staffed without leaving the window.
-  const deleteConstraintMutation = useMutation({
-    mutationFn: async (constraint) => {
-      await base44.entities.ConsiderationRequest.delete(constraint.id);
-      return constraint;
-    },
-    onSuccess: (constraint) => {
-      logActivity({
-        action: `מחיקת אילוץ של ${constraint.user_name} (${constraint.date}) מתוך תצוגת החלוקה`,
-        type: "בקשת התחשבות",
-        entity: "ConsiderationRequest",
-        details: {
-          requester: constraint.user_name,
-          date: constraint.date,
-        },
-      });
-      queryClient.invalidateQueries({ queryKey: ["consideration-requests"] });
-      toast.success("האילוץ נמחק — מחשב חלוקה מחדש");
-      if (lastRunParams) runMutation.mutate(lastRunParams);
-    },
-    onError: (e) => {
-      toast.error(e?.message || "מחיקת האילוץ נכשלה. נסו שוב.");
-    },
-  });
+  // 5. Remove a constraint inside the preview only. The request itself is NOT
+  // deleted — it stays in the system, and the distribution is re-run with the
+  // same parameters while ignoring it.
+  const rerunWith = (ignored) => {
+    if (!lastRunParams) return;
+    runMutation.mutate({
+      ...lastRunParams,
+      ignoredConstraintIds: ignored.map((c) => c.id),
+    });
+  };
+
+  const handleIgnoreConstraint = (constraint) => {
+    const next = ignoredConstraints.some((c) => c.id === constraint.id)
+      ? ignoredConstraints
+      : [...ignoredConstraints, constraint];
+    setIgnoredConstraints(next);
+    setPendingIgnoreId(constraint.id);
+    toast.success("האילוץ הוסר מהחלוקה הזו — מחשב מחדש");
+    rerunWith(next);
+  };
+
+  const handleRestoreIgnored = () => {
+    if (!ignoredConstraints.length) return;
+    setIgnoredConstraints([]);
+    setPendingIgnoreId(null);
+    toast.success("החזרת האילוצים לחלוקה הזו — מחשב מחדש");
+    rerunWith([]);
+  };
+
+  const handleRerun = () => rerunWith(ignoredConstraints);
 
   const handleRun = () => {
     const { startDate, endDate } = range;
@@ -512,7 +531,15 @@ export default function DistributionTab({
     }
     setError("");
     setResult(null);
-    const params = { startDate, endDate, respectConstraints, overwriteExisting };
+    // A fresh run starts with every constraint honored again.
+    setIgnoredConstraints([]);
+    const params = {
+      startDate,
+      endDate,
+      respectConstraints,
+      overwriteExisting,
+      ignoredConstraintIds: [],
+    };
     setLastRunParams(params);
     runMutation.mutate(params);
   };
@@ -999,14 +1026,11 @@ export default function DistributionTab({
         people={people}
         isSaving={commitMutation.isPending}
         isRunning={runMutation.isPending}
-        deletingConstraintId={
-          deleteConstraintMutation.isPending
-            ? deleteConstraintMutation.variables?.id
-            : null
-        }
-        onDeleteConstraint={(constraint) =>
-          deleteConstraintMutation.mutate(constraint)
-        }
+        deletingConstraintId={pendingIgnoreId}
+        onDeleteConstraint={handleIgnoreConstraint}
+        ignoredCount={ignoredConstraints.length}
+        onRestoreIgnored={handleRestoreIgnored}
+        onRerun={handleRerun}
         onApprove={() => preview && commitMutation.mutate(preview)}
         onClose={() => setPreview(null)}
       />

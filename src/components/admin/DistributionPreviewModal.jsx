@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { Check, Loader2, CalendarRange } from "lucide-react";
+import { Check, Loader2, CalendarRange, RefreshCw } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -34,6 +34,9 @@ export default function DistributionPreviewModal({
   isRunning,
   deletingConstraintId,
   onDeleteConstraint,
+  ignoredCount = 0,
+  onRestoreIgnored,
+  onRerun,
   onApprove,
   onClose,
 }) {
@@ -88,6 +91,8 @@ export default function DistributionPreviewModal({
               onDelete={onDeleteConstraint}
               deletingId={deletingConstraintId}
               isRunning={isRunning}
+              ignoredCount={ignoredCount}
+              onRestoreIgnored={onRestoreIgnored}
             />
 
             <DistributionPreviewPeopleBar
@@ -178,6 +183,24 @@ export default function DistributionPreviewModal({
               className="flex-1 sm:flex-none rounded-xl"
             >
               ביטול
+            </Button>
+            <Button
+              variant="outline"
+              onClick={onRerun}
+              disabled={isSaving || isRunning}
+              title={`הרצה מחדש עם אותם פרמטרים: ${formatIL(
+                preview?.startDate,
+              )} — ${formatIL(preview?.endDate)} · ${
+                preview?.overwrite ? "עם דריסת משמרות" : "בלי דריסת משמרות"
+              } · התחשבות בעבר · ${
+                ignoredCount ? `${ignoredCount} אילוצים מוסרים` : "כל האילוצים"
+              }`}
+              className="flex-1 sm:flex-none rounded-xl gap-2"
+            >
+              <RefreshCw
+                className={`w-4 h-4 ${isRunning ? "animate-spin" : ""}`}
+              />
+              הרצה מחדש
             </Button>
             <Button
               onClick={onApprove}
