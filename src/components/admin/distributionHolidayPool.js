@@ -23,11 +23,13 @@ const dayKeysBetween = (fromKey, endKey) => {
 // Holidays are divided between PEOPLE, not between group slots (see the
 // "חלוקות" value of each holiday in the חגים section). So alongside the group
 // representatives the algorithm distributes ordinary days with, it also gets a
-// per-USER pool for holiday blocks: every RR/Manager member of an active group,
-// with their own constraints and the same windows the group's slot observes —
-// the member leaving a group on a scheduled switch is a candidate only before
-// it, the member joining only from it (and stays free through the grace period),
-// and a scheduled deactivate removes the whole group's members.
+// per-USER pool for holiday blocks: the RR/Manager member ACTIVE in each active
+// group, with their own constraints and the same windows the group's slot
+// observes — the member leaving a group on a scheduled switch is a candidate
+// only before it, the member joining only from it (and stays free through the
+// grace period), and a scheduled deactivate removes the whole group's members.
+// A group member who doesn't hold the group's active slot is never in the pool:
+// only an active member of a group may be assigned shifts.
 export function buildHolidayUserPool({
   groups,
   members,
@@ -106,10 +108,31 @@ export function buildHolidayUserPool({
       }
     }
 
+    // The days on which each member actually holds this group's active slot,
+    // resolved per day through the shared rule so a scheduled switch or
+    // deactivate is honored exactly like the rest of the app.
+    const activeDaysByMember = new Map();
+    dayKeysBetween(startDate, endDate).forEach((day) => {
+      const serial = activeMemberSerialIdOnDate(group, day);
+      if (serial == null) return;
+      const key = Number(serial);
+      if (!activeDaysByMember.has(key)) activeDaysByMember.set(key, new Set());
+      activeDaysByMember.get(key).add(day);
+    });
+
     groupMembers.forEach((member) => {
       if (!ROTATION_ROLES.includes(member.permissions)) return;
       const key = Number(member.serial_id);
       if (Number.isNaN(key)) return;
+
+      // Only a member who is active in the group on at least one day she isn't
+      // blocked on takes holiday shares. Everyone else in the group (an
+      // ordinary, non-active member, or one whose whole activity falls inside
+      // their grace period) is out of the holiday rotation.
+      const activeDays = activeDaysByMember.get(key);
+      if (!activeDays || activeDays.size === 0) return;
+      const blocked = blockedByMember.get(key);
+      if (blocked && [...activeDays].every((d) => blocked.has(d))) return;
 
       if (!seen.has(key)) {
         seen.add(key);
