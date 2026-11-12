@@ -13,6 +13,7 @@ import DistributionPreviewCalendar from "./DistributionPreviewCalendar";
 import DistributionPreviewPeopleBar from "./DistributionPreviewPeopleBar";
 import DistributionPreviewSummary from "./DistributionPreviewSummary";
 import DistributionPreviewTable from "./DistributionPreviewTable";
+import DistributionPreviewConstraints from "./DistributionPreviewConstraints";
 
 const formatIL = (iso) => {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || "").slice(0, 10));
@@ -30,6 +31,9 @@ export default function DistributionPreviewModal({
   preview,
   people,
   isSaving,
+  isRunning,
+  deletingConstraintId,
+  onDeleteConstraint,
   onApprove,
   onClose,
 }) {
@@ -41,7 +45,9 @@ export default function DistributionPreviewModal({
   );
 
   const close = () => {
-    if (isSaving) return;
+    // While the run is being recomputed the window stays open, so the fresh
+    // result replaces the one on screen instead of popping up again later.
+    if (isSaving || isRunning) return;
     setHighlight(null);
     onClose();
   };
@@ -62,7 +68,9 @@ export default function DistributionPreviewModal({
             {preview
               ? `${formatIL(preview.startDate)} — ${formatIL(preview.endDate)} · ${
                   preview.assignments?.length || 0
-                } משמרות · טרם נשמר דבר`
+                } משמרות · טרם נשמר דבר${
+                  preview.overwrite ? " · דריסת המשמרות הקיימות בטווח" : ""
+                }`
               : ""}
           </DialogDescription>
         </DialogHeader>
@@ -73,6 +81,13 @@ export default function DistributionPreviewModal({
               model={model}
               relaxations={preview.relaxations}
               skipped={preview.skipped}
+            />
+
+            <DistributionPreviewConstraints
+              constraints={preview.constraints}
+              onDelete={onDeleteConstraint}
+              deletingId={deletingConstraintId}
+              isRunning={isRunning}
             />
 
             <DistributionPreviewPeopleBar
@@ -140,20 +155,24 @@ export default function DistributionPreviewModal({
 
         <div className="shrink-0 border-t border-gray-100 bg-white px-3 md:px-4 py-3 flex flex-col-reverse sm:flex-row items-center justify-between gap-2">
           <span className="text-[11px] text-gray-500">
-            אישור יוצר את המשמרות ואת שיבוץ הבעלים בפועל ביומן.
+            {preview?.overwrite
+              ? `אישור מוחק את ${preview.replaceShiftIds?.length || 0} המשמרות הקיימות בטווח ויוצר את השיבוץ החדש במקומן.`
+              : "אישור יוצר את המשמרות ואת שיבוץ הבעלים בפועל ביומן."}
           </span>
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <Button
               variant="outline"
               onClick={close}
-              disabled={isSaving}
+              disabled={isSaving || isRunning}
               className="flex-1 sm:flex-none rounded-xl"
             >
               ביטול
             </Button>
             <Button
               onClick={onApprove}
-              disabled={isSaving || !(preview?.assignments?.length > 0)}
+              disabled={
+                isSaving || isRunning || !(preview?.assignments?.length > 0)
+              }
               className="flex-1 sm:flex-none rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
             >
               {isSaving ? (

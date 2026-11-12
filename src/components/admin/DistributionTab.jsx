@@ -9,11 +9,14 @@ import {
   CheckCircle2,
   History,
   Loader2,
+  RefreshCw,
   Scale,
+  ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -63,6 +66,13 @@ export default function DistributionTab({
 
   const [range, setRange] = useState({ startDate: "", endDate: "" });
   const [historyMonths, setHistoryMonths] = useState("6");
+  // Run options. Constraints (אילוצים) are honored by default; overwriting
+  // existing shifts is off by default, so a run only fills free days.
+  const [respectConstraints, setRespectConstraints] = useState(true);
+  const [overwriteExisting, setOverwriteExisting] = useState(false);
+  // The parameters of the last run, so a constraint deleted in the preview can
+  // re-run the same distribution.
+  const [lastRunParams, setLastRunParams] = useState(null);
   // The last COMMITTED run (its summary stays on screen), and the run that is
   // only being previewed — nothing is written for the latter.
   const [result, setResult] = useState(null);
@@ -91,7 +101,12 @@ export default function DistributionTab({
   // member. This keeps the group's total shift count the same whether or not it
   // switches mid-range.
   const runMutation = useMutation({
-    mutationFn: async ({ startDate, endDate }) => {
+    mutationFn: async ({
+      startDate,
+      endDate,
+      respectConstraints: useConstraints = true,
+      overwriteExisting: overwrite = false,
+    }) => {
       const grace = Math.max(0, Math.floor(Number(switchGraceDays)) || 0);
       const peopleBySerial = new Map(
         people.map((p) => [Number(p.serial_id), p]),
@@ -102,16 +117,17 @@ export default function DistributionTab({
       // approval, so every non-rejected request counts (the legacy "rejected"
       // status is still excluded for backward compatibility). Fetched fresh so a
       // just-added constraint is respected without relying on cache warmth.
-      const considerationRequests =
-        await base44.entities.ConsiderationRequest.list();
+      const activeRequests = (
+        await base44.entities.ConsiderationRequest.list()
+      ).filter((r) => r.status !== "rejected" && r.serial_id != null && r.date);
+      // With "התחשבות באילוצים" off the run ignores them entirely (they are
+      // kept in the system, they just don't block dates in this run).
       const rawProtected = new Map(); // serial_id -> Set(dates)
-      considerationRequests
-        .filter((r) => r.status !== "rejected" && r.serial_id != null && r.date)
-        .forEach((r) => {
-          const key = Number(r.serial_id);
-          if (!rawProtected.has(key)) rawProtected.set(key, new Set());
-          rawProtected.get(key).add(r.date);
-        });
+      (useConstraints ? activeRequests : []).forEach((r) => {
+        const key = Number(r.serial_id);
+        if (!rawProtected.has(key)) rawProtected.set(key, new Set());
+        rawProtected.get(key).add(r.date);
+      });
 
       const reps = []; // fairness participants (one per group)
       const protectedDates = new Map(); // repSerial -> Set(dates)
@@ -228,10 +244,23 @@ export default function DistributionTab({
         );
       }
 
+      // Shifts already in the calendar inside the range. Normally they are kept
+      // as they are and the run only fills the free days around them. With
+      // "דריסת משמרות קיימות" they are hidden from the run — the algorithm sees
+      // a completely free range — and are replaced when the preview is approved.
+      const inRangeShifts = (shifts || []).filter(
+        (s) => s.start_date >= startDate && s.start_date <= endDate,
+      );
+      const seedShifts = overwrite
+        ? (shifts || []).filter(
+            (s) => !(s.start_date >= startDate && s.start_date <= endDate),
+          )
+        : shifts || [];
+
       // Seed the algorithm with existing shifts, but with each group's members
       // folded onto its representative so a group that already switched (or has
       // shifts under both members) is counted as one unit.
-      const remappedShifts = shifts.map((s) => {
+      const remappedShifts = seedShifts.map((s) => {
         const owner = Number(s.original_user_id);
         const mapped = ownerRemap.get(owner);
         return mapped != null && mapped !== owner
@@ -267,7 +296,7 @@ export default function DistributionTab({
         groups: activeGroupBySymbol,
         members: membersBySymbol,
         rawProtected,
-        shifts,
+        shifts: seedShifts,
         startDate,
         endDate,
         grace,
@@ -322,17 +351,48 @@ export default function DistributionTab({
       // Shifts already in the calendar inside the range. The distribution only
       // fills free days, so these are not reassigned — but the preview calendar
       // shows them (grey) so an already-scheduled range doesn't look empty.
-      const existingInRange = (shifts || [])
-        .filter(
-          (s) =>
-            s.start_date >= startDate &&
-            s.start_date <= endDate &&
-            s.original_user_id != null,
-        )
-        .map((s) => ({
-          date: String(s.start_date).slice(0, 10),
-          personId: Number(s.original_user_id),
-        }));
+      // When the range is being overwritten they are not shown as existing:
+      // the run above already scheduled those days, and approving replaces them.
+      const existingInRange = overwrite
+        ? []
+        : inRangeShifts
+            .filter((s) => s.original_user_id != null)
+            .map((s) => ({
+              date: String(s.start_date).slice(0, 10),
+              personId: Number(s.original_user_id),
+            }));
+
+      // The constraints that shaped this run, as a list the admin can review in
+      // the preview (and delete, which re-runs the distribution).
+      const activeSerials = new Set();
+      activeGroupBySymbol.forEach((_group, symbol) => {
+        (membersBySymbol.get(symbol) || []).forEach((member) => {
+          if (member?.serial_id != null)
+            activeSerials.add(Number(member.serial_id));
+        });
+      });
+      const constraintsInRange = useConstraints
+        ? activeRequests
+            .filter((r) => {
+              const key = String(r.date).slice(0, 10);
+              return (
+                key >= startDate &&
+                key <= endDate &&
+                activeSerials.has(Number(r.serial_id))
+              );
+            })
+            .map((r) => ({
+              id: r.id,
+              serial_id: Number(r.serial_id),
+              user_name:
+                r.user_name ||
+                peopleBySerial.get(Number(r.serial_id))?.full_name ||
+                `#${r.serial_id}`,
+              date: String(r.date).slice(0, 10),
+              note: r.note || "",
+            }))
+            .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+        : [];
 
       // NOTHING is written here: this is the preview. The shifts are created
       // only when the result is approved in the preview window.
@@ -340,6 +400,9 @@ export default function DistributionTab({
         ...distribution,
         assignments: finalAssignments,
         existing: existingInRange,
+        overwrite,
+        replaceShiftIds: overwrite ? inRangeShifts.map((s) => s.id) : [],
+        constraints: constraintsInRange,
         startDate,
         endDate,
         holidayKeys,
@@ -362,6 +425,12 @@ export default function DistributionTab({
   // shifts + N coverage rows in one burst does.
   const commitMutation = useMutation({
     mutationFn: async (approved) => {
+      // Overwrite: the shifts that already sat in the range are removed first
+      // (with their coverages and swap requests), then the new distribution is
+      // written in their place.
+      if (approved.overwrite && approved.replaceShiftIds?.length) {
+        await deleteShiftsInRange(approved.replaceShiftIds);
+      }
       await runThrottled(
         approved.assignments.map((a) => async () => {
           const shift = await base44.entities.Shift.create({
@@ -382,6 +451,7 @@ export default function DistributionTab({
         entity: "Shift",
         details: {
           count: approved.assignments.length,
+          overwritten: approved.replaceShiftIds?.length || 0,
           start_date: approved.startDate,
           end_date: approved.endDate,
           shifts: approved.assignments.map((a) => ({
@@ -404,6 +474,32 @@ export default function DistributionTab({
     },
   });
 
+  // 5. Delete a constraint straight from the preview and recompute the same
+  // distribution, so the freed date is staffed without leaving the window.
+  const deleteConstraintMutation = useMutation({
+    mutationFn: async (constraint) => {
+      await base44.entities.ConsiderationRequest.delete(constraint.id);
+      return constraint;
+    },
+    onSuccess: (constraint) => {
+      logActivity({
+        action: `מחיקת אילוץ של ${constraint.user_name} (${constraint.date}) מתוך תצוגת החלוקה`,
+        type: "בקשת התחשבות",
+        entity: "ConsiderationRequest",
+        details: {
+          requester: constraint.user_name,
+          date: constraint.date,
+        },
+      });
+      queryClient.invalidateQueries({ queryKey: ["consideration-requests"] });
+      toast.success("האילוץ נמחק — מחשב חלוקה מחדש");
+      if (lastRunParams) runMutation.mutate(lastRunParams);
+    },
+    onError: (e) => {
+      toast.error(e?.message || "מחיקת האילוץ נכשלה. נסו שוב.");
+    },
+  });
+
   const handleRun = () => {
     const { startDate, endDate } = range;
     if (!startDate || !endDate) {
@@ -416,7 +512,9 @@ export default function DistributionTab({
     }
     setError("");
     setResult(null);
-    runMutation.mutate({ startDate, endDate });
+    const params = { startDate, endDate, respectConstraints, overwriteExisting };
+    setLastRunParams(params);
+    runMutation.mutate(params);
   };
 
   // 3. Delete all shifts within a chosen date range (e.g. to undo a bad
@@ -639,6 +737,60 @@ export default function DistributionTab({
           </div>
         </div>
 
+        <div
+          className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-3"
+          dir="rtl"
+        >
+          <div className="flex items-start gap-2">
+            <RefreshCw className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-gray-800">
+                דריסת משמרות קיימות בטווח
+              </p>
+              <p className="text-xs text-gray-500 max-w-md">
+                כבוי: החלוקה משבצת רק ימים פנויים ומשאירה כל משמרת קיימת במקומה.
+                מופעל: החלוקה מתייחסת לכל הטווח כריק ומשבצת מחדש את כל הימים,
+                ובעת האישור בתצוגה המקדימה המשמרות הקיימות בטווח נמחקות ומוחלפות
+                בשיבוץ החדש.
+              </p>
+            </div>
+          </div>
+          <Switch
+            checked={overwriteExisting}
+            onCheckedChange={setOverwriteExisting}
+            disabled={runMutation.isPending}
+            aria-label="דריסת משמרות קיימות בטווח"
+            className="shrink-0"
+          />
+        </div>
+
+        <div
+          className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-3"
+          dir="rtl"
+        >
+          <div className="flex items-start gap-2">
+            <ShieldCheck className="w-4 h-4 text-blue-500 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-medium text-gray-800">
+                התחשבות באילוצים
+              </p>
+              <p className="text-xs text-gray-500 max-w-md">
+                מופעל (ברירת מחדל): אדם לא ישובץ ביום שהגדיר לו אילוץ. רשימת
+                האילוצים שנשקלו מופיעה בתצוגה המקדימה, ומשם אפשר למחוק אילוץ
+                ולחשב את החלוקה מחדש. כבוי: החלוקה מתעלמת מהאילוצים (הם נשארים
+                במערכת).
+              </p>
+            </div>
+          </div>
+          <Switch
+            checked={respectConstraints}
+            onCheckedChange={setRespectConstraints}
+            disabled={runMutation.isPending}
+            aria-label="התחשבות באילוצים"
+            className="shrink-0"
+          />
+        </div>
+
         {error && (
           <p className="mt-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-center">
             {error}
@@ -846,6 +998,15 @@ export default function DistributionTab({
         preview={preview}
         people={people}
         isSaving={commitMutation.isPending}
+        isRunning={runMutation.isPending}
+        deletingConstraintId={
+          deleteConstraintMutation.isPending
+            ? deleteConstraintMutation.variables?.id
+            : null
+        }
+        onDeleteConstraint={(constraint) =>
+          deleteConstraintMutation.mutate(constraint)
+        }
         onApprove={() => preview && commitMutation.mutate(preview)}
         onClose={() => setPreview(null)}
       />
