@@ -20,6 +20,9 @@
 // kind, the fair gap is range length / how many blocks per person that kind
 // yields, and any gap shorter than that costs ((fair - gap) / fair)^2, summed
 // over the person's kind pairs, then weighted per kind and added up.
+//
+// A second, much lighter term pushes against a weekly rhythm — blocks exactly a
+// week apart or in consecutive Sun–Sat weeks (see RHYTHM_WEIGHT below).
 
 const PASSES = 3;
 // Ignore an improvement smaller than this (keeps the search from churning).
@@ -60,6 +63,35 @@ const dayIndex = (date) =>
 
 const emptyGroups = () => ({ holidays: [], weekends: [], hard: [], thursdays: [], regular: [], any: [] });
 
+// Rule (j), added to the objective: a weekly rhythm is discouraged as well. Two
+// of a person's blocks exactly a week apart, or sitting in two consecutive
+// Sun–Sat weeks, add a small cost, so a move or swap that breaks the rhythm is
+// worth taking when it doesn't cost real gap quality. Kept well below a gap
+// shortfall (weights 0.25–3) so it only tips otherwise similar placements — in a
+// dense range consecutive weeks can't always be avoided.
+const RHYTHM_WEIGHT = 0.08;
+const WEEK_DAYS = 7;
+
+// Sunday opening the Sun–Sat week of a whole-day index (0 = Sunday).
+const weekStartOf = (idx) =>
+  idx - ((((idx + 4) % WEEK_DAYS) + WEEK_DAYS) % WEEK_DAYS);
+
+const rhythmCost = (days) => {
+  if (!days || days.length < 2) return 0;
+  let total = 0;
+  for (let i = 1; i < days.length; i += 1) {
+    const gap = days[i] - days[i - 1];
+    if (gap <= 0) continue;
+    if (
+      gap === WEEK_DAYS ||
+      weekStartOf(days[i]) - weekStartOf(days[i - 1]) === WEEK_DAYS
+    ) {
+      total += RHYTHM_WEIGHT;
+    }
+  }
+  return total;
+};
+
 // Sorted insert — the per-person lists are tiny, but they are rebuilt for every
 // candidate move, so they stay sorted instead of being re-sorted each time.
 const insertAnchor = (arr, value) => {
@@ -84,7 +116,7 @@ const penaltyOf = (byGroup, targets, weights) => {
       }
     }
   }
-  return total;
+  return total + rhythmCost(byGroup.any);
 };
 
 const groupsWithout = (byGroup, unit) => {

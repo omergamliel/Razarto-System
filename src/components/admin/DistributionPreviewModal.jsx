@@ -199,12 +199,12 @@ export default function DistributionPreviewModal({
               } · התחשבות בעבר · ${
                 ignoredCount ? `${ignoredCount} אילוצים מוסרים` : "כל האילוצים"
               }`}
-              className="flex-1 sm:flex-none rounded-xl gap-2"
+              className="flex-1 sm:flex-none rounded-xl gap-2 border-blue-300 text-blue-700 hover:bg-blue-50 hover:text-blue-800"
             >
               <RefreshCw
                 className={`w-4 h-4 ${isRunning ? "animate-spin" : ""}`}
               />
-              הרצה מחדש
+              {isRunning ? "מריץ מחדש..." : "הרצה מחדש (אותם פרמטרים)"}
             </Button>
             <Button
               onClick={onApprove}

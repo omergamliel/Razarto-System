@@ -58,6 +58,37 @@ const inSpacingGroup = (group, category) =>
   group === category ||
   (group === "hard" && (category === "holidays" || category === "weekends"));
 
+// Rule (j) — the weekly rhythm is discouraged. Two patterns are counted:
+//   - a shift exactly a week after another one (the same weekday, week after
+//     week), i.e. "a week between them";
+//   - a shift in the Sun–Sat week right before or right after a week the person
+//     already works in ("week after week").
+// A rotation shouldn't settle into a weekly routine, so a candidate that would
+// create one is pushed down the order — but only AFTER fairness and the heavy
+// day balance, so this can never take a slot from someone who is owed it.
+const WEEK_DAYS = 7;
+
+// Index of the Sunday opening the Sun–Sat week of a whole-day index.
+const weekStartOf = (idx) =>
+  idx - ((((idx + 4) % WEEK_DAYS) + WEEK_DAYS) % WEEK_DAYS);
+
+// How many of the person's existing shifts form a weekly-rhythm pattern with
+// the day(s) about to be given out. 0 = no pattern.
+function weekRhythm(fair, personId, dayIdxs) {
+  const list = fair.assigned.get(personId);
+  if (!list || list.length === 0 || !dayIdxs || dayIdxs.length === 0) return 0;
+  const weekStarts = dayIdxs.map(weekStartOf);
+  let hits = 0;
+  for (const other of list) {
+    const otherWeek = weekStartOf(other.day);
+    const repeats =
+      dayIdxs.some((idx) => Math.abs(other.day - idx) === WEEK_DAYS) ||
+      weekStarts.some((week) => Math.abs(week - otherWeek) === WEEK_DAYS);
+    if (repeats) hits += 1;
+  }
+  return hits;
+}
+
 const toDateKey = (date) => format(date, "yyyy-MM-dd");
 
 // Parses 'yyyy-MM-dd' (or an ISO string starting with it) as LOCAL midnight, so
@@ -373,13 +404,14 @@ const kindCount = (row, kind) => {
 };
 
 // Fairest first: the same kind of day balanced on its own, then the combined
-// chag+weekend burden, then spacing, then the weighted effort, then the plain
-// shift count.
+// chag+weekend burden, then the weekly rhythm (rule j), then spacing, then the
+// weighted effort, then the plain shift count.
 const sortByFairness = (candidates, kind = "regular") =>
   candidates.sort(
     (a, b) =>
       kindCount(a, kind) - kindCount(b, kind) ||
       a.hard - b.hard ||
+      a.weekRhythm - b.weekRhythm ||
       Math.round(a.penalty * 10) - Math.round(b.penalty * 10) ||
       a.load - b.load ||
       a.count - b.count ||
@@ -414,6 +446,7 @@ const buildCandidateRows = (
         kindSeed: fair.kindSeed?.get(p.serial_id) || null,
         load: cats.load,
         hard: cats.holidays + cats.weekends,
+        weekRhythm: weekRhythm(fair, p.serial_id, dayIdxs),
         ...spacingFor(fair, p.serial_id, dayIdxs, category),
       };
     });
@@ -887,6 +920,10 @@ export function spreadWeekendShifts(assignments, ctx) {
  *      (a last resort: a second shift that week, or a split weekend/chag day).
  *   i. Weekends are spread evenly over the range, chag shares included in the
  *      measurement (spreadWeekendShifts).
+ *   j. A weekly rhythm is discouraged: shifts exactly a week apart, and shifts
+ *      in two consecutive Sun–Sat weeks. A soft preference only — it breaks
+ *      ties in fairness (see weekRhythm) and is optimised again in the spacing
+ *      refinement pass, never enforced.
  *
  * Rules (d), (e) and (f) are soft: they are relaxed in the order f → e → d only
  * when no candidate satisfies them, so a day is never left unstaffed because of
