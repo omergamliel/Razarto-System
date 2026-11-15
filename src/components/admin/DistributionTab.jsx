@@ -325,6 +325,10 @@ export default function DistributionTab({
           holidayDefinitions(holidays),
           yearsOfRange(startDate, endDate),
         );
+      // A fresh seed for every run: "הרצה מחדש" on the same range and the same
+      // data must produce a DIFFERENT (equally fair) calendar, not a copy of the
+      // one already on screen.
+      const seed = Math.floor(Math.random() * 2147483647);
       const distribution = distributeShifts({
         people: reps,
         existingShifts: remappedShifts,
@@ -335,6 +339,7 @@ export default function DistributionTab({
         holidayUsers,
         protectedDates,
         priorJustice,
+        seed,
       });
 
       // Remap each assignment from the representative to the member who is

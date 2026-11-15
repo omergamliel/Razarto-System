@@ -284,6 +284,7 @@ function testDistributeShifts() {
     existingShifts: [],
     startDate,
     endDate,
+    seed: 1, // fixed seed — the test checks invariants, not a specific draw
   });
 
   // Weekly cap: no person may get more than WEEKLY_CAP=1 *regular*
@@ -331,6 +332,7 @@ function testDistributeShifts() {
     existingShifts: [{ original_user_id: 1, start_date: preAssignedDate }],
     startDate,
     endDate,
+    seed: 1,
   });
   assert(
     !withExisting.some((a) => a.date === preAssignedDate),
@@ -343,6 +345,7 @@ function testDistributeShifts() {
     existingShifts: [],
     startDate,
     endDate: format(addDays(anchor, 2), "yyyy-MM-dd"),
+    seed: 1,
   });
   assertEqual(emptyResult.assignments.length, 0, "no people means no assignments");
   assertEqual(emptyResult.skipped.length, 3, "every day should be skipped with no eligible people");

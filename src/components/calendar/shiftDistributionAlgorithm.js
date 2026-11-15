@@ -403,6 +403,20 @@ const kindCount = (row, kind) => {
   return row.count;
 };
 
+// A rerun never repeats the same calendar: every run draws its tie-breaks from
+// its own seeded generator, so two runs on the same data are both fair but not
+// identical (mulberry32 — small, fast, and enough for tie-breaking).
+function makeRng(seed) {
+  let a = (Number(seed) || 0) >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 // Fairest first: the same kind of day balanced on its own, then the combined
 // chag+weekend burden, then the weekly rhythm (rule j), then spacing, then the
 // weighted effort, then the plain shift count.
@@ -415,6 +429,10 @@ const sortByFairness = (candidates, kind = "regular") =>
       Math.round(a.penalty * 10) - Math.round(b.penalty * 10) ||
       a.load - b.load ||
       a.count - b.count ||
+      // A per-run random tie-break: two people who are equally fair to pick are
+      // not always picked in the same order, so a rerun gets a different (yet
+      // just as fair) calendar.
+      a.tie - b.tie ||
       (a.person.full_name || "").localeCompare(b.person.full_name || ""),
   );
 
@@ -435,6 +453,7 @@ const buildCandidateRows = (
         capacity: remainingCapacity(fair.weekly, p.serial_id, weekKey),
         count: fair.justice.get(p.serial_id) || 0,
         rangeCount: fair.rangeCount.get(p.serial_id) || 0,
+        tie: fair.rng ? fair.rng() : 0,
         quota:
           fair.quota == null
             ? null
@@ -963,6 +982,9 @@ export function distributeShifts({
   // reported as unassigned (the admin panel lists it) instead of silently giving
   // someone a second shift that week.
   allowWeeklyOverflow = false,
+  // Randomized tie-breaking, so a rerun of the same range gives a different
+  // (but equally fair) calendar. Pass a seed to reproduce a specific run.
+  seed = null,
 }) {
   const holidayByDate = new Set(holidayDates);
   const divisionByDate = new Map(holidayDivisions);
@@ -1015,6 +1037,8 @@ export function distributeShifts({
 
   // The per-group bookkeeping used for weekends, Thursdays and ordinary days.
   const groupFair = initState(people, inRangeShifts, priorJustice, holidayByDate);
+  const runRng = makeRng(seed == null ? Math.floor(Math.random() * 2147483647) : seed);
+  groupFair.rng = runRng;
 
   // Holidays are divided between PEOPLE, not between group slots.
   const holidayPool = (holidayUsers?.people || []).filter(
@@ -1063,6 +1087,7 @@ export function distributeShifts({
     // Holiday users share only the chag days, so they are held to the relative
     // band (rule e) without an absolute quota.
     holidayState.quota = null;
+    holidayState.rng = runRng;
   }
 
   // Past shifts: seed fairness, spacing and the weekly cap from before the range.
@@ -1130,13 +1155,15 @@ export function distributeShifts({
       ? Math.max(...bundle.days.map((d) => protectedOnDate(d.key).size))
       : 0;
   const orderedBundles = bundles
-    .map((bundle, index) => ({
+    .map((bundle) => ({
       bundle,
-      index,
       prio: bundlePriority(bundle),
       load: pressure(bundle),
+      // Equally urgent blocks are staffed in a random order per run, so a rerun
+      // doesn't walk the calendar exactly the same way.
+      jitter: runRng(),
     }))
-    .sort((a, b) => a.prio - b.prio || b.load - a.load || a.index - b.index)
+    .sort((a, b) => a.prio - b.prio || b.load - a.load || a.jitter - b.jitter)
     .map((entry) => entry.bundle);
 
   const assignments = [];

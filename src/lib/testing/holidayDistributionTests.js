@@ -32,6 +32,7 @@ function testHolidayGroupShares() {
     holidayUsers: { people, existingShifts: [], groupRepOf: new Map() },
     refine: false,
     spreadWeekdays: false,
+    seed: 1, // fixed seed — keeps the test's expected numbers stable
   });
 
   const byDate = new Map(res.assignments.map((a) => [a.date, a.personId]));
