@@ -3,14 +3,15 @@ import { Loader2, RotateCcw, ShieldCheck } from "lucide-react";
 import DistributionPreviewConstraintsByUser from "@/components/admin/DistributionPreviewConstraintsByUser";
 
 /**
- * The constraints (אילוצים) this run was built around. Removing one here takes
- * it out of THIS run only — the request itself is not deleted anywhere — and
- * the distribution is recomputed without it.
+ * The constraints (אילוצים) this run was built around. Switching one off here
+ * takes it out of THIS run only — the request itself is not deleted anywhere —
+ * and it can be switched back on; either way the distribution is recomputed.
  */
 export default function DistributionPreviewConstraints({
   constraints,
   ignored = [],
   onDelete,
+  onRestore,
   deletingId,
   isRunning,
   ignoredCount = 0,
@@ -25,7 +26,7 @@ export default function DistributionPreviewConstraints({
           <ShieldCheck className="w-3.5 h-3.5 text-blue-500" />
           אילוצים שנשקלו בחלוקה
           <span className="text-[10px] font-normal text-gray-400 mr-1">
-            הסרה כאן משפיעה רק על החלוקה הזו — האילוץ עצמו לא נמחק
+            כיבוי/הדלקה כאן משפיעים רק על החלוקה הזו — האילוץ עצמו לא נמחק
           </span>
         </p>
         {isRunning && (
@@ -49,6 +50,7 @@ export default function DistributionPreviewConstraints({
         constraints={constraints}
         ignored={ignored}
         onDelete={onDelete}
+        onRestore={onRestore}
         deletingId={deletingId}
         isRunning={isRunning}
       />

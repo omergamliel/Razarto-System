@@ -488,9 +488,9 @@ export default function DistributionTab({
     },
   });
 
-  // 5. Remove a constraint inside the preview only. The request itself is NOT
-  // deleted — it stays in the system, and the distribution is re-run with the
-  // same parameters while ignoring it.
+  // 5. Switch a constraint off inside the preview only. The request itself is
+  // NOT deleted — it stays in the system, and the distribution is re-run with
+  // the same parameters while ignoring it. The same control switches it back on.
   const rerunWith = (ignored) => {
     if (!lastRunParams) return;
     runMutation.mutate({
@@ -508,8 +508,24 @@ export default function DistributionTab({
     setPendingIgnoreId(list[0].id);
     toast.success(
       list.length > 1
-        ? `${list.length} אילוצים הוסרו מהחלוקה הזו — מחשב מחדש`
-        : "האילוץ הוסר מהחלוקה הזו — מחשב מחדש",
+        ? `${list.length} אילוצים כובו בחלוקה הזו — מחשב מחדש`
+        : "האילוץ כובה בחלוקה הזו — מחשב מחדש",
+    );
+    rerunWith(next);
+  };
+
+  // Switching a constraint back on: drop it from the ignored list and re-run.
+  const handleRestoreConstraints = (items) => {
+    const list = (Array.isArray(items) ? items : [items]).filter(Boolean);
+    if (!list.length) return;
+    const ids = new Set(list.map((c) => c.id));
+    const next = ignoredConstraints.filter((c) => !ids.has(c.id));
+    setIgnoredConstraints(next);
+    setPendingIgnoreId(list[0].id);
+    toast.success(
+      list.length > 1
+        ? `${list.length} אילוצים הופעלו מחדש — מחשב מחדש`
+        : "האילוץ הופעל מחדש בחלוקה הזו — מחשב מחדש",
     );
     rerunWith(next);
   };
@@ -808,9 +824,9 @@ export default function DistributionTab({
               </p>
               <p className="text-xs text-gray-500 max-w-md">
                 מופעל (ברירת מחדל): אדם לא ישובץ ביום שהגדיר לו אילוץ. רשימת
-                האילוצים שנשקלו מופיעה בתצוגה המקדימה, ומשם אפשר למחוק אילוץ
-                ולחשב את החלוקה מחדש. כבוי: החלוקה מתעלמת מהאילוצים (הם נשארים
-                במערכת).
+                האילוצים שנשקלו מופיעה בתצוגה המקדימה, ומשם אפשר לכבות אילוץ
+                להרצה הזו (ולהדליק אותו בחזרה) ולחשב את החלוקה מחדש. כבוי:
+                החלוקה מתעלמת מהאילוצים (הם נשארים במערכת).
               </p>
             </div>
           </div>
@@ -1033,6 +1049,7 @@ export default function DistributionTab({
         isRunning={runMutation.isPending}
         deletingConstraintId={pendingIgnoreId}
         onDeleteConstraint={handleIgnoreConstraints}
+        onRestoreConstraint={handleRestoreConstraints}
         ignoredConstraints={ignoredConstraints}
         ignoredCount={ignoredConstraints.length}
         onRestoreIgnored={handleRestoreIgnored}

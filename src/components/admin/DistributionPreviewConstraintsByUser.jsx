@@ -1,14 +1,15 @@
 import React, { useMemo, useState } from "react";
 import { differenceInCalendarDays } from "date-fns";
-import { Loader2, Trash2, Users } from "lucide-react";
+import { Ban, Loader2, RotateCcw, Users } from "lucide-react";
 import { useConsiderationMaxDates } from "@/hooks/useAuthorizedPerson";
 
 /**
  * The constraints (אילוצים) behind a distribution run, shown the way a manager
- * sees "אילוצים של משתמשים אחרים": one card per user + month, the dates
- * collapsed into ranges, an amber mark when that month crossed the monthly
- * threshold, and the most constrained users first. Removing a range takes it out
- * of THIS run only — the requests themselves are never deleted here.
+ * sees "אילוצים של משתמשים אחרים": one card per USER (every month that user
+ * has constraints in sits inside the card), the dates collapsed into ranges, an
+ * amber mark for a month that crossed the monthly threshold, and the most
+ * constrained users first. Each range can be switched off and back on for THIS
+ * run only — the requests themselves are never deleted here.
  */
 
 const fmtHe = (iso) => {
@@ -29,8 +30,8 @@ const dayGap = (a, b) => {
 const noteOf = (row) => String(row.constraint?.note || "").trim();
 
 // Consecutive calendar days with the same note collapse into one range, so a
-// manager reads "05/03 – 08/03 (4 ימים)" with its comment, and removes the run
-// in one action.
+// manager reads "05/03 – 08/03 (4 ימים)" with its comment, and switches the run
+// off in one action.
 const collapseRanges = (rows) => {
   const sorted = [...rows].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
   const ranges = [];
@@ -65,6 +66,7 @@ export default function DistributionPreviewConstraintsByUser({
   constraints = [],
   ignored = [],
   onDelete,
+  onRestore,
   deletingId,
   isRunning,
 }) {
@@ -72,19 +74,18 @@ export default function DistributionPreviewConstraintsByUser({
   const [sortMode, setSortMode] = useState("count");
 
   const groups = useMemo(() => {
-    const byUserMonth = new Map();
+    const byUser = new Map();
     const add = (item, isIgnored) => {
       if (!item?.date || item.serial_id == null) return;
-      const key = `${item.serial_id}|${monthKeyOf(item.date)}`;
-      if (!byUserMonth.has(key)) {
-        byUserMonth.set(key, {
+      const key = String(item.serial_id);
+      if (!byUser.has(key)) {
+        byUser.set(key, {
           serial_id: item.serial_id,
           user_name: item.user_name || `#${item.serial_id}`,
-          month: monthKeyOf(item.date),
           rows: [],
         });
       }
-      byUserMonth.get(key).rows.push({
+      byUser.get(key).rows.push({
         id: item.id,
         date: String(item.date).slice(0, 10),
         ignored: isIgnored,
@@ -94,30 +95,45 @@ export default function DistributionPreviewConstraintsByUser({
     constraints.forEach((c) => add(c, false));
     ignored.forEach((c) => add(c, true));
 
-    const list = [...byUserMonth.values()].map((group) => {
-      const active = group.rows.filter((row) => !row.ignored).length;
-      return { ...group, active, over: active > monthlyThreshold };
+    const list = [...byUser.values()].map((user) => {
+      const byMonth = new Map();
+      user.rows.forEach((row) => {
+        const key = monthKeyOf(row.date);
+        if (!byMonth.has(key)) byMonth.set(key, []);
+        byMonth.get(key).push(row);
+      });
+
+      const months = [...byMonth.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([month, rows]) => {
+          rows.sort((a, b) => a.date.localeCompare(b.date));
+          const active = rows.filter((row) => !row.ignored).length;
+          return { month, rows, active, over: active > monthlyThreshold };
+        });
+
+      const active = months.reduce((sum, m) => sum + m.active, 0);
+      const overMonths = months.filter((m) => m.over).length;
+      const firstDate = user.rows.reduce(
+        (min, row) => (!min || row.date < min ? row.date : min),
+        "",
+      );
+
+      return { ...user, months, active, overMonths, firstDate };
     });
 
     const byName = (a, b) =>
       (a.user_name || "").localeCompare(b.user_name || "", "he");
     list.sort((a, b) => {
-      if (sortMode === "user") {
-        return byName(a, b) || b.month.localeCompare(a.month);
-      }
+      if (sortMode === "user") return byName(a, b);
       if (sortMode === "date") {
-        return b.month.localeCompare(a.month) || byName(a, b);
+        return a.firstDate.localeCompare(b.firstDate) || byName(a, b);
       }
-      return (
-        b.active - a.active ||
-        byName(a, b) ||
-        b.month.localeCompare(a.month)
-      );
+      return b.active - a.active || byName(a, b);
     });
     return list;
   }, [constraints, ignored, monthlyThreshold, sortMode]);
 
-  const overCount = groups.filter((group) => group.over).length;
+  const overCount = groups.filter((group) => group.overMonths > 0).length;
 
   return (
     <>
@@ -151,101 +167,126 @@ export default function DistributionPreviewConstraintsByUser({
         </div>
       </div>
 
-      <div className="max-h-48 overflow-y-auto custom-scrollbar space-y-1.5">
-        {groups.map((group) => (
+      <div className="max-h-56 overflow-y-auto custom-scrollbar space-y-1.5">
+        {groups.map((user) => (
           <div
-            key={`${group.serial_id}-${group.month}`}
+            key={user.serial_id}
             className={`rounded-xl border px-2.5 py-2 ${
-              group.over
+              user.overMonths > 0
                 ? "border-amber-200 bg-amber-50"
                 : "border-gray-200 bg-gray-50"
             }`}
           >
             <div className="flex items-center justify-between gap-2 flex-wrap mb-1">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className="font-semibold text-gray-800 text-[11px] truncate">
-                  {group.user_name}
+              <span className="font-semibold text-gray-800 text-[11px] truncate">
+                {user.user_name}
+              </span>
+              <span className="flex items-center gap-1">
+                {user.overMonths > 0 && (
+                  <span
+                    className="text-[10px] font-semibold rounded-full px-2 py-0.5 text-amber-800 bg-amber-100"
+                    title={`מכסה חודשית: ${monthlyThreshold}`}
+                  >
+                    {user.overMonths} חודשים מעל המכסה
+                  </span>
+                )}
+                <span className="text-[10px] font-semibold rounded-full px-2 py-0.5 text-gray-600 bg-gray-100">
+                  {user.active} אילוצים
                 </span>
-                <span className="text-gray-500 text-[10px]">
-                  {fmtMonth(group.month)}
-                </span>
-              </div>
-              <span
-                className={`text-[10px] font-semibold rounded-full px-2 py-0.5 ${
-                  group.over
-                    ? "text-amber-800 bg-amber-100"
-                    : "text-gray-600 bg-gray-100"
-                }`}
-              >
-                {group.over
-                  ? `${group.active} אילוצים — חריגה (מכסה: ${monthlyThreshold})`
-                  : `${group.active} אילוצים`}
               </span>
             </div>
-            <div className="space-y-1">
-              {collapseRanges(group.rows).map((range) => {
-                const activeRows = range.rows.filter((row) => !row.ignored);
-                const busy =
-                  isRunning ||
-                  (deletingId != null &&
-                    activeRows.some((row) => row.id === deletingId));
-                const count = range.rows.length;
-                const rangeLabel =
-                  range.startDate === range.endDate
-                    ? fmtHe(range.startDate)
-                    : `${fmtHe(range.startDate)} – ${fmtHe(range.endDate)} (${count} ימים)`;
-                return (
-                  <div
-                    key={`${range.startDate}-${range.endDate}`}
-                    className={`rounded-lg bg-white border px-2 py-1 ${
-                      group.over ? "border-amber-100" : "border-gray-100"
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <span
-                        className={`text-[11px] ${
-                          activeRows.length === 0
-                            ? "text-gray-400 line-through"
-                            : "text-gray-700"
-                        }`}
-                      >
-                        {rangeLabel}
+
+            <div className="space-y-1.5">
+              {user.months.map((monthBlock) => (
+                <div key={monthBlock.month} className="space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-medium text-gray-500">
+                      {fmtMonth(monthBlock.month)}
+                    </span>
+                    {monthBlock.over && (
+                      <span className="text-[10px] font-semibold text-amber-700">
+                        חריגה (מכסה: {monthlyThreshold})
                       </span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          onDelete(activeRows.map((row) => row.constraint))
-                        }
-                        disabled={busy || activeRows.length === 0}
-                        className="p-1 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50 transition-colors shrink-0 disabled:opacity-40 disabled:hover:text-gray-400 disabled:hover:bg-transparent"
-                        title={
-                          activeRows.length === 0
-                            ? "האילוץ כבר הוסר מהחלוקה הזו"
-                            : "הסרה מהחלוקה הזו (האילוץ עצמו נשאר במערכת)"
-                        }
-                      >
-                        {busy && activeRows.length > 0 ? (
-                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        ) : (
-                          <Trash2 className="w-3.5 h-3.5" />
-                        )}
-                      </button>
-                    </div>
-                    {range.note && (
-                      <p
-                        title={range.note}
-                        className={`mt-0.5 pr-1 text-[10px] leading-snug truncate ${
-                          activeRows.length === 0
-                            ? "text-gray-400 line-through"
-                            : "text-gray-500"
-                        }`}
-                      >
-                        {range.note}
-                      </p>
                     )}
                   </div>
-                );
-              })}
+
+                  {collapseRanges(monthBlock.rows).map((range) => {
+                    const activeRows = range.rows.filter((row) => !row.ignored);
+                    const isOff = activeRows.length === 0;
+                    const busy =
+                      isRunning ||
+                      (deletingId != null &&
+                        activeRows.some((row) => row.id === deletingId));
+                    const count = range.rows.length;
+                    const rangeLabel =
+                      range.startDate === range.endDate
+                        ? fmtHe(range.startDate)
+                        : `${fmtHe(range.startDate)} – ${fmtHe(range.endDate)} (${count} ימים)`;
+                    return (
+                      <div
+                        key={`${range.startDate}-${range.endDate}`}
+                        className={`rounded-lg bg-white border px-2 py-1 ${
+                          monthBlock.over
+                            ? "border-amber-100"
+                            : "border-gray-100"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span
+                            className={`text-[11px] ${
+                              isOff
+                                ? "text-gray-400 line-through"
+                                : "text-gray-700"
+                            }`}
+                          >
+                            {rangeLabel}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              isOff
+                                ? onRestore(range.rows.map((row) => row.constraint))
+                                : onDelete(activeRows.map((row) => row.constraint))
+                            }
+                            disabled={busy}
+                            aria-pressed={!isOff}
+                            className={`p-1 rounded-md transition-colors shrink-0 disabled:opacity-40 ${
+                              isOff
+                                ? "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                                : "text-gray-400 hover:text-amber-600 hover:bg-amber-50"
+                            }`}
+                            title={
+                              isOff
+                                ? "הפעלה מחדש של האילוץ בחלוקה הזו"
+                                : "כיבוי האילוץ בחלוקה הזו (האילוץ עצמו נשאר במערכת)"
+                            }
+                          >
+                            {busy ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : isOff ? (
+                              <RotateCcw className="w-3.5 h-3.5" />
+                            ) : (
+                              <Ban className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        </div>
+                        {range.note && (
+                          <p
+                            title={range.note}
+                            className={`mt-0.5 pr-1 text-[10px] leading-snug truncate ${
+                              isOff
+                                ? "text-gray-400 line-through"
+                                : "text-gray-500"
+                            }`}
+                          >
+                            {range.note}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))}
             </div>
           </div>
         ))}
