@@ -92,7 +92,12 @@ export default function DistributionPreviewConstraintsByUser({
         constraint: item,
       });
     };
-    constraints.forEach((c) => add(c, false));
+    // A constraint that was crossed out must be counted once — as ignored —
+    // even if the preview on screen still lists it as honored.
+    const ignoredIds = new Set((ignored || []).map((c) => c.id));
+    constraints.forEach((c) => {
+      if (!ignoredIds.has(c.id)) add(c, false);
+    });
     ignored.forEach((c) => add(c, true));
 
     const list = [...byUser.values()].map((user) => {
@@ -134,6 +139,9 @@ export default function DistributionPreviewConstraintsByUser({
   }, [constraints, ignored, monthlyThreshold, sortMode]);
 
   const overCount = groups.filter((group) => group.overMonths > 0).length;
+  // How many constraints actually shape this run right now (crossed-out ones
+  // excluded), so the number follows every toggle.
+  const activeTotal = groups.reduce((sum, group) => sum + group.active, 0);
 
   return (
     <>
@@ -141,7 +149,8 @@ export default function DistributionPreviewConstraintsByUser({
         <div className="flex items-center gap-2">
           <Users className="w-3.5 h-3.5 text-indigo-500" />
           <p className="text-xs font-semibold text-gray-700">
-            אילוצים של משתמשים אחרים ({groups.length})
+            אילוצים של משתמשים אחרים ({groups.length} משתמשים · {activeTotal}{" "}
+            אילוצים)
           </p>
           {overCount > 0 && (
             <span className="text-[10px] font-semibold text-amber-800 bg-amber-100 rounded-full px-2 py-0.5">

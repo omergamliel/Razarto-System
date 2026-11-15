@@ -1,5 +1,5 @@
 import React from "react";
-import { AlertTriangle, CheckCircle2, Info } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Info, ShieldCheck } from "lucide-react";
 
 // Which rule the distribution had to bend, in words the admin can act on.
 const RULE_LABELS = {
@@ -8,6 +8,11 @@ const RULE_LABELS = {
   spacing: "ריווח קצר בין משמרות",
   total_band: "חריגה מרצועת ההוגנות",
   adjacent: "ימים צמודים",
+};
+
+const shortDate = (iso) => {
+  const [, month, day] = String(iso || "").slice(0, 10).split("-");
+  return day && month ? `${day}/${month}` : String(iso || "");
 };
 
 function Tile({ label, value, tone }) {
@@ -25,7 +30,16 @@ function Tile({ label, value, tone }) {
   );
 }
 
-export default function DistributionPreviewSummary({ model, relaxations, skipped }) {
+/**
+ * The run's headline figures plus the two completeness checks: every free day
+ * was filled, and no constraint that was left ON got broken.
+ */
+export default function DistributionPreviewSummary({
+  model,
+  relaxations,
+  skipped,
+  violations,
+}) {
   const ruleCounts = {};
   (relaxations || []).forEach((entry) =>
     (entry.rules || []).forEach((rule) => {
@@ -33,6 +47,9 @@ export default function DistributionPreviewSummary({ model, relaxations, skipped
     }),
   );
   const skippedDates = (skipped || []).map((entry) => entry.date).slice(0, 12);
+  // undefined/null when this run ignored constraints altogether — then there is
+  // nothing to check.
+  const brokenConstraints = Array.isArray(violations) ? violations : null;
 
   return (
     <div className="space-y-2">
@@ -75,12 +92,7 @@ export default function DistributionPreviewSummary({ model, relaxations, skipped
             ימים שלא נמצא להם אף אדם זמין — לא ישובצו בחלוקה הזו
           </p>
           <p className="text-[11px] text-amber-800 font-mono mt-1" dir="ltr">
-            {skippedDates
-              .map((date) => {
-                const [, month, day] = String(date).slice(0, 10).split("-");
-                return `${day}/${month}`;
-              })
-              .join(" · ")}
+            {skippedDates.map(shortDate).join(" · ")}
             {model.totals.skipped > skippedDates.length ? " · …" : ""}
           </p>
         </div>
@@ -92,6 +104,28 @@ export default function DistributionPreviewSummary({ model, relaxations, skipped
             : "כל יום פנוי בטווח שובץ — אין חורים בלוח."}
         </p>
       )}
+
+      {brokenConstraints &&
+        (brokenConstraints.length > 0 ? (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+            <p className="text-[11px] font-semibold text-amber-800 flex items-center gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5" />
+              {brokenConstraints.length} אילוצים שלא כובו נשברו בלוח
+            </p>
+            <p className="text-[11px] text-amber-800 font-mono mt-1">
+              {brokenConstraints
+                .slice(0, 10)
+                .map((entry) => `${entry.user_name} ${shortDate(entry.date)}`)
+                .join(" · ")}
+              {brokenConstraints.length > 10 ? " · …" : ""}
+            </p>
+          </div>
+        ) : (
+          <p className="text-[11px] text-emerald-700 flex items-center gap-1.5">
+            <ShieldCheck className="w-3.5 h-3.5" />
+            אף אילוץ שלא כובה לא נשבר — כל מי שביקש יום פנוי לא שובץ בו.
+          </p>
+        ))}
 
       <p className="text-[11px] text-gray-400 flex items-start gap-1.5">
         <Info className="w-3.5 h-3.5 shrink-0 mt-0.5" />

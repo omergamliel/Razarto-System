@@ -20,6 +20,16 @@ const formatIL = (iso) => {
   return match ? `${match[3]}/${match[2]}/${match[1]}` : String(iso || "");
 };
 
+// "14:32" — the moment the run on screen was computed.
+const formatTime = (iso) => {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString("he-IL", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
 /**
  * The result of a distribution run, shown before anything is written: the whole
  * range as a per-month calendar (one pastel per person) plus the fairness
@@ -41,6 +51,7 @@ export default function DistributionPreviewModal({
   onRerun,
   onApprove,
   onClose,
+  error,
 }) {
   const [highlight, setHighlight] = useState(null);
 
@@ -77,8 +88,17 @@ export default function DistributionPreviewModal({
                   preview.overwrite ? " · דריסת המשמרות הקיימות בטווח" : ""
                 }`
               : ""}
+            {preview?.computedAt
+              ? ` · חושב ${formatTime(preview.computedAt)}`
+              : ""}
           </DialogDescription>
         </DialogHeader>
+
+        {error && (
+          <div className="shrink-0 mx-3 md:mx-4 mt-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700">
+            החישוב מחדש נכשל: {error}
+          </div>
+        )}
 
         {model && (
           <div className="flex-1 min-h-0 overflow-y-auto p-3 md:p-4 space-y-3 bg-[#F9FAFB] custom-scrollbar">
@@ -86,6 +106,7 @@ export default function DistributionPreviewModal({
               model={model}
               relaxations={preview.relaxations}
               skipped={preview.skipped}
+              violations={preview.constraintViolations}
             />
 
             <DistributionPreviewConstraints

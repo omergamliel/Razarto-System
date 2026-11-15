@@ -83,6 +83,10 @@ export default function DistributionTab({
   const [result, setResult] = useState(null);
   const [preview, setPreview] = useState(null);
   const [error, setError] = useState("");
+  // A failure of a recompute inside the preview window — shown in the window
+  // itself, so the run on screen stays visible and the admin sees why the
+  // numbers didn't change.
+  const [previewError, setPreviewError] = useState("");
 
   const [deleteRange, setDeleteRange] = useState({ startDate: "", endDate: "" });
   const [deleteError, setDeleteError] = useState("");
@@ -407,6 +411,36 @@ export default function DistributionTab({
             .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
         : [];
 
+      // Constraints (אילוצים) that were NOT crossed out and are broken by the
+      // finished calendar anyway: the person asked for that day off and still
+      // sits on it — either because the run itself placed them there, or because
+      // a shift already in the calendar sits on that date.
+      const assignedOwnerByDate = new Map();
+      finalAssignments.forEach((a) =>
+        assignedOwnerByDate.set(String(a.date).slice(0, 10), Number(a.personId)),
+      );
+      const existingOwnerByDate = new Map();
+      existingInRange.forEach((entry) => {
+        const day = String(entry.date).slice(0, 10);
+        if (!existingOwnerByDate.has(day))
+          existingOwnerByDate.set(day, Number(entry.personId));
+      });
+      const constraintViolations = constraintsInRange
+        .filter((c) => {
+          const serial = Number(c.serial_id);
+          return (
+            assignedOwnerByDate.get(c.date) === serial ||
+            existingOwnerByDate.get(c.date) === serial
+          );
+        })
+        .map((c) => ({
+          ...c,
+          source:
+            assignedOwnerByDate.get(c.date) === Number(c.serial_id)
+              ? "distribution"
+              : "existing",
+        }));
+
       // NOTHING is written here: this is the preview. The shifts are created
       // only when the result is approved in the preview window.
       return {
@@ -416,20 +450,42 @@ export default function DistributionTab({
         overwrite,
         replaceShiftIds: overwrite ? inRangeShifts.map((s) => s.id) : [],
         constraints: constraintsInRange,
+        // null when the run ignores constraints altogether — the check line is
+        // then irrelevant rather than "everything is fine".
+        constraintViolations: useConstraints ? constraintViolations : null,
         startDate,
         endDate,
         holidayKeys,
         poolSize: reps.length,
+        // The parameters this run was computed with, so "הרצה מחדש" repeats
+        // exactly this run without depending on any other piece of state.
+        runParams: {
+          startDate,
+          endDate,
+          respectConstraints: useConstraints,
+          overwriteExisting: overwrite,
+        },
+        // When the result was computed, so a recompute is visibly acknowledged
+        // even when it lands on the same schedule.
+        computedAt: new Date().toISOString(),
       };
     },
     onSuccess: (computed) => {
       setPreview(computed);
       setPendingIgnoreId(null);
       setError("");
+      setPreviewError("");
     },
-    onError: (e) => {
-      setError(e?.message || "חלוקת המשמרות נכשלה. נסו שוב.");
-      setPreview(null);
+    onError: (e, variables) => {
+      const message = e?.message || "חלוקת המשמרות נכשלה. נסו שוב.";
+      setError(message);
+      // A recompute inside the preview keeps its window open (with the reason),
+      // so the run on screen isn't silently lost.
+      if (variables?.isRecompute) {
+        setPreviewError(message);
+      } else {
+        setPreview(null);
+      }
     },
   });
 
@@ -492,10 +548,15 @@ export default function DistributionTab({
   // NOT deleted — it stays in the system, and the distribution is re-run with
   // the same parameters while ignoring it. The same control switches it back on.
   const rerunWith = (ignored) => {
-    if (!lastRunParams) return;
+    // The parameters come from the run currently on screen, so a rerun always
+    // has what it needs.
+    const params = preview?.runParams || lastRunParams;
+    if (!params) return;
+    setPreviewError("");
     runMutation.mutate({
-      ...lastRunParams,
+      ...params,
       ignoredConstraintIds: ignored.map((c) => c.id),
+      isRecompute: true,
     });
   };
 
@@ -551,6 +612,7 @@ export default function DistributionTab({
       return;
     }
     setError("");
+    setPreviewError("");
     setResult(null);
     // A fresh run starts with every constraint honored again.
     setIgnoredConstraints([]);
@@ -1054,6 +1116,7 @@ export default function DistributionTab({
         ignoredCount={ignoredConstraints.length}
         onRestoreIgnored={handleRestoreIgnored}
         onRerun={handleRerun}
+        error={previewError}
         onApprove={() => preview && commitMutation.mutate(preview)}
         onClose={() => setPreview(null)}
       />
