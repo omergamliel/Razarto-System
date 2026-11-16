@@ -55,47 +55,77 @@ const pastPeriod = (months) => {
 function PastFairnessCheck({ rows, months }) {
   const people = rows.map((r) => {
     const carry = Number(r.holidayCarry) || 0;
-    const now = Number(r.holidays) || 0;
-    // whole number of chag days worked in the past period (older results
-    // without it fall back to the difference from the fair share)
+    // chag days in this distribution — only days of the holiday list (older
+    // results without chagDays fall back to every chag-block day)
+    const now = Number(r.chagDays ?? r.holidays) || 0;
+    // whole number of holiday-list chag days worked in the past period (older
+    // results without it fall back to the difference from the fair share)
     const past = r.pastHolidays != null ? Number(r.pastHolidays) || 0 : null;
     // which chags they worked in that period, by name
     const chags = Array.isArray(r.pastChags) ? r.pastChags : [];
-    return { id: r.personId, name: r.name, carry, past, chags, now, total: carry + now };
+    return {
+      id: r.personId,
+      name: r.name,
+      carry,
+      past,
+      chags,
+      now,
+      total: carry + now,
+      // the range's chag days this person had no constraint on
+      freeDays: r.chagFreeDays != null ? Number(r.chagFreeDays) || 0 : null,
+      // shares they were free for but that went to someone with more past chags
+      missed: Number(r.missedChagShares) || 0,
+      // shares they got although someone with fewer past chags was free for them
+      over: Number(r.chagSharesOverOthers) || 0,
+    };
   });
   const period = pastPeriod(months);
   if (!people.some((p) => Math.abs(p.carry) > 0.05)) {
     return (
       <p className="text-[11px] text-gray-500 flex items-center gap-1.5">
         <Scale className="w-3.5 h-3.5" />
-        לא היו משמרות חג {period} — אין הוגנות עבר לבדוק בחלוקה הזו.
+        לא היו משמרות חג מרשימת החגים {period} — אין הוגנות עבר לבדוק בחלוקה הזו.
       </p>
     );
   }
+  // The run reports, per share, whether someone with fewer past chags who got
+  // no chag day was free for it (no constraint, no saved shift that week, not
+  // the same chag as before). That is the failure; older results without it
+  // fall back to comparing each person's share.
+  const exact = rows.some((r) => r.missedChagShares != null);
   const average = people.reduce((n, p) => n + p.total, 0) / people.length;
   const byCarry = [...people].sort((a, b) => b.carry - a.carry || a.now - b.now);
-  const overServed = byCarry.filter((p) => p.now > 0 && p.carry >= average + 0.5);
-  const owed = [...people]
-    .sort((a, b) => a.total - b.total)
-    .filter((p) => p.now === 0 && p.total <= average - 1);
-  // Someone owed who got none may simply have been blocked on every chag day,
-  // so that alone isn't a failure; it's listed as context when the check fails.
-  const failed = overServed.length > 0;
+  const givenOver = exact
+    ? byCarry.filter((p) => p.over > 0)
+    : byCarry.filter((p) => p.now > 0 && p.carry >= average + 0.5);
+  const passedOver = exact
+    ? [...people].sort((a, b) => a.carry - b.carry).filter((p) => p.missed > 0)
+    : [...people].sort((a, b) => a.total - b.total).filter((p) => p.now === 0 && p.total <= average - 1);
+  // No chag day only because a constraint covered every chag day of the range.
+  const blocked = [...people]
+    .sort((a, b) => a.carry - b.carry)
+    .filter((p) => p.now === 0 && p.freeDays === 0 && p.carry < 0);
+  const failed = givenOver.length > 0;
 
-  const withChags = (p) => (p.chags.length ? `${p.name} (${p.chags.join(", ")})` : p.name);
+  const pastOf = (p) => (p.past != null ? p.past : signed(p.carry));
+  const withChags = (p) =>
+    `${p.name} (עבר ${pastOf(p)}${p.chags.length ? `: ${p.chags.join(", ")}` : ""})`;
   const details = (
-    <details className="mt-1" open={overServed.length > 0}>
+    <details className="mt-1" open={failed}>
       <summary className="text-[11px] text-gray-500 cursor-pointer select-none">
-        פירוט לפי משתמש (עבר = ימי חג {period}; בחלוקה = ימי חג בחלוקה הזו)
+        פירוט לפי משתמש (עבר = ימי חג מרשימת החגים {period}; בחלוקה = ימי חג
+        מהרשימה בחלוקה הזו)
       </summary>
       <div className="flex flex-wrap gap-1.5 mt-1.5">
         {byCarry.map((p) => (
           <span
             key={p.id}
             className={`text-[11px] rounded-full border px-2 py-0.5 ${
-              overServed.includes(p)
+              givenOver.includes(p)
                 ? "border-amber-300 bg-amber-50 text-amber-800"
-                : "border-gray-200 bg-gray-50 text-gray-700"
+                : passedOver.includes(p) && failed
+                  ? "border-sky-300 bg-sky-50 text-sky-800"
+                  : "border-gray-200 bg-gray-50 text-gray-700"
             }`}
           >
             {p.name}
@@ -110,10 +140,19 @@ function PastFairnessCheck({ rows, months }) {
             )}
             <span className="text-gray-400"> · בחלוקה </span>
             <b className="font-mono">{p.now}</b>
+            {p.now === 0 && p.freeDays === 0 && (
+              <span className="text-gray-400"> · חסום בכל ימי החג</span>
+            )}
           </span>
         ))}
       </div>
     </details>
+  );
+  const blockedNote = blocked.length > 0 && (
+    <p className="text-[11px] text-gray-500 mt-1">
+      לא קיבלו ימי חג כי היו חסומים באילוצים בכל ימי החג בטווח:{" "}
+      {blocked.map((p) => p.name).join(" · ")}
+    </p>
   );
 
   return failed ? (
@@ -123,13 +162,20 @@ function PastFairnessCheck({ rows, months }) {
         הוגנות העבר בחגים לא נשמרה במלואה ({period})
       </p>
       <p className="text-[11px] text-amber-800 mt-1">
-        קיבלו ימי חג אף שכבר עשו יותר מחלקם: {overServed.map(withChags).join(" · ")}
+        {exact
+          ? "קיבלו ימי חג אף שמי שעשה פחות חגים ולא קיבל אף יום חג היה פנוי להם: "
+          : "קיבלו ימי חג אף שכבר עשו יותר מחלקם: "}
+        {givenOver.map(withChags).join(" · ")}
       </p>
-      {owed.length > 0 && (
-        <p className="text-[11px] text-amber-800">
-          לא קיבלו ימי חג אף שהגיע להם: {owed.map((p) => p.name).join(" · ")}
+      {passedOver.length > 0 && (
+        <p className="text-[11px] text-sky-800">
+          {exact
+            ? "היו פנויים ולא קיבלו אף יום חג: "
+            : "לא קיבלו ימי חג אף שהגיע להם: "}
+          {passedOver.map(withChags).join(" · ")}
         </p>
       )}
+      {blockedNote}
       {details}
     </div>
   ) : (
@@ -138,6 +184,7 @@ function PastFairnessCheck({ rows, months }) {
         <Scale className="w-3.5 h-3.5" />
         הוגנות העבר נשמרה — ימי החג הלכו קודם למי שעשה פחות חגים {period}.
       </p>
+      {blockedNote}
       {details}
     </div>
   );
