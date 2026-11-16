@@ -93,7 +93,11 @@ export function distributeShiftsBest(params, { runs = 4, seed = 1, iterations, o
  *      chags beyond their fair share — history.fairnessKinds, by default
  *      chags only), so whoever worked more chags in the past waits until the
  *      others have caught up. With holidayUsers, the carry comes from
- *      holidayUsers.history, or from history when that's not given.
+ *      holidayUsers.history, or from history when that's not given. And not
+ *      the same chag year after year: among those owed, whoever worked that
+ *      same chag (holiday group name, or Pesach/Sukkot Chol HaMoed) in the
+ *      history window goes last, and the week search never swaps a chag
+ *      share to them.
  *   d. A person shouldn't land two calendar-adjacent days by accident.
  *   e. Total shifts stay balanced: nobody is handed a slot while someone
  *      available holds more than MAX_TOTAL_SPREAD fewer, or after reaching
@@ -336,6 +340,31 @@ export function distributeShifts({
   const existingByDate = new Map();
   inRangeShifts.forEach((s) => existingByDate.set(s.start_date, s));
 
+  // Rule (c), same chag year after year: which chag a date belongs to — its
+  // holiday group's name in the holiday list (the same name every year), or
+  // for Chol HaMoed outside any group, which chag's Chol HaMoed it is — and
+  // which chags each person worked in the history window.
+  const chagOf = (key) => {
+    const group = groupByDate.get(key);
+    if (group) return group;
+    if (cholHamoedKeys.has(key)) return `חוה"מ ${Number(key.slice(5, 7)) <= 6 ? "פסח" : "סוכות"}`;
+    return null;
+  };
+  const pastChagsOf = (hist, resolve) => {
+    const out = new Map();
+    const from = hist?.from ? String(hist.from).slice(0, 10) : null;
+    (hist?.shifts || []).forEach((sh) => {
+      const key = sh?.start_date ? String(sh.start_date).slice(0, 10) : null;
+      if (!key || key >= startDate || (from && key < from)) return;
+      const chag = chagOf(key);
+      const id = chag ? resolve(sh.original_user_id) : null;
+      if (id == null) return;
+      if (!out.has(id)) out.set(id, new Set());
+      out.get(id).add(chag);
+    });
+    return out;
+  };
+
   const days = [];
   for (let i = 0; i < totalDays; i++) {
     const d = addDays(start, i);
@@ -387,6 +416,15 @@ export function distributeShifts({
     prevDow === 5 || prevDow === 6 || holidayByDate.has(prevKey);
   const carryGroupId = prevTogether ? (groupOwners?.get(prevKey) ?? null) : null;
   const carryUserId = prevTogether ? (userOwners?.get(prevKey) ?? null) : null;
+
+  const pastChagsByUser = pastChagsOf(holidayHistory, (id) => id);
+  const pastChagsByPerson = pastChagsOf(history, (id) =>
+    peopleIdSet.has(id) ? id : (holidayGroupRepOf.get(id) ?? null),
+  );
+  const workedSameChag = (id, key, byUser) => {
+    const chag = chagOf(key);
+    return !!chag && !!(byUser ? pastChagsByUser : pastChagsByPerson).get(id)?.has(chag);
+  };
 
   // Group into bundles: consecutive days of the same kind chain into one bundle
   // — except "regular" days, which always stay their own bundle. A day that
@@ -676,10 +714,18 @@ export function distributeShifts({
                   (p) => !excludedIds.has(p.serial_id) && remainingCapacity(fair.weekly, p.serial_id, today.weekKey) > 0,
                 );
                 if (free.length > 0) {
-                  const lowest = Math.min(...free.map((p) => count(p.serial_id)));
-                  const owed = free.filter((p) => count(p.serial_id) < lowest + chagStrictBand);
-                  const strict = pickTogetherCandidate(fair, owed, today.weekKey, excludedIds, "holidays", shareIdxs);
-                  if (strict) return strict;
+                  // not the same chag they worked in the history window, when
+                  // anyone else can take it: those who did go last
+                  const fresh = free.filter((p) => !workedSameChag(p.serial_id, today.key, useUserFairness));
+                  for (const group of fresh.length && fresh.length < free.length ? [fresh, free] : [free]) {
+                    const lowest = Math.min(...group.map((p) => count(p.serial_id)));
+                    const owed = group.filter((p) => count(p.serial_id) < lowest + chagStrictBand);
+                    // ...but never ahead of someone owed more chags overall
+                    const lowestAll = Math.min(...free.map((p) => count(p.serial_id)));
+                    if (group === fresh && lowest >= lowestAll + chagStrictBand) continue;
+                    const strict = pickTogetherCandidate(fair, owed, today.weekKey, excludedIds, "holidays", shareIdxs);
+                    if (strict) return strict;
+                  }
                 }
               }
               return pickTogetherCandidate(fair, fairPool, today.weekKey, excludedIds, "holidays", shareIdxs);
@@ -975,12 +1021,17 @@ export function distributeShifts({
   // Rule (k): week spacing. Swap same-kind units between people so nobody works
   // back-to-back weeks or with a single empty week between shifts, as far as
   // the calendar allows. Existing shifts and last-resort days stay put.
+  // For the week search: a chag day is off-limits to whoever worked that same
+  // chag in the history window (rule c), so a swap can't hand it to them.
+  const isProtectedOrSameChag = (id, key) =>
+    isProtected(id, key) ||
+    (holidayBundleKeys.has(key) && key >= startDate && workedSameChag(id, key, holidayByUser));
   const weekCtx = {
     isTogether: isTogetherAny,
     holidayKeys: holidayByDate,
     lockedDates: new Set([...inRangeShifts.map((s) => String(s.start_date).slice(0, 10)), ...lastResortDates]),
     ownerOf: ownerOfRep,
-    isProtected,
+    isProtected: isProtectedOrSameChag,
     startDate,
     endDate,
     fixedBefore: recentPast,
