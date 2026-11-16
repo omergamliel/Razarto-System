@@ -99,14 +99,13 @@ export function buildHolidayCards(definitions = [], entriesById = new Map()) {
       card.breaks = offsets
         .map((offset) => card.dayKeys[offset])
         .filter(Boolean);
-      card.manual = offsets.length > 0;
-      card.divisions = Math.max(
-        1,
-        Number(config.divisions) ||
-          (offsets.length > 0
-            ? offsets.length + 1
-            : defaultDivisions(card.dayKeys.length || 1)),
-      );
+      card.manual = card.breaks.length > 0;
+      // Automatic (no cuts): always the default split — TWO days per share — and
+      // never a חלוקות number left on the row from earlier cuts, which would
+      // split the group although no cut shows on the card.
+      card.divisions = card.manual
+        ? Math.max(1, Number(config.divisions) || offsets.length + 1)
+        : defaultDivisions(card.dayKeys.length || 1);
       card.shares = previewHolidayShares(card.dayKeys, {
         divisions: card.divisions,
         breaks: card.breaks,
