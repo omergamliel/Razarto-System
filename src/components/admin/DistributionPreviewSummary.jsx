@@ -138,7 +138,8 @@ function PastFairnessCheck({ rows, months }) {
  * Past fairness is checked when `holidayFairness` is passed: the result's
  * holidayTable (or justiceTable when the run had no holidayUsers). Pass
  * `historyMonths` too — the number of months before the range the run took
- * into account for past fairness — so the check names that period.
+ * into account for past fairness — so the check names that period. When the
+ * check can't be shown, `pastFairnessNote` says why in its place.
  */
 export default function DistributionPreviewSummary({
   model,
@@ -147,6 +148,7 @@ export default function DistributionPreviewSummary({
   violations,
   holidayFairness,
   historyMonths,
+  pastFairnessNote,
 }) {
   const ruleCounts = {};
   (relaxations || []).forEach((entry) =>
@@ -213,9 +215,14 @@ export default function DistributionPreviewSummary({
         </p>
       )}
 
-      {Array.isArray(holidayFairness) && holidayFairness.length > 0 && (
+      {Array.isArray(holidayFairness) && holidayFairness.length > 0 ? (
         <PastFairnessCheck rows={holidayFairness} months={historyMonths} />
-      )}
+      ) : pastFairnessNote ? (
+        <p className="text-[11px] text-gray-500 flex items-center gap-1.5">
+          <Scale className="w-3.5 h-3.5" />
+          {pastFairnessNote}
+        </p>
+      ) : null}
 
       {brokenConstraints &&
         (brokenConstraints.length > 0 ? (
