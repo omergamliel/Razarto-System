@@ -5,6 +5,7 @@ import {
   keepWeekendsTogether,
   splitCholHamoed,
   splitHolidayDays,
+  defaultDivisions,
 } from "@/lib/holidayDivisions";
 import { refineSpacing } from "@/components/calendar/spacingRefinement";
 import {
@@ -256,6 +257,8 @@ export function distributeShifts({
   const holidayByDate = new Set(holidayDates);
   const divisionByDate = new Map(holidayDivisions);
   const breaksByDate = new Map();
+  // Chag days whose holiday row has cuts made by hand in the holiday list.
+  const manualCutDates = new Set();
   // Which manual holiday group (the admin list's group name) a chag day
   // belongs to — two different groups never merge into one block.
   const groupByDate = new Map();
@@ -270,7 +273,10 @@ export function distributeShifts({
       groupByDate.set(key, String(holiday.name || ""));
       divisionByDate.set(key, Math.max(1, Number(holiday.divisions) || 1));
       const movedBreaks = (holiday.division_breaks || []).filter(Boolean);
-      if (movedBreaks.length > 0) breaksByDate.set(key, movedBreaks);
+      if (movedBreaks.length > 0) {
+        breaksByDate.set(key, movedBreaks);
+        manualCutDates.add(key);
+      }
     }
   });
   // Chol HaMoed days are holiday days too: a run of holiday days that are
@@ -619,11 +625,15 @@ export function distributeShifts({
         const breaks = new Set();
         piece.days.forEach((d) => (breaksByDate.get(d.key) || []).forEach((b) => breaks.add(b)));
         if (piece.chm) return splitCholHamoed(keys);
-        const divisions = Math.max(1, ...piece.days.map((d) => divisionByDate.get(d.key) || 1));
-        return splitHolidayDays(keys, {
-          divisions,
-          breaks: [...breaks].filter((b) => keys.includes(b)),
-        });
+        const pieceBreaks = [...breaks].filter((b) => keys.includes(b));
+        // No cut in the holiday list → the automatic split (two days per
+        // share), exactly as the card shows it. A חלוקות number left on the
+        // row from earlier cuts is ignored, so it can't split the group.
+        const manual = pieceBreaks.length > 0 || piece.days.some((d) => manualCutDates.has(d.key));
+        const divisions = manual
+          ? Math.max(1, ...piece.days.map((d) => divisionByDate.get(d.key) || 1))
+          : defaultDivisions(keys.length);
+        return splitHolidayDays(keys, { divisions, breaks: pieceBreaks });
       });
       // The weekend merge runs first (a Friday keeps its Saturday), then every
       // share that grew past MAX_SHARE_DAYS is cut again — never between that
