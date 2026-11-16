@@ -1127,7 +1127,29 @@ export function distributeShifts({
     peopleIdSet.has(id) ? id : (holidayGroupRepOf.get(id) ?? null),
   );
   const userPastChag = holidayState ? pastChagDays(holidayHistory, (id) => id) : null;
-  const table = (fair, pool, prior, pastChag) =>
+  // The chags each person worked in the history window, by name, in date
+  // order (for display).
+  const pastChagNames = (hist, resolve) => {
+    const out = new Map();
+    const from = hist?.from ? String(hist.from).slice(0, 10) : null;
+    (hist?.shifts || [])
+      .map((sh) => ({ id: sh?.original_user_id, key: sh?.start_date ? String(sh.start_date).slice(0, 10) : null }))
+      .filter((x) => x.key && x.key < startDate && (!from || x.key >= from))
+      .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0))
+      .forEach(({ id: raw, key }) => {
+        const chag = chagOf(key);
+        const id = chag ? resolve(raw) : null;
+        if (id == null) return;
+        if (!out.has(id)) out.set(id, []);
+        if (!out.get(id).includes(chag)) out.get(id).push(chag);
+      });
+    return out;
+  };
+  const groupPastNames = pastChagNames(history, (id) =>
+    peopleIdSet.has(id) ? id : (holidayGroupRepOf.get(id) ?? null),
+  );
+  const userPastNames = holidayState ? pastChagNames(holidayHistory, (id) => id) : null;
+  const table = (fair, pool, prior, pastChag, pastNames) =>
     pool
       .map((p) => {
         const id = p.serial_id;
@@ -1146,6 +1168,7 @@ export function distributeShifts({
           holidays: round2(c.holidays),
           holidayCarry: round2(fair.kindSeed.get(id)?.holidays || 0),
           pastHolidays: pastChag?.get(id) || 0,
+          pastChags: pastNames?.get(id) || [],
           weekends: round2(c.weekends),
           thursdays: round2(c.thursdays),
           regular: round2(c.regular),
@@ -1158,8 +1181,10 @@ export function distributeShifts({
     assignments: finalAssignments,
     skipped,
     relaxations: keptRelaxations,
-    justiceTable: table(finalGroupFair, people, priorJustice, groupPastChag),
-    holidayTable: finalHolidayState ? table(finalHolidayState, holidayPool, new Map(), userPastChag) : null,
+    justiceTable: table(finalGroupFair, people, priorJustice, groupPastChag, groupPastNames),
+    holidayTable: finalHolidayState
+      ? table(finalHolidayState, holidayPool, new Map(), userPastChag, userPastNames)
+      : null,
     spacing: refined ? refined.stats : null,
     // Days that would have stayed empty and were filled by the last resort.
     weeklyOverflow: finalAssignments
