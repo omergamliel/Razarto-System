@@ -56,7 +56,10 @@ function PastFairnessCheck({ rows, months }) {
   const people = rows.map((r) => {
     const carry = Number(r.holidayCarry) || 0;
     const now = Number(r.holidays) || 0;
-    return { id: r.personId, name: r.name, carry, now, total: carry + now };
+    // whole number of chag days worked in the past period (older results
+    // without it fall back to the difference from the fair share)
+    const past = r.pastHolidays != null ? Number(r.pastHolidays) || 0 : null;
+    return { id: r.personId, name: r.name, carry, past, now, total: carry + now };
   });
   const period = pastPeriod(months);
   if (!people.some((p) => Math.abs(p.carry) > 0.05)) {
@@ -80,7 +83,7 @@ function PastFairnessCheck({ rows, months }) {
   const details = (
     <details className="mt-1">
       <summary className="text-[11px] text-gray-500 cursor-pointer select-none">
-        פירוט לפי משתמש (עבר = ימי חג מעבר לחלק ההוגן {period}; בחלוקה = ימי חג בחלוקה הזו)
+        פירוט לפי משתמש (עבר = ימי חג {period}; בחלוקה = ימי חג בחלוקה הזו)
       </summary>
       <div className="flex flex-wrap gap-1.5 mt-1.5">
         {byCarry.map((p) => (
@@ -94,7 +97,11 @@ function PastFairnessCheck({ rows, months }) {
           >
             {p.name}
             <span className="text-gray-400"> · עבר </span>
-            <bdi dir="ltr" className="font-mono">{signed(p.carry)}</bdi>
+            {p.past != null ? (
+              <b className="font-mono">{p.past}</b>
+            ) : (
+              <bdi dir="ltr" className="font-mono">{signed(p.carry)}</bdi>
+            )}
             <span className="text-gray-400"> · בחלוקה </span>
             <b className="font-mono">{p.now}</b>
           </span>
