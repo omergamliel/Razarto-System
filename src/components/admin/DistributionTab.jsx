@@ -1140,7 +1140,9 @@ export default function DistributionTab({
         onRestoreIgnored={handleRestoreIgnored}
         onRerun={handleRerun}
         error={previewError}
-        onApprove={() => preview && commitMutation.mutate(preview)}
+        onApprove={(assignments) =>
+          preview && commitMutation.mutate({ ...preview, assignments })
+        }
         onClose={() => setPreview(null)}
       />
 

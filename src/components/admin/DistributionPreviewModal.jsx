@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Check, Loader2, CalendarRange, RefreshCw } from "lucide-react";
 import {
   Dialog,
@@ -8,12 +8,40 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { buildPreviewModel, MARK_COLORS } from "./previewModel";
+import { buildPreviewModel, MARK_COLORS, violationsFor } from "./previewModel";
 import DistributionPreviewCalendar from "./DistributionPreviewCalendar";
 import DistributionPreviewPeopleBar from "./DistributionPreviewPeopleBar";
 import DistributionPreviewSummary from "./DistributionPreviewSummary";
 import DistributionPreviewTable from "./DistributionPreviewTable";
 import DistributionPreviewConstraints from "./DistributionPreviewConstraints";
+import DistributionPreviewCsvBar from "./DistributionPreviewCsvBar";
+import {
+  buildAssignmentsCsv,
+  csvFileName,
+  downloadCsv,
+  keyOf,
+  parseAssignmentsCsv,
+  readCsvFile,
+} from "./previewCsv";
+
+const NO_ASSIGNMENTS = [];
+
+// How many days the imported file assigns differently from the run that was
+// computed — the "what did I actually change" figure shown next to the file name.
+const countChanges = (base, next) => {
+  const before = new Map(
+    (base || []).map((entry) => [keyOf(entry.date), Number(entry.personId)]),
+  );
+  const after = new Map(
+    (next || []).map((entry) => [keyOf(entry.date), Number(entry.personId)]),
+  );
+  const dates = new Set([...before.keys(), ...after.keys()]);
+  let changed = 0;
+  dates.forEach((date) => {
+    if (before.get(date) !== after.get(date)) changed += 1;
+  });
+  return changed;
+};
 
 const formatIL = (iso) => {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || "").slice(0, 10));
@@ -54,17 +82,99 @@ export default function DistributionPreviewModal({
   error,
 }) {
   const [highlight, setHighlight] = useState(null);
+  // A schedule read back from a CSV file. It replaces the run on screen (and is
+  // what approval would write) until it is cleared or a new run arrives.
+  const [imported, setImported] = useState(null);
+  const [importErrors, setImportErrors] = useState([]);
+
+  useEffect(() => {
+    setImported(null);
+    setImportErrors([]);
+  }, [preview?.computedAt]);
+
+  const assignments = imported?.assignments ?? preview?.assignments ?? NO_ASSIGNMENTS;
 
   const model = useMemo(
-    () => (preview ? buildPreviewModel({ ...preview, people: people || [] }) : null),
-    [preview, people],
+    () =>
+      preview
+        ? buildPreviewModel({ ...preview, assignments, people: people || [] })
+        : null,
+    [preview, people, assignments],
   );
+
+  const changes = useMemo(
+    () => (imported ? countChanges(preview?.assignments, imported.assignments) : 0),
+    [imported, preview],
+  );
+
+  // Days left without anyone once the imported file is in place — the calendar
+  // shows them as unfilled, so the "no holes" check must count the same days.
+  const importedSkipped = useMemo(() => {
+    if (!imported || !model) return null;
+    const list = [];
+    model.months.forEach((month) =>
+      month.cells.forEach((cell) => {
+        if (!cell.blank && cell.unfilled) list.push({ date: cell.key });
+      }),
+    );
+    return list;
+  }, [imported, model]);
+
+  // Constraints the imported file breaks, re-checked against the new owners.
+  const importedViolations = useMemo(() => {
+    if (!imported || !Array.isArray(preview?.constraintViolations)) return null;
+    return violationsFor({
+      constraints: preview.constraints,
+      assignments,
+      existing: preview.existing,
+    });
+  }, [imported, preview, assignments]);
+
+  const handleExport = () => {
+    if (!preview) return;
+    downloadCsv(
+      csvFileName(preview),
+      buildAssignmentsCsv({ ...preview, assignments, people: people || [] }),
+    );
+  };
+
+  const handleImport = async (file) => {
+    if (!preview) return;
+    try {
+      const text = await readCsvFile(file);
+      const result = parseAssignmentsCsv(text, {
+        people: people || [],
+        startDate: preview.startDate,
+        endDate: preview.endDate,
+      });
+      setImportErrors(result.errors);
+      // Nothing usable in the file: keep the run on screen and just report why.
+      if (!result.assignments.length && !result.cleared) {
+        setImported(null);
+        if (!result.errors.length) {
+          setImportErrors(["לא נמצאו שורות לייבוא בקובץ."]);
+        }
+        return;
+      }
+      setImported({ fileName: file.name, assignments: result.assignments });
+    } catch (e) {
+      setImported(null);
+      setImportErrors([e?.message || "קריאת הקובץ נכשלה."]);
+    }
+  };
+
+  const resetImport = () => {
+    setImported(null);
+    setImportErrors([]);
+  };
 
   const close = () => {
     // While the run is being recomputed the window stays open, so the fresh
     // result replaces the one on screen instead of popping up again later.
     if (isSaving || isRunning) return;
     setHighlight(null);
+    setImported(null);
+    setImportErrors([]);
     onClose();
   };
 
@@ -83,7 +193,7 @@ export default function DistributionPreviewModal({
           <DialogDescription className="text-xs text-gray-500">
             {preview
               ? `${formatIL(preview.startDate)} — ${formatIL(preview.endDate)} · ${
-                  preview.assignments?.length || 0
+                  assignments.length
                 } משמרות · טרם נשמר דבר${
                   preview.overwrite ? " · דריסת המשמרות הקיימות בטווח" : ""
                 }`
@@ -93,6 +203,18 @@ export default function DistributionPreviewModal({
               : ""}
           </DialogDescription>
         </DialogHeader>
+
+        {preview && (
+          <DistributionPreviewCsvBar
+            imported={imported}
+            changes={changes}
+            errors={importErrors}
+            disabled={isSaving || isRunning}
+            onExport={handleExport}
+            onFile={handleImport}
+            onReset={resetImport}
+          />
+        )}
 
         {error && (
           <div className="shrink-0 mx-3 md:mx-4 mt-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-700">
@@ -104,9 +226,11 @@ export default function DistributionPreviewModal({
           <div className="flex-1 min-h-0 overflow-y-auto p-3 md:p-4 space-y-3 bg-[#F9FAFB] custom-scrollbar">
             <DistributionPreviewSummary
               model={model}
-              relaxations={preview.relaxations}
-              skipped={preview.skipped}
-              violations={preview.constraintViolations}
+              relaxations={imported ? [] : preview.relaxations}
+              skipped={imported ? importedSkipped : preview.skipped}
+              violations={
+                imported ? importedViolations : preview.constraintViolations
+              }
             />
 
             <DistributionPreviewConstraints
@@ -228,9 +352,9 @@ export default function DistributionPreviewModal({
               {isRunning ? "מריץ מחדש..." : "הרצה מחדש (אותם פרמטרים)"}
             </Button>
             <Button
-              onClick={onApprove}
+              onClick={() => onApprove(assignments)}
               disabled={
-                isSaving || isRunning || !(preview?.assignments?.length > 0)
+                isSaving || isRunning || !(assignments.length > 0)
               }
               className="flex-1 sm:flex-none rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white gap-2"
             >
@@ -241,7 +365,7 @@ export default function DistributionPreviewModal({
               )}
               {isSaving
                 ? "משבץ משמרות..."
-                : `אישור ושיבוץ (${preview?.assignments?.length || 0})`}
+                : `אישור ושיבוץ (${assignments.length})`}
             </Button>
           </div>
         </div>

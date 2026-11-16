@@ -67,6 +67,36 @@ export const categorize = (key, holidaySet) => {
 };
 
 /**
+ * Constraints that the given schedule breaks: the person asked for that day off
+ * and sits on it anyway — either from the run's own shifts or from a shift that
+ * was already in the calendar. Used to re-check an imported schedule.
+ */
+export function violationsFor({ constraints = [], assignments = [], existing = [] }) {
+  const ownerByDate = new Map();
+  (assignments || []).forEach((entry) =>
+    ownerByDate.set(keyOf(entry.date), Number(entry.personId)),
+  );
+  const existingByDate = new Map();
+  (existing || []).forEach((entry) => {
+    const key = keyOf(entry.date);
+    if (key && !existingByDate.has(key)) existingByDate.set(key, Number(entry.personId));
+  });
+  return (constraints || [])
+    .filter((constraint) => {
+      const key = keyOf(constraint.date);
+      const serial = Number(constraint.serial_id);
+      return ownerByDate.get(key) === serial || existingByDate.get(key) === serial;
+    })
+    .map((constraint) => ({
+      ...constraint,
+      source:
+        ownerByDate.get(keyOf(constraint.date)) === Number(constraint.serial_id)
+          ? "distribution"
+          : "existing",
+    }));
+}
+
+/**
  * Turns a distribution result into everything the preview window shows: the
  * year calendar (a month grid per month, one cell per day) and the fairness
  * table (per person, per kind of day, against an equal share).
