@@ -74,13 +74,6 @@ export function distributeShiftsBest(params, { runs = 4, seed = 1, iterations, o
     if (onRun) onRun(summary);
     if (!best || compareRuns(summary, best.summary) < 0) best = { result, summary };
   }
-  const res = distributeShifts(params);
-  const ws = res.weekSpacing;
-  console.log("search swaps:", ws?.swaps, "iterations:", ws?.iterations, "| back-to-back before/after:", ws?.before?.weekAfterWeek, "/", ws?.after?.weekAfterWeek);
-  console.table((ws?.perPerson || []).map((p) => ({ id: p.personId, units: p.units, backToBack: p.weekAfterWeek, oneWeekGap: p.everyOtherWeek, minGap: p.minGap })));
-  console.log("people:", params.people.length, "| holidayUsers:", params.holidayUsers?.people?.length ?? 0,
-    "| saved shifts already in range:", (params.existingShifts || []).filter((s) => s.start_date >= params.startDate && s.start_date <= params.endDate).length,
-    "| refine:", params.refine !== false, "| optimizeWeeks:", params.optimizeWeeks !== false);
   return { ...best.result, search: { best: best.summary.run, runs: summaries } };
 }
 
@@ -141,6 +134,11 @@ export function distributeShiftsBest(params, { runs = 4, seed = 1, iterations, o
  *      Order: greedy pass → last resort (h) → refineSpacing → weekends (i) →
  *      Thursdays/ordinary days (g) → week spacing (k). The week search runs
  *      last, so nothing after it can undo its week rules.
+ *      Close gaps are spread over people, not piled on a few: the k-th time
+ *      the same person has a one-week gap costs k × 150, so a 5th one for one
+ *      person costs more than a 1st for someone else. Back-to-back (5000 × k)
+ *      and same week (20000 × k) stay far above any one-week gap, so the
+ *      search never trades a one-week gap for one of those.
  *   l. Constraints cost their owner, not everyone else (part of k): someone
  *      with constraints gets fewer weeks to fit the same shifts into, so their
  *      own gaps get shorter. The search weighs each person's one-week gaps
@@ -150,7 +148,8 @@ export function distributeShiftsBest(params, { runs = 4, seed = 1, iterations, o
  *      will not make an unconstrained person's spacing worse to ease a
  *      constrained person's. Back-to-back and same-week count in full for
  *      everyone. Tested: with constraints on 6 of 17 users, the other 11 keep
- *      the same spacing as with no constraints at all.
+ *      the same spacing as with no constraints at all (2.6 one-week gaps each
+ *      on average, at most 4 for any of them).
  *
  * Rules (d), (e) and (f) are soft: they are relaxed in the order f → e → d only
  * when no candidate satisfies them, so a day is never left unstaffed because of
@@ -200,11 +199,11 @@ export function distributeShifts({
   // In the week-spacing search, each person's one-week gaps and short gaps
   // count 1 / (1 + blocked / constraintWeightDays), where blocked = their
   // constrained days in the range scaled to a 365-day year (same-week and
-  // back-to-back count in full for everyone). 250 keeps people without constraints at the spacing they
-  // would have had if nobody had constraints. constraintsOwnCost: false
-  // weighs everyone the same.
+  // back-to-back count in full for everyone). 25 keeps people without
+  // constraints at the spacing they would have had if nobody had constraints.
+  // constraintsOwnCost: false weighs everyone the same.
   constraintsOwnCost = true,
-  constraintWeightDays = 250,
+  constraintWeightDays = 25,
 }) {
   const holidayByDate = new Set(holidayDates);
   const divisionByDate = new Map(holidayDivisions);
