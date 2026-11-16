@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Loader2, Trash2 } from "lucide-react";
-import { MARK_COLORS, WEEKDAY_LABELS, personColor } from "./previewModel";
+import { MARK_COLORS, WEEKDAY_LABELS, personColor, personColorDim } from "./previewModel";
 
 const TIP_WIDTH = 196;
 const CLEAR_DELAY = 220;
@@ -20,12 +20,17 @@ function DayCell({ cell, dimmed, constraints, onHover, onLeave }) {
   if (cell.blank) return <span className="aspect-square" />;
 
   const style = {};
-  if (cell.hue != null) style.background = personColor(cell.hue);
-  else if (cell.existing) style.background = MARK_COLORS.existing;
-  if (cell.category === "holidays") {
+  if (cell.hue != null) {
+    style.background = dimmed
+      ? personColorDim(cell.hue)
+      : personColor(cell.hue);
+  } else if (cell.existing) {
+    style.background = dimmed ? MARK_COLORS.dim : MARK_COLORS.existing;
+  }
+  if (!dimmed && cell.category === "holidays") {
     style.boxShadow = `inset 0 0 0 1.5px ${MARK_COLORS.holiday}`;
   }
-  if (cell.unfilled) {
+  if (!dimmed && cell.unfilled) {
     style.border = `1px dashed ${MARK_COLORS.warning}`;
   }
 
@@ -49,11 +54,11 @@ function DayCell({ cell, dimmed, constraints, onHover, onLeave }) {
         blockCount ? "cursor-pointer ring-1 ring-amber-400/70" : ""
       }`}
     >
-      {/* Only the day itself dims while a person is highlighted, so their
-          constraint dots stay fully visible. */}
+      {/* Only the day number/name dims on top of the drained background, so
+          the highlighted person's constraint dots stay fully visible. */}
       <div
         className={`absolute inset-0 flex flex-col items-center justify-center leading-none transition-opacity ${
-          dimmed ? "opacity-15" : ""
+          dimmed ? "opacity-30" : ""
         }`}
       >
         <span className="text-[8px] text-gray-500">{cell.day}</span>

@@ -34,6 +34,7 @@ export const MARK_COLORS = {
   holiday: "hsl(276 45% 47%)",
   warning: "hsl(4 62% 47%)",
   existing: "hsl(210 16% 92%)",
+  dim: "hsl(210 10% 96%)",
   constraint: "hsl(38 92% 45%)",
 };
 
@@ -45,6 +46,10 @@ const round1 = (value) => Math.round(value * 10) / 10;
 // angle so two people next to each other in the list never look alike.
 export const hueOf = (index) => Math.round((index * 137.508 + 14) % 360);
 export const personColor = (hue) => `hsl(${hue} 62% 80%)`;
+
+// The same cell, drained of its colour: a day that is not the highlighted
+// person's, so only their own days keep standing out.
+export const personColorDim = (hue) => `hsl(${hue} 12% 95%)`;
 
 // "דניאל כהן" → "דני" — what fits inside a ~34px calendar cell.
 export const shortName = (name) => {
