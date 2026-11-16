@@ -292,6 +292,13 @@ export default function DistributionTab({
       // representative, regardless of which member actually worked it.
       const historyWindow = Math.max(0, Math.floor(Number(historyMonths)) || 0);
       const priorJustice = new Map();
+      // Past fairness for chags, over the same window: the shifts themselves,
+      // by the person who actually worked them (chags are divided between
+      // people, not groups). The algorithm compares each person's past chag
+      // days with their fair share of that window, so whoever worked more
+      // chags waits until the others have caught up. It also measures the
+      // first weeks of the range against the last shifts before it.
+      let history = null;
       if (historyWindow > 0) {
         const historyStart = format(
           subMonths(new Date(startDate), historyWindow),
@@ -305,6 +312,21 @@ export default function DistributionTab({
           if (repKey == null) return; // owner's group isn't in the active pool
           priorJustice.set(repKey, (priorJustice.get(repKey) || 0) + 1);
         });
+        history = {
+          from: historyStart,
+          shifts: shifts
+            .filter(
+              (s) =>
+                s.start_date &&
+                s.original_user_id != null &&
+                s.start_date >= historyStart &&
+                s.start_date < startDate,
+            )
+            .map((s) => ({
+              original_user_id: Number(s.original_user_id),
+              start_date: String(s.start_date).slice(0, 10),
+            })),
+        };
       }
 
       // Holidays are divided between PEOPLE: alongside the group
@@ -339,6 +361,7 @@ export default function DistributionTab({
         holidayUsers,
         protectedDates,
         priorJustice,
+        history,
         seed,
       });
       const res = distribution; // TEST
@@ -480,6 +503,9 @@ export default function DistributionTab({
         endDate,
         holidayKeys,
         poolSize: reps.length,
+        // The months before the range this run took into account (0 = none),
+        // for the past-fairness check in the preview.
+        historyMonths: historyWindow,
         // The parameters this run was computed with, so "הרצה מחדש" repeats
         // exactly this run without depending on any other piece of state.
         runParams: {
