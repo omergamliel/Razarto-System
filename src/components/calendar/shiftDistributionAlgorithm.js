@@ -908,6 +908,13 @@ export function distributeShifts({
       })
       .sort((a, b) => a.balance - b.balance);
 
+  const res = distributeShifts(params);
+  const ws = res.weekSpacing;
+  console.log("search swaps:", ws?.swaps, "iterations:", ws?.iterations, "| back-to-back before/after:", ws?.before?.weekAfterWeek, "/", ws?.after?.weekAfterWeek);
+  console.table((ws?.perPerson || []).map((p) => ({ id: p.personId, units: p.units, backToBack: p.weekAfterWeek, oneWeekGap: p.everyOtherWeek, minGap: p.minGap })));
+  console.log("people:", params.people.length, "| holidayUsers:", params.holidayUsers?.people?.length ?? 0,
+    "| saved shifts already in range:", (params.existingShifts || []).filter((s) => s.start_date >= params.startDate && s.start_date <= params.endDate).length,
+    "| refine:", params.refine !== false, "| optimizeWeeks:", params.optimizeWeeks !== false);
   return {
     assignments: finalAssignments,
     skipped,
