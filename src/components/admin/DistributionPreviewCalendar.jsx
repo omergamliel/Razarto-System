@@ -5,10 +5,18 @@ import { MARK_COLORS, WEEKDAY_LABELS, personColor } from "./previewModel";
 const TIP_WIDTH = 196;
 const CLEAR_DELAY = 220;
 
+// Which constraints belong to the current view: all of them normally, and only
+// the highlighted person's when a person is highlighted — so their own אילוצים
+// show up among their shifts and nobody else's do.
+const constraintsFor = (list, highlight) =>
+  highlight == null
+    ? list || []
+    : (list || []).filter((c) => Number(c?.serial_id) === Number(highlight));
+
 // One cell of the yearly calendar: the day number, who works it, a marker for a
 // chag day, an unfilled day, a second shift in the same week — and a dot when
 // someone asked to be free that day (אילוץ).
-function DayCell({ cell, dimmed, onHover, onLeave }) {
+function DayCell({ cell, dimmed, constraints, onHover, onLeave }) {
   if (cell.blank) return <span className="aspect-square" />;
 
   const style = {};
@@ -21,34 +29,48 @@ function DayCell({ cell, dimmed, onHover, onLeave }) {
     style.border = `1px dashed ${MARK_COLORS.warning}`;
   }
 
-  const blockCount = cell.constraints?.length || 0;
+  const blockCount = constraints.length;
+  // While a person is highlighted the cell's own tooltip drops the constraints
+  // of everyone else, like the dot does.
+  const title =
+    blockCount === (cell.constraints?.length || 0)
+      ? cell.title
+      : String(cell.title || "").split(" · אילוץ:")[0];
 
   return (
     <div
-      title={cell.title}
+      title={title}
       style={style}
       onMouseEnter={
         blockCount ? (event) => onHover(event, cell.key) : undefined
       }
       onMouseLeave={blockCount ? onLeave : undefined}
-      className={`relative aspect-square rounded flex flex-col items-center justify-center overflow-hidden leading-none transition-opacity ${
-        dimmed ? "opacity-15" : ""
-      } ${blockCount ? "cursor-pointer ring-1 ring-amber-400/70" : ""}`}
+      className={`relative aspect-square rounded overflow-hidden ${
+        blockCount ? "cursor-pointer ring-1 ring-amber-400/70" : ""
+      }`}
     >
-      <span className="text-[8px] text-gray-500">{cell.day}</span>
-      <span
-        className={`text-[9px] font-bold ${
-          cell.short ? "text-gray-800" : "text-gray-500"
+      {/* Only the day itself dims while a person is highlighted, so their
+          constraint dots stay fully visible. */}
+      <div
+        className={`absolute inset-0 flex flex-col items-center justify-center leading-none transition-opacity ${
+          dimmed ? "opacity-15" : ""
         }`}
       >
-        {cell.short || cell.existingShort}
-      </span>
-      {cell.overflow && (
+        <span className="text-[8px] text-gray-500">{cell.day}</span>
         <span
-          className="absolute bottom-0 left-0 right-0 h-[3px]"
-          style={{ background: MARK_COLORS.warning }}
-        />
-      )}
+          className={`text-[9px] font-bold ${
+            cell.short ? "text-gray-800" : "text-gray-500"
+          }`}
+        >
+          {cell.short || cell.existingShort}
+        </span>
+        {cell.overflow && (
+          <span
+            className="absolute bottom-0 left-0 right-0 h-[3px]"
+            style={{ background: MARK_COLORS.warning }}
+          />
+        )}
+      </div>
       {blockCount > 0 && (
         <span
           className="absolute top-0.5 right-0.5 w-[6px] h-[6px] rounded-full ring-1 ring-white"
@@ -111,7 +133,9 @@ export default function DistributionPreviewCalendar({
     });
   };
 
-  const tipConstraints = tip ? constraintByKey?.get(tip.key) || [] : [];
+  const tipConstraints = tip
+    ? constraintsFor(constraintByKey?.get(tip.key), highlight)
+    : [];
 
   return (
     <div ref={rootRef} className="relative">
@@ -144,6 +168,7 @@ export default function DistributionPreviewCalendar({
                 <DayCell
                   key={cell.id}
                   cell={cell}
+                  constraints={constraintsFor(cell.constraints, highlight)}
                   dimmed={highlight != null && cell.owner !== highlight}
                   onHover={handleHover}
                   onLeave={scheduleClear}
