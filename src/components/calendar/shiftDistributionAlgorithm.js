@@ -1059,7 +1059,24 @@ export function distributeShifts({
   }
 
   const round2 = (x) => Math.round(x * 100) / 100;
-  const table = (fair, pool, prior) =>
+  // Chag days each person actually worked in the history window (a whole
+  // count, for display; fairness itself uses holidayCarry).
+  const pastChagDays = (hist, resolve) => {
+    const counts = new Map();
+    const from = hist?.from ? String(hist.from).slice(0, 10) : null;
+    (hist?.shifts || []).forEach((sh) => {
+      const key = sh?.start_date ? String(sh.start_date).slice(0, 10) : null;
+      if (!key || key >= startDate || (from && key < from) || !holidayByDate.has(key)) return;
+      const id = resolve(sh.original_user_id);
+      if (id != null) counts.set(id, (counts.get(id) || 0) + 1);
+    });
+    return counts;
+  };
+  const groupPastChag = pastChagDays(history, (id) =>
+    peopleIdSet.has(id) ? id : (holidayGroupRepOf.get(id) ?? null),
+  );
+  const userPastChag = holidayState ? pastChagDays(holidayHistory, (id) => id) : null;
+  const table = (fair, pool, prior, pastChag) =>
     pool
       .map((p) => {
         const id = p.serial_id;
@@ -1077,6 +1094,7 @@ export function distributeShifts({
           balance: round2(fair.justice.get(id) || 0),
           holidays: round2(c.holidays),
           holidayCarry: round2(fair.kindSeed.get(id)?.holidays || 0),
+          pastHolidays: pastChag?.get(id) || 0,
           weekends: round2(c.weekends),
           thursdays: round2(c.thursdays),
           regular: round2(c.regular),
@@ -1089,8 +1107,8 @@ export function distributeShifts({
     assignments: finalAssignments,
     skipped,
     relaxations: keptRelaxations,
-    justiceTable: table(finalGroupFair, people, priorJustice),
-    holidayTable: finalHolidayState ? table(finalHolidayState, holidayPool, new Map()) : null,
+    justiceTable: table(finalGroupFair, people, priorJustice, groupPastChag),
+    holidayTable: finalHolidayState ? table(finalHolidayState, holidayPool, new Map(), userPastChag) : null,
     spacing: refined ? refined.stats : null,
     // Days that would have stayed empty and were filled by the last resort.
     weeklyOverflow: finalAssignments
