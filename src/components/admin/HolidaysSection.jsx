@@ -167,6 +167,9 @@ export default function HolidaysSection() {
       .map((key) => card.dayKeys.indexOf(key))
       .filter((offset) => offset > 0)
       .sort((a, b) => a - b);
+    // Joining the last cut returns the group to the automatic split (two days
+    // per share), not to the number of shares it had while it was cut.
+    if (offsets.length === 0) return autoSplit(card);
     const shares = previewHolidayShares(card.dayKeys, {
       divisions: card.divisions,
       breaks: cuts,
@@ -178,8 +181,8 @@ export default function HolidaysSection() {
     );
   };
 
-  const autoSplit = (card) =>
-    writeRows(
+  function autoSplit(card) {
+    return writeRows(
       card.members,
       {
         division_breaks: [],
@@ -187,6 +190,7 @@ export default function HolidaysSection() {
       },
       `auto-${card.key}`,
     );
+  }
 
   const addHoliday = () => {
     const name = normalizeName(newHoliday.name);
