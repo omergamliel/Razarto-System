@@ -59,7 +59,9 @@ function PastFairnessCheck({ rows, months }) {
     // whole number of chag days worked in the past period (older results
     // without it fall back to the difference from the fair share)
     const past = r.pastHolidays != null ? Number(r.pastHolidays) || 0 : null;
-    return { id: r.personId, name: r.name, carry, past, now, total: carry + now };
+    // which chags they worked in that period, by name
+    const chags = Array.isArray(r.pastChags) ? r.pastChags : [];
+    return { id: r.personId, name: r.name, carry, past, chags, now, total: carry + now };
   });
   const period = pastPeriod(months);
   if (!people.some((p) => Math.abs(p.carry) > 0.05)) {
@@ -80,8 +82,9 @@ function PastFairnessCheck({ rows, months }) {
   // so that alone isn't a failure; it's listed as context when the check fails.
   const failed = overServed.length > 0;
 
+  const withChags = (p) => (p.chags.length ? `${p.name} (${p.chags.join(", ")})` : p.name);
   const details = (
-    <details className="mt-1">
+    <details className="mt-1" open={overServed.length > 0}>
       <summary className="text-[11px] text-gray-500 cursor-pointer select-none">
         פירוט לפי משתמש (עבר = ימי חג {period}; בחלוקה = ימי חג בחלוקה הזו)
       </summary>
@@ -102,6 +105,9 @@ function PastFairnessCheck({ rows, months }) {
             ) : (
               <bdi dir="ltr" className="font-mono">{signed(p.carry)}</bdi>
             )}
+            {p.chags.length > 0 && (
+              <span className="text-gray-500"> ({p.chags.join(", ")})</span>
+            )}
             <span className="text-gray-400"> · בחלוקה </span>
             <b className="font-mono">{p.now}</b>
           </span>
@@ -117,7 +123,7 @@ function PastFairnessCheck({ rows, months }) {
         הוגנות העבר בחגים לא נשמרה במלואה ({period})
       </p>
       <p className="text-[11px] text-amber-800 mt-1">
-        קיבלו ימי חג אף שכבר עשו יותר מחלקם: {overServed.map((p) => p.name).join(" · ")}
+        קיבלו ימי חג אף שכבר עשו יותר מחלקם: {overServed.map(withChags).join(" · ")}
       </p>
       {owed.length > 0 && (
         <p className="text-[11px] text-amber-800">
