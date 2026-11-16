@@ -197,6 +197,11 @@ export function distributeShiftsBest(params, { runs = 4, seed = 1, iterations, o
  * @param {Map<number, Set<string>>} [params.protectedDates]
  * @param {Map<number, number>} [params.priorJustice]
  * @param {Object} [params.history]
+ * @param {Array<{name: string, start_date: string, end_date?: string}>} [params.pastHolidays]
+ *   Chag entries of the history window, resolved on their own (only their
+ *   dates before startDate are used, to recognize past chag shifts and which
+ *   chag they were). They never touch how this range's chags are split.
+ * @param {Iterable<string>} [params.pastCholHamoedDates]
  * @param {{people: Array, existingShifts?: Array, groupRepOf?: Map<number, number>, protectedDates?: Map<number, Set<string>>, history?: Object}} [params.holidayUsers]
  */
 export function distributeShifts({
@@ -212,6 +217,8 @@ export function distributeShifts({
   protectedDates = new Map(),
   priorJustice = new Map(),
   history = null,
+  pastHolidays = [],
+  pastCholHamoedDates = [],
   refine = true,
   spreadWeekdays = true,
   spreadWeekends = true,
@@ -272,6 +279,28 @@ export function distributeShifts({
     [...cholHamoedDates].map((k) => String(k).slice(0, 10)),
   );
   cholHamoedKeys.forEach((key) => holidayByDate.add(key));
+  // Past chags (the history window, resolved separately by the caller): only
+  // marks which days BEFORE the range were chag days and which chag each one
+  // was, for past fairness. Nothing here reaches the range's blocks, their
+  // חלוקות or their cuts.
+  (pastHolidays || []).forEach((holiday) => {
+    if (!holiday?.start_date) return;
+    const first = parseDateKey(holiday.start_date);
+    const last = parseDateKey(holiday.end_date || holiday.start_date);
+    if (Number.isNaN(first.getTime()) || Number.isNaN(last.getTime())) return;
+    for (const day = first; day <= last; day.setDate(day.getDate() + 1)) {
+      const key = toDateKey(day);
+      if (key >= startDate) break;
+      holidayByDate.add(key);
+      if (!groupByDate.has(key)) groupByDate.set(key, String(holiday.name || ""));
+    }
+  });
+  [...(pastCholHamoedDates || [])].forEach((k) => {
+    const key = String(k).slice(0, 10);
+    if (key >= startDate) return;
+    cholHamoedKeys.add(key);
+    holidayByDate.add(key);
+  });
 
   const holidayProtectedDates = holidayUsers?.protectedDates || new Map();
   const isProtected = (serialId, dateKey) =>
