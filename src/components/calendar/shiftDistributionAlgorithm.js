@@ -135,21 +135,24 @@ export function distributeShiftsBest(params, { runs = 4, seed = 1, iterations, o
  *      Thursdays/ordinary days (g) → week spacing (k). The week search runs
  *      last, so nothing after it can undo its week rules.
  *      Close gaps are spread over people, not piled on a few: the k-th time
- *      the same person has a one-week gap costs k × 150, so a 5th one for one
- *      person costs more than a 1st for someone else. Back-to-back (5000 × k)
- *      and same week (20000 × k) stay far above any one-week gap, so the
- *      search never trades a one-week gap for one of those.
- *   l. Constraints cost their owner, not everyone else (part of k): someone
- *      with constraints gets fewer weeks to fit the same shifts into, so their
- *      own gaps get shorter. The search weighs each person's one-week gaps
- *      and short gaps by 1 / (1 + blocked days / constraintWeightDays), with
- *      blocked days taken as a share of the range and scaled to a year (so a
- *      month planned on its own weighs constraints like a year does), so it
- *      will not make an unconstrained person's spacing worse to ease a
- *      constrained person's. Back-to-back and same-week count in full for
- *      everyone. Tested: with constraints on 6 of 17 users, the other 11 keep
- *      the same spacing as with no constraints at all (2.6 one-week gaps each
- *      on average, at most 4 for any of them).
+ *      the same person has a one-week gap (beyond their allowance, rule l)
+ *      costs k × 150, so a 5th one for one person costs more than a 1st for
+ *      someone else. Three shifts within four weeks (x.x.x) is a burst and
+ *      escalates too (k × 300), so extra shifts alternate with normal gaps
+ *      (x..x.x..x.x) instead of coming in a run. Back-to-back (5000 × k) and
+ *      same week (20000 × k) stay far above any one-week gap, so the search
+ *      never trades a one-week gap for one of those.
+ *   l. Constraints cost their owner, in proportion (part of k): someone with
+ *      constraints gets fewer weeks to fit the same shifts into, so they get
+ *      more one-week gaps — as many as their blocked time explains, no more:
+ *      each week of their blocked days (blocked / 7) gives them an allowance
+ *      of gapAllowancePerWeek (1) one-week gap at a flat price; beyond that
+ *      their gaps escalate exactly like anyone else's. So the crowding nobody
+ *      can avoid is shared equally, a short vacation costs about what one week
+ *      of 53 should, and nobody — constrained or not — is made the cheap place
+ *      to put extra shifts. The evenness of short gaps is also weighted by
+ *      1 / (1 + blocked days / constraintWeightDays), blocked days scaled to a
+ *      year. Back-to-back, same week and bursts count in full for everyone.
  *
  * Rules (d), (e) and (f) are soft: they are relaxed in the order f → e → d only
  * when no candidate satisfies them, so a day is never left unstaffed because of
@@ -195,15 +198,14 @@ export function distributeShifts({
   // Rule (k): the week-spacing search and how many random swaps it tries.
   optimizeWeeks = true,
   weekIterations = 600000,
-  // Rule (l): a person's own constraints cost their own spacing, not others'.
-  // In the week-spacing search, each person's one-week gaps and short gaps
-  // count 1 / (1 + blocked / constraintWeightDays), where blocked = their
-  // constrained days in the range scaled to a 365-day year (same-week and
-  // back-to-back count in full for everyone). 25 keeps people without
-  // constraints at the spacing they would have had if nobody had constraints.
-  // constraintsOwnCost: false weighs everyone the same.
+  // Rule (l): a person's own constraints cost their own spacing, in proportion.
+  // gapAllowancePerWeek: one-week gaps allowed at a flat price per week of the
+  // person's blocked days (blocked / 7). constraintWeightDays: the evenness of
+  // short gaps counts 1 / (1 + blocked / constraintWeightDays), blocked days
+  // scaled to a 365-day year. constraintsOwnCost: false treats everyone alike.
   constraintsOwnCost = true,
   constraintWeightDays = 25,
+  gapAllowancePerWeek = 1,
 }) {
   const holidayByDate = new Set(holidayDates);
   const divisionByDate = new Map(holidayDivisions);
@@ -841,6 +843,8 @@ export function distributeShifts({
         // chag shares belong to individual users when holidayUsers is given
         swapChagShares: !holidayByUser,
         weightOf: constraintsOwnCost ? constraintWeight : () => 1,
+        gapAllowance: constraintsOwnCost,
+        allowancePerWeek: gapAllowancePerWeek,
       })
     : null;
   const weekAssignments = weekOpt ? weekOpt.assignments : spreadAssignments;
