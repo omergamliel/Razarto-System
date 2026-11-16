@@ -299,8 +299,9 @@ export default function DistributionTab({
       // chags waits until the others have caught up. It also measures the
       // first weeks of the range against the last shifts before it.
       let history = null;
+      let historyStart = null;
       if (historyWindow > 0) {
-        const historyStart = format(
+        historyStart = format(
           subMonths(new Date(startDate), historyWindow),
           "yyyy-MM-dd",
         );
@@ -341,11 +342,14 @@ export default function DistributionTab({
         grace,
       });
 
-      // Chag dates for this range, plus the Chol HaMoed days no row covers.
+      // Chag dates for this range, plus the Chol HaMoed days no row covers —
+      // from the start of the history window, so the algorithm can tell which
+      // PAST shifts were chag days (past fairness for chags). Without the past
+      // years every earlier shift would count as an ordinary day.
       const { holidays: resolvedHolidays, cholHamoedDates } =
         await resolveDistributionHolidays(
           holidayDefinitions(holidays),
-          yearsOfRange(startDate, endDate),
+          yearsOfRange(historyStart || startDate, endDate),
         );
       // A fresh seed for every run: "הרצה מחדש" on the same range and the same
       // data must produce a DIFFERENT (equally fair) calendar, not a copy of the
@@ -410,6 +414,9 @@ export default function DistributionTab({
         }
       });
       cholHamoedDates.forEach((key) => holidayKeys.push(String(key).slice(0, 10)));
+      // Only the range's own chag days are marked (the list also holds the
+      // history window's).
+      const rangeHolidayKeys = holidayKeys.filter((k) => k >= startDate && k <= endDate);
 
       // Shifts already in the calendar inside the range. The distribution only
       // fills free days, so these are not reassigned — but the preview calendar
@@ -501,7 +508,7 @@ export default function DistributionTab({
         constraintViolations: useConstraints ? constraintViolations : null,
         startDate,
         endDate,
-        holidayKeys,
+        holidayKeys: rangeHolidayKeys,
         poolSize: reps.length,
         // The months before the range this run took into account (0 = none),
         // for the past-fairness check in the preview.
