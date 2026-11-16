@@ -231,6 +231,8 @@ export default function DistributionPreviewModal({
               violations={
                 imported ? importedViolations : preview.constraintViolations
               }
+              holidayFairness={result.holidayTable ?? result.justiceTable}   // new
+              historyMonths={historyMonths}
             />
 
             <DistributionPreviewConstraints
