@@ -341,13 +341,24 @@ export default function DistributionTab({
         priorJustice,
         seed,
       });
-      const res = distribution;
+      const res = distribution; // TEST
+      const params = {people: reps,
+        existingShifts: remappedShifts,
+        startDate: startDate,
+        endDate: endDate,
+        holidays: resolvedHolidays,
+        cholHamoedDates: cholHamoedDates,
+        holidayUsers: holidayUsers,
+        protectedDates: protectedDates,
+        priorJustice: priorJustice,
+        seed: seed};
       const ws = res.weekSpacing;
       console.log("search swaps:", ws?.swaps, "iterations:", ws?.iterations, "| back-to-back before/after:", ws?.before?.weekAfterWeek, "/", ws?.after?.weekAfterWeek);
       console.table((ws?.perPerson || []).map((p) => ({ id: p.personId, units: p.units, backToBack: p.weekAfterWeek, oneWeekGap: p.everyOtherWeek, minGap: p.minGap })));
       console.log("people:", params.people.length, "| holidayUsers:", params.holidayUsers?.people?.length ?? 0,
         "| saved shifts already in range:", (params.existingShifts || []).filter((s) => s.start_date >= params.startDate && s.start_date <= params.endDate).length,
         "| refine:", params.refine !== false, "| optimizeWeeks:", params.optimizeWeeks !== false);
+      // ------------------------------
 
       // Remap each assignment from the representative to the member who is
       // actually active on that date — i.e. hand shifts on/after the switch
