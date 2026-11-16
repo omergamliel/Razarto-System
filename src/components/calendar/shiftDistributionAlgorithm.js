@@ -315,7 +315,9 @@ export function distributeShifts({
   // Past shifts for chag fairness: holidayUsers.history, or the top-level
   // history when that's all that was passed. Without this fallback, chags in a
   // holidayUsers run would ignore who worked them last year.
-  const holidayHistory = holidayUsers ? (holidayUsers.history ?? history) : null;
+  const holidayHistory = holidayUsers
+    ? (holidayUsers.history?.shifts?.length ? holidayUsers.history : history)
+    : null;
   // The slot in `people` that a holiday user's share uses up: their group
   // (groupRepOf), or the user themself when they are in `people` too (the
   // same people for chags and for everything else). Without it, a chag share
@@ -1063,11 +1065,13 @@ export function distributeShifts({
         const id = p.serial_id;
         const c = fair.cats.get(id) || emptyCats();
         const range = fair.rangeCount.get(id) || 0;
-        const past = fair.pastRaw.get(id) || 0;
+        // Past shifts are counted once: priorJustice when the caller passed it
+        // for this person (it already counts the past), else history's own count.
+        const past = prior.has(id) ? prior.get(id) || 0 : fair.pastRaw.get(id) || 0;
         return {
           personId: id,
           name: p.full_name,
-          totalShifts: (prior.get(id) || 0) + past + range,
+          totalShifts: past + range,
           pastShifts: past,
           rangeShifts: range,
           balance: round2(fair.justice.get(id) || 0),
