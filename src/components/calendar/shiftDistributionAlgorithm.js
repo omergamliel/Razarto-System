@@ -33,6 +33,11 @@ import {
   spreadWeekendShifts,
 } from "@/components/calendar/distributionSpreads";
 
+// How far back the passes after the greedy one look for shifts before the
+// range (history.lookbackDays overrides it) — the same default as
+// applyHistory's lookback in distributionCore.
+const PAST_LOOKBACK_DAYS = 42;
+
 // A holiday share is cut by splitHolidayDays (its חלוקות value or the cuts the
 // admin moved in the holiday list), kept together across a Friday/Saturday and
 // capped at MAX_SHARE_DAYS days — see src/lib/holidayDivisions.js.
@@ -98,8 +103,8 @@ export function distributeShiftsBest(params, { runs = 4, seed = 1, iterations, o
  *      measurement (spreadWeekendShifts).
  *   j. A weekly rhythm is discouraged: shifts exactly a week apart, and shifts
  *      in two consecutive Sun–Sat weeks. A soft preference only — it breaks
- *      ties in fairness (see weekRhythm) and is optimised again in the spacing
- *      refinement pass, never enforced.
+ *      ties in fairness (see weekRhythm) and is optimised again by the
+ *      week-spacing search (rule k), never enforced.
  *   k. Week spacing (optimizeDistribution): after the spreading passes, whole
  *      shifts are moved between people to minimise, per person, shifts in the
  *      same week, in back-to-back weeks, and with only one empty week between
@@ -119,10 +124,22 @@ export function distributeShiftsBest(params, { runs = 4, seed = 1, iterations, o
  *      and the one-shift-per-week rule are kept. Annealing (weekIterations
  *      random moves) keeps it from stopping at the first dead end. Pass
  *      optimizeWeeks: false to skip it.
+ *      Shifts from the lookback window before the range (history.shifts and
+ *      existingShifts, history.lookbackDays, default 42 days) are fixed points
+ *      for this search and for the spreading passes (g, i): every gap and week
+ *      rule is measured against them, so a range planned on its own — a month
+ *      at a time — doesn't start someone right after the last shift they had
+ *      in the previous one. They never move and never count in this range's
+ *      fairness band.
+ *      Order: greedy pass → last resort (h) → refineSpacing → weekends (i) →
+ *      Thursdays/ordinary days (g) → week spacing (k). The week search runs
+ *      last, so nothing after it can undo its week rules.
  *   l. Constraints cost their owner, not everyone else (part of k): someone
  *      with constraints gets fewer weeks to fit the same shifts into, so their
  *      own gaps get shorter. The search weighs each person's one-week gaps
- *      and short gaps by 1 / (1 + blocked days / constraintWeightDays), so it
+ *      and short gaps by 1 / (1 + blocked days / constraintWeightDays), with
+ *      blocked days taken as a share of the range and scaled to a year (so a
+ *      month planned on its own weighs constraints like a year does), so it
  *      will not make an unconstrained person's spacing worse to ease a
  *      constrained person's. Back-to-back and same-week count in full for
  *      everyone. Tested: with constraints on 6 of 17 users, the other 11 keep
@@ -175,8 +192,8 @@ export function distributeShifts({
   // Rule (l): a person's own constraints cost their own spacing, not others'.
   // In the week-spacing search, each person's one-week gaps and short gaps
   // count 1 / (1 + blocked / constraintWeightDays), where blocked = their
-  // constrained days in the range (same-week and back-to-back count in full
-  // for everyone). 250 keeps people without constraints at the spacing they
+  // constrained days in the range scaled to a 365-day year (same-week and
+  // back-to-back count in full for everyone). 250 keeps people without constraints at the spacing they
   // would have had if nobody had constraints. constraintsOwnCost: false
   // weighs everyone the same.
   constraintsOwnCost = true,
@@ -706,6 +723,46 @@ export function distributeShifts({
     stillSkipped.forEach((entry) => skipped.push(entry));
   }
 
+  // Spacing refinement: the greedy pass decides day by day, with spacing only
+  // as a soft tiebreaker, so its result is kept as the seed and the blocks are
+  // moved/swapped a few times to even out the gaps per kind. It runs BEFORE the
+  // spreading passes and the week-spacing search (rule k): it evens out gaps
+  // per kind only and knows nothing of weeks or of whose constraints are
+  // whose, so run last it could undo the search, e.g. a weekday in one week
+  // and a weekend in the next for someone without constraints.
+  const refined = refine
+    ? refineSpacing(assignments, {
+        bundles,
+        people,
+        holidayPool,
+        holidayByDate,
+        protectedDates,
+        holidayProtectedDates,
+        startDate,
+        endDate,
+      })
+    : null;
+  const refinedAssignments = refined ? refined.assignments : assignments;
+
+  // Shifts in the LOOKBACK days before the range (from history and from
+  // existingShifts), per person. The passes below can't move them, but measure
+  // every gap against them: when the range is planned on its own (a month at a
+  // time), the first shifts of the range must not land right after the last
+  // ones of the previous range.
+  const lookbackDays = history?.lookbackDays ?? PAST_LOOKBACK_DAYS;
+  const pastFrom = toDateKey(addDays(start, -lookbackDays));
+  const peopleIds = new Set(people.map((p) => p.serial_id));
+  const pastByDate = new Map();
+  [...(history?.shifts || []), ...(existingShifts || [])].forEach((s) => {
+    const key = s?.start_date ? String(s.start_date).slice(0, 10) : null;
+    if (!key || key < pastFrom || key >= startDate) return;
+    const id = peopleIds.has(s.original_user_id) ? s.original_user_id : holidayGroupRepOf.get(s.original_user_id);
+    if (id == null || !peopleIds.has(id)) return;
+    pastByDate.set(key, id);
+  });
+  const recentPast = [...pastByDate].map(([date, personId]) => ({ date, personId }));
+  const recentPastShifts = recentPast.map((a) => ({ original_user_id: a.personId, start_date: a.date }));
+
   // Thursdays and ordinary days: swap same-kind shifts between people while it
   // spreads everyone's shifts further apart (counts per kind don't change).
   const togetherKeys = new Set(days.filter((d) => d.kind === "together").map((d) => d.key));
@@ -719,17 +776,17 @@ export function distributeShifts({
     .filter((b) => !b.days.some((d) => lastResortDates.has(d.key)))
     .map((b) => ({ keys: b.days.map((d) => d.key) }));
   const weekendSpread = spreadWeekends
-    ? spreadWeekendShifts(assignments, {
+    ? spreadWeekendShifts(refinedAssignments, {
         weekends: plainWeekends,
         isHeavy: (key) => togetherKeys.has(key),
         startDate,
         endDate,
         ownerOf: (id) => holidayGroupRepOf.get(id) ?? id,
         isProtected,
-        fixedShifts: inRangeShifts,
+        fixedShifts: inRangeShifts.concat(recentPastShifts),
       })
     : null;
-  const afterWeekends = weekendSpread ? weekendSpread.assignments : assignments;
+  const afterWeekends = weekendSpread ? weekendSpread.assignments : refinedAssignments;
 
   const spread = spreadWeekdays
     ? spreadWeekdayShifts(afterWeekends, {
@@ -737,7 +794,7 @@ export function distributeShifts({
         isTogether: (key) => togetherKeys.has(key),
         ownerOf: (id) => holidayGroupRepOf.get(id) ?? id,
         isProtected,
-        fixedShifts: inRangeShifts,
+        fixedShifts: inRangeShifts.concat(recentPastShifts),
       })
     : null;
   const spreadAssignments = spread ? spread.assignments : afterWeekends;
@@ -754,6 +811,7 @@ export function distributeShifts({
     isProtected,
     startDate,
     endDate,
+    fixedBefore: recentPast,
   };
   const weekBefore = spacingScore(spreadAssignments, weekCtx);
   // Rule (k): blocked days per person in the range, and the weight that keeps
@@ -764,7 +822,11 @@ export function distributeShifts({
     for (let d = parseDateKey(startDate); toDateKey(d) <= endDate; d = addDays(d, 1)) if (isProtected(p.serial_id, toDateKey(d))) n += 1;
     blockedDays.set(p.serial_id, n);
   });
-  const constraintWeight = (owner) => 1 / (1 + (blockedDays.get(owner) || 0) / constraintWeightDays);
+  // Blocked days are taken as a share of the range and scaled to a year, so a
+  // month planned on its own weighs constraints as strongly as a whole year:
+  // 20 blocked days out of a 30-day month count like ~240 out of a year.
+  const constraintWeight = (owner) =>
+    1 / (1 + ((blockedDays.get(owner) || 0) / Math.max(1, totalDays)) * (365 / constraintWeightDays));
   const weekOpt = optimizeWeeks
     ? optimizeDistribution(spreadAssignments, {
         ...weekCtx,
@@ -786,22 +848,7 @@ export function distributeShifts({
   ]);
   const keptRelaxations = relaxations.filter((r) => !movedDays.has(r.date));
 
-  // Spacing refinement: the greedy pass decides day by day, with spacing only
-  // as a soft tiebreaker, so its result is kept as the seed and the blocks are
-  // moved/swapped a few times to even out the gaps per kind.
-  const refined = refine
-    ? refineSpacing(weekAssignments, {
-        bundles,
-        people,
-        holidayPool,
-        holidayByDate,
-        protectedDates,
-        holidayProtectedDates,
-        startDate,
-        endDate,
-      })
-    : null;
-  const finalAssignments = refined ? refined.assignments : weekAssignments;
+  const finalAssignments = weekAssignments;
 
   // Rebuild the fairness tables from what was actually handed out, so they
   // describe the refined calendar rather than the greedy one. The history seed
@@ -881,8 +928,8 @@ export function distributeShifts({
           costAfter: weekendSpread.stats.costAfter,
         }
       : null,
-    // Rule (k): week-spacing numbers before and after the search (and after
-    // refineSpacing, which runs last).
+    // Rule (k): week-spacing numbers before and after the search, including the
+    // gaps to the shifts just before the range.
     weekSpacing: (() => {
       const after = spacingScore(finalAssignments, weekCtx);
       const strip = ({ perPerson, ...rest }) => rest;
