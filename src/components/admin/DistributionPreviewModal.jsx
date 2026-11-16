@@ -130,6 +130,26 @@ export default function DistributionPreviewModal({
     });
   }, [imported, preview, assignments]);
 
+  // Past fairness for chags — the check under "every free day was filled":
+  // the run's own fairness table (holidayTable when chags went to
+  // holidayUsers, otherwise justiceTable) and the number of months before the
+  // range the run took into account (preview.historyMonths). An imported file
+  // has different owners than the run, so the check is shown for the run as
+  // computed only.
+  const runFairness = preview?.holidayTable ?? preview?.justiceTable ?? null;
+  const pastOff = preview?.historyMonths === 0;
+  const holidayFairness =
+    !imported && !pastOff && Array.isArray(runFairness) ? runFairness : null;
+  const pastFairnessNote = !preview
+    ? null
+    : pastOff
+      ? "הוגנות העבר כבויה בחלוקה הזו — ההתחשבות בחודשים האחרונים הוגדרה ל-0."
+      : imported
+        ? "בדיקת הוגנות העבר מתייחסת לחלוקה שחושבה — היא לא מוצגת לקובץ מיובא."
+        : !holidayFairness
+          ? "בדיקת הוגנות העבר לא זמינה — טבלת ההוגנות של החלוקה לא הועברה לתצוגה."
+          : null;
+
   const handleExport = () => {
     if (!preview) return;
     downloadCsv(
@@ -231,8 +251,9 @@ export default function DistributionPreviewModal({
               violations={
                 imported ? importedViolations : preview.constraintViolations
               }
-              holidayFairness={result.holidayTable ?? result.justiceTable}   // new
-              historyMonths={historyMonths}
+              holidayFairness={holidayFairness}
+              historyMonths={preview.historyMonths}
+              pastFairnessNote={pastFairnessNote}
             />
 
             <DistributionPreviewConstraints
