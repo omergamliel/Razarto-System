@@ -343,14 +343,30 @@ export default function DistributionTab({
       });
 
       // Chag dates for this range, plus the Chol HaMoed days no row covers —
-      // from the start of the history window, so the algorithm can tell which
-      // PAST shifts were chag days (past fairness for chags). Without the past
-      // years every earlier shift would count as an ordinary day.
+      // resolved for the range's own years only, exactly as before, so each
+      // group keeps the חלוקות and cuts set in the holiday list.
       const { holidays: resolvedHolidays, cholHamoedDates } =
         await resolveDistributionHolidays(
           holidayDefinitions(holidays),
-          yearsOfRange(historyStart || startDate, endDate),
+          yearsOfRange(startDate, endDate),
         );
+      // The history window's chags, resolved in a separate call: they only
+      // tell the algorithm which PAST shifts were chag days and which chag
+      // (past fairness for chags), and never touch how this range is split.
+      let pastHolidays = [];
+      let pastCholHamoedDates = [];
+      if (historyStart) {
+        const past = await resolveDistributionHolidays(
+          holidayDefinitions(holidays),
+          yearsOfRange(historyStart, startDate),
+        );
+        pastHolidays = (past.holidays || []).filter(
+          (holiday) => holiday?.start_date && holiday.start_date < startDate,
+        );
+        pastCholHamoedDates = [...(past.cholHamoedDates || [])]
+          .map((key) => String(key).slice(0, 10))
+          .filter((key) => key >= historyStart && key < startDate);
+      }
       // A fresh seed for every run: "הרצה מחדש" on the same range and the same
       // data must produce a DIFFERENT (equally fair) calendar, not a copy of the
       // one already on screen.
@@ -366,6 +382,8 @@ export default function DistributionTab({
         protectedDates,
         priorJustice,
         history,
+        pastHolidays,
+        pastCholHamoedDates,
         seed,
       });
       const res = distribution; // TEST
