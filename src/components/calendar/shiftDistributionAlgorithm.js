@@ -139,9 +139,15 @@ export function distributeShiftsBest(params, { runs = 4, seed = 1, iterations, o
  *      costs k × 150, so a 5th one for one person costs more than a 1st for
  *      someone else. Three shifts within four weeks (x.x.x) is a burst and
  *      escalates too (k × 300), so extra shifts alternate with normal gaps
- *      (x..x.x..x.x) instead of coming in a run. Back-to-back (5000 × k) and
- *      same week (20000 × k) stay far above any one-week gap, so the search
- *      never trades a one-week gap for one of those.
+ *      (x..x.x..x.x) instead of coming in a run. Two heavy shifts (weekends
+ *      and chag shares) of the same person 3 weeks apart or less cost
+ *      k × 2500. Back-to-back (5000 × k) and same week (20000 × k) stay far
+ *      above all of those, so the search never trades one for them.
+ *      Count fairness inside the search: each person's distance from the
+ *      average in total days, weekends, Thursdays and ordinary days costs
+ *      countFairness × distance², so moves that even out the counts are
+ *      preferred; and no move may take anyone outside the CURRENT min..max
+ *      of any count, so the spreads can only stay or shrink.
  *   l. Constraints cost their owner, in proportion (part of k): someone with
  *      constraints gets fewer weeks to fit the same shifts into, so they get
  *      more one-week gaps — as many as their blocked time explains, no more:
@@ -195,9 +201,10 @@ export function distributeShifts({
   // Randomized tie-breaking, so a rerun of the same range gives a different
   // (but equally fair) calendar. Pass a seed to reproduce a specific run.
   seed = null,
-  // Rule (k): the week-spacing search and how many random swaps it tries.
+  // Rule (k): the week-spacing search and how many random moves it tries
+  // (1.2 million: about 3 seconds for a year with 17 people).
   optimizeWeeks = true,
-  weekIterations = 600000,
+  weekIterations = 1200000,
   // Rule (l): a person's own constraints cost their own spacing, in proportion.
   // gapAllowancePerWeek: one-week gaps allowed at a flat price per week of the
   // person's blocked days (blocked / 7). constraintWeightDays: the evenness of
@@ -278,6 +285,20 @@ export function distributeShifts({
       )
     : null;
   const holidayGroupRepOf = holidayUsers?.groupRepOf || new Map();
+  // The slot in `people` that a holiday user's share uses up: their group
+  // (groupRepOf), or the user themself when they are in `people` too (the
+  // same people for chags and for everything else). Without it, a chag share
+  // would not count toward that person's total, weekly slot or spacing while
+  // weekends and weekdays are handed out.
+  const peopleIdSet = new Set(people.map((p) => p.serial_id));
+  const slotOf = (holidayUserId) =>
+    holidayGroupRepOf.get(holidayUserId) ?? (peopleIdSet.has(holidayUserId) ? holidayUserId : null);
+  // Chag shares can be swapped between people in the week search when every
+  // holiday user is a person in `people` (no groups): a like-for-like swap
+  // keeps each user's chag count.
+  const holidayUsersArePeople =
+    holidayPool.length > 0 &&
+    holidayPool.every((p) => peopleIdSet.has(p.serial_id) && (holidayGroupRepOf.get(p.serial_id) ?? p.serial_id) === p.serial_id);
 
   const existingByDate = new Map();
   inRangeShifts.forEach((s) => existingByDate.set(s.start_date, s));
@@ -478,11 +499,11 @@ export function distributeShifts({
         if (relaxed.length > 0) relaxations.push({ date: day.key, personId, rules: relaxed });
         const category = categorizeDay(day.key, holidayByDate);
         recordAssignment(fair, personId, day.weekKey, day.date, category);
-        // A holiday share taken by a group member also uses up that group's
-        // weekly slot, total and spacing.
-        const repId = useUserFairness ? holidayGroupRepOf.get(personId) : null;
-        if (repId != null && repId !== personId) {
-          recordAssignment(groupFair, repId, day.weekKey, day.date, category);
+        // A holiday share also uses up the person's (or their group's) weekly
+        // slot, total and spacing in the main bookkeeping.
+        const slotId = useUserFairness ? slotOf(personId) : null;
+        if (slotId != null) {
+          recordAssignment(groupFair, slotId, day.weekKey, day.date, category);
         }
       };
 
@@ -722,9 +743,9 @@ export function distributeShifts({
         relaxations.push({ date: day.key, personId: chosen.serial_id, rules });
         const category = categorizeDay(day.key, holidayByDate);
         recordAssignment(fair, chosen.serial_id, day.weekKey, day.date, category);
-        const repId = userPool ? holidayGroupRepOf.get(chosen.serial_id) : null;
-        if (repId != null && repId !== chosen.serial_id) {
-          recordAssignment(groupFair, repId, day.weekKey, day.date, category);
+        const slotId = userPool ? slotOf(chosen.serial_id) : null;
+        if (slotId != null) {
+          recordAssignment(groupFair, slotId, day.weekKey, day.date, category);
         }
       });
     skipped.length = 0;
@@ -775,6 +796,14 @@ export function distributeShifts({
   // spreads everyone's shifts further apart (counts per kind don't change).
   const togetherKeys = new Set(days.filter((d) => d.kind === "together").map((d) => d.key));
   const weekdayKeys = new Set(days.filter((d) => d.kind === "regular").map((d) => d.key));
+  // A day before the range is a weekend/chag day by its weekday or chag date
+  // (togetherKeys only covers the range), so a past Fri+Sat counts as one
+  // weekend and as a heavy shift for the week rules.
+  const isTogetherAny = (key) => {
+    if (key >= startDate) return togetherKeys.has(key);
+    const dow = parseDateKey(key).getDay();
+    return dow === 5 || dow === 6 || holidayByDate.has(key);
+  };
 
   // Weekends first: swap whole Fri+Sat blocks so each person's heavy shifts
   // (weekends + chag shares) are spread evenly and as far apart as possible.
@@ -786,7 +815,7 @@ export function distributeShifts({
   const weekendSpread = spreadWeekends
     ? spreadWeekendShifts(refinedAssignments, {
         weekends: plainWeekends,
-        isHeavy: (key) => togetherKeys.has(key),
+        isHeavy: (key) => togetherKeys.has(key) || (key < startDate && isTogetherAny(key)),
         startDate,
         endDate,
         ownerOf: (id) => holidayGroupRepOf.get(id) ?? id,
@@ -812,7 +841,7 @@ export function distributeShifts({
   // the calendar allows. Existing shifts and last-resort days stay put.
   const ownerOfRep = (id) => holidayGroupRepOf.get(id) ?? id;
   const weekCtx = {
-    isTogether: (key) => togetherKeys.has(key),
+    isTogether: isTogetherAny,
     holidayKeys: holidayByDate,
     lockedDates: new Set([...inRangeShifts.map((s) => String(s.start_date).slice(0, 10)), ...lastResortDates]),
     ownerOf: ownerOfRep,
@@ -840,8 +869,9 @@ export function distributeShifts({
         ...weekCtx,
         seed: runSeed,
         iterations: weekIterations,
-        // chag shares belong to individual users when holidayUsers is given
-        swapChagShares: !holidayByUser,
+        // chag shares belong to individual users when holidayUsers is given;
+        // they can still be swapped when those users are the same people
+        swapChagShares: !holidayByUser || holidayUsersArePeople,
         weightOf: constraintsOwnCost ? constraintWeight : () => 1,
         gapAllowance: constraintsOwnCost,
         allowancePerWeek: gapAllowancePerWeek,
