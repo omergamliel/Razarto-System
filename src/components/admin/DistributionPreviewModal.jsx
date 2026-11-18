@@ -94,12 +94,30 @@ export default function DistributionPreviewModal({
 
   const assignments = imported?.assignments ?? preview?.assignments ?? NO_ASSIGNMENTS;
 
+  // The calendar marks as "chag day" only the chags of the holiday list the
+  // distribution was given: the run reports the exact days it treated as chags
+  // (chagDates — list days only; cholHamoedUsed — Chol HaMoed kept with a
+  // listed chag). Without them the calendar fell back to every chag date it was
+  // handed, list or not. Older results without these fields keep the old marks.
+  const listChagCalendar = useMemo(() => {
+    if (!Array.isArray(preview?.chagDates)) return null;
+    return {
+      holidayDates: new Set(preview.chagDates),
+      cholHamoedDates: new Set(preview.cholHamoedUsed || []),
+    };
+  }, [preview]);
+
   const model = useMemo(
     () =>
       preview
-        ? buildPreviewModel({ ...preview, assignments, people: people || [] })
+        ? buildPreviewModel({
+            ...preview,
+            ...(listChagCalendar || {}),
+            assignments,
+            people: people || [],
+          })
         : null,
-    [preview, people, assignments],
+    [preview, people, assignments, listChagCalendar],
   );
 
   const changes = useMemo(
@@ -130,25 +148,23 @@ export default function DistributionPreviewModal({
     });
   }, [imported, preview, assignments]);
 
-  // Past fairness for chags — the check under "every free day was filled":
-  // the run's own fairness table (holidayTable when chags went to
-  // holidayUsers, otherwise justiceTable) and the number of months before the
-  // range the run took into account (preview.historyMonths). An imported file
-  // has different owners than the run, so the check is shown for the run as
-  // computed only.
+  // The chag check under "every free day was filled": chags spread evenly
+  // (always) and nobody given a chag they already worked (only when the run
+  // looked at the past — preview.historyMonths > 0). It reads the run's own
+  // fairness table (holidayTable when chags went to holidayUsers, otherwise
+  // justiceTable). An imported file has different owners than the run, so the
+  // check is shown for the run as computed only.
   const runFairness = preview?.holidayTable ?? preview?.justiceTable ?? null;
   const pastOff = preview?.historyMonths === 0;
   const holidayFairness =
-    !imported && !pastOff && Array.isArray(runFairness) ? runFairness : null;
+    !imported && Array.isArray(runFairness) ? runFairness : null;
   const pastFairnessNote = !preview
     ? null
-    : pastOff
-      ? "הוגנות העבר כבויה בחלוקה הזו — ההתחשבות בחודשים האחרונים הוגדרה ל-0."
-      : imported
-        ? "בדיקת הוגנות העבר מתייחסת לחלוקה שחושבה — היא לא מוצגת לקובץ מיובא."
-        : !holidayFairness
-          ? "בדיקת הוגנות העבר לא זמינה — טבלת ההוגנות של החלוקה לא הועברה לתצוגה."
-          : null;
+    : imported
+      ? "בדיקת חלוקת החגים מתייחסת לחלוקה שחושבה — היא לא מוצגת לקובץ מיובא."
+      : !holidayFairness
+        ? "בדיקת חלוקת החגים לא זמינה — טבלת ההוגנות של החלוקה לא הועברה לתצוגה."
+        : null;
 
   const handleExport = () => {
     if (!preview) return;
@@ -252,6 +268,8 @@ export default function DistributionPreviewModal({
                 imported ? importedViolations : preview.constraintViolations
               }
               holidayFairness={holidayFairness}
+              chagShareCap={preview.chagShareCap}
+              pastOff={pastOff}
               historyMonths={preview.historyMonths}
               pastFairnessNote={pastFairnessNote}
             />
