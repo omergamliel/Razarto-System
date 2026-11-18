@@ -90,10 +90,11 @@ export function distributeShiftsBest(params, { runs = 4, seed = 1, iterations, o
  *      each share to one person. A Friday keeps its Saturday, a share is at
  *      most MAX_SHARE_DAYS days, and a share goes to someone free on all its
  *      days whenever possible.
- *      Only the holiday list (`holidays`) defines chags: a date it doesn't
- *      hold is an ordinary day, and a Chol HaMoed day counts only when it
- *      hangs on a listed chag. (holidayDates is used only when no list is
- *      passed.)
+ *      Only the admin's holiday schema defines chags: the GROUPS of the
+ *      holidays section (holidaySchema, and rows of `holidays` whose
+ *      group_name is set). A day left out of every group — an imported
+ *      calendar entry, a Chol HaMoed day, a date added by hand — is an
+ *      ordinary day. (holidayDates is used only when no list is passed.)
  *      Even spread: chag shares (a share holding at least one day of the
  *      holiday list) are spread evenly over the people, counted in THIS range
  *      only — nobody gets more than chagShareCap = ceil(chag shares / people
@@ -209,6 +210,9 @@ export function distributeShiftsBest(params, { runs = 4, seed = 1, iterations, o
  * @param {Set<string>} [params.cholHamoedDates]
  * @param {Map<string, number>} [params.holidayDivisions]
  * @param {Array<{name: string, start_date: string, end_date?: string, divisions?: number, division_breaks?: string[]}>} [params.holidays]
+ * @param {Array<{name: string, group_name?: string}>} [params.holidaySchema]
+ *   The Holiday rows of the holidays section, as stored. Only rows in a group
+ *   are chags; with it, a row of `holidays` that isn't in a group is ignored.
  * @param {Map<number, Set<string>>} [params.protectedDates]
  * @param {Map<number, number>} [params.priorJustice]
  * @param {Object} [params.history]
@@ -253,6 +257,9 @@ export function distributeShifts({
   // chagStrictBand days of the lowest). Past chags are NOT counted.
   strictChagOrder = true,
   chagStrictBand = 1,
+  // Rule (c): the Holiday rows of the holidays section (the admin's schema).
+  // When passed, only rows that belong to a group there count as chags.
+  holidaySchema = null,
   // Rule (c): a chag share never goes to someone who worked that same chag in
   // the history window while anyone else can take it within the even spread.
   // false: chags are only spread evenly, the past is ignored.
@@ -273,22 +280,49 @@ export function distributeShifts({
   constraintWeightDays = 25,
   gapAllowancePerWeek = 1,
 }) {
-  // Rule (c): the holiday list (`holidays`, the admin's schema) is the ONLY
-  // source of chags. The plain holidayDates set (the older input) is used only
-  // when no holiday list is passed at all: otherwise a date the list doesn't
-  // hold — a chag from a generic calendar, a chag the admin left out — would be
-  // staffed as a chag block and counted as a chag in the shares, the repeats
-  // and the reports.
-  const listRows = (holidays || []).filter((h) => h?.start_date);
-  const useHolidayList = listRows.length > 0;
-  const listNames = new Set(listRows.map((h) => String(h.name || "")));
+  // Rule (c): the holiday schema the admin built in the holidays section is
+  // the ONLY source of chags. There, a chag is a GROUP (a card): the days the
+  // admin dragged into it. Days left in the list beside the cards — every
+  // calendar entry the import brought in, a date added by hand, a day dragged
+  // back out of a group — are not chags.
+  //   - holidaySchema: the Holiday rows of that section as stored (name,
+  //     group_name, ...). When it's passed, a row of `holidays` (or of
+  //     pastHolidays) counts only when it belongs to a group: its group_name
+  //     is set, or its name is a group's name or a grouped row's name.
+  //   - A row of `holidays` that carries group_name counts only when that
+  //     group_name is set, schema or not.
+  // The plain holidayDates set (the older input) is used only when neither a
+  // holiday list nor a schema is passed: otherwise a date the schema doesn't
+  // hold — a chag from the generic calendar — would be staffed as a chag block
+  // and counted as a chag in the shares, the repeats and the reports.
+  const clean = (v) => String(v || "").trim();
+  const schemaRows = Array.isArray(holidaySchema) ? holidaySchema.filter(Boolean) : null;
+  const schemaGroups = new Set((schemaRows || []).map((r) => clean(r.group_name)).filter(Boolean));
+  const schemaMembers = new Set(
+    (schemaRows || []).filter((r) => clean(r.group_name)).map((r) => clean(r.name)).filter(Boolean),
+  );
+  const inSchema = (row) => {
+    if (row && Object.prototype.hasOwnProperty.call(row, "group_name") && !clean(row.group_name)) return false;
+    if (!schemaRows) return true;
+    const name = clean(row?.name);
+    const group = clean(row?.group_name);
+    return schemaGroups.has(name) || schemaMembers.has(name) || (!!group && schemaGroups.has(group));
+  };
+  // The chag a row belongs to: its group's name (the same every year) — from
+  // the row itself, or from the schema when the row is one of a group's days.
+  const groupOfMember = new Map(
+    (schemaRows || []).filter((r) => clean(r.group_name) && clean(r.name)).map((r) => [clean(r.name), clean(r.group_name)]),
+  );
+  const chagNameOfRow = (row) =>
+    clean(row?.group_name) || groupOfMember.get(clean(row?.name)) || clean(row?.name);
+  const listRows = (holidays || []).filter((h) => h?.start_date && inSchema(h));
+  const useHolidayList = (holidays || []).some((h) => h?.start_date) || !!schemaRows;
+  const listNames = new Set(listRows.map(chagNameOfRow));
   const holidayByDate = new Set(
     useHolidayList ? [] : [...holidayDates].map((k) => String(k).slice(0, 10)),
   );
-  // What counts as a chag day: only the days of the holiday list, past and
-  // present. Chol HaMoed days that no row covers are still staffed as part of
-  // their chag's block (when that chag is on the list), but they are not chag
-  // days in the shares, the repeats or the counts reported.
+  // What counts as a chag day: only the days of the schema's groups, past and
+  // present.
   const chagCountDates = new Set(holidayByDate);
   const divisionByDate = new Map(holidayDivisions);
   const breaksByDate = new Map();
@@ -297,8 +331,7 @@ export function distributeShifts({
   // Which manual holiday group (the admin list's group name) a chag day
   // belongs to — two different groups never merge into one block.
   const groupByDate = new Map();
-  (holidays || []).forEach((holiday) => {
-    if (!holiday?.start_date) return;
+  listRows.forEach((holiday) => {
     const first = parseDateKey(holiday.start_date);
     const last = parseDateKey(holiday.end_date || holiday.start_date);
     if (Number.isNaN(first.getTime()) || Number.isNaN(last.getTime())) return;
@@ -306,7 +339,7 @@ export function distributeShifts({
       const key = toDateKey(day);
       holidayByDate.add(key);
       chagCountDates.add(key);
-      groupByDate.set(key, String(holiday.name || ""));
+      groupByDate.set(key, chagNameOfRow(holiday));
       divisionByDate.set(key, Math.max(1, Number(holiday.divisions) || 1));
       const movedBreaks = (holiday.division_breaks || []).filter(Boolean);
       if (movedBreaks.length > 0) {
@@ -318,11 +351,11 @@ export function distributeShifts({
   // Past chags (the history window, resolved separately by the caller): only
   // marks which days BEFORE the range were chag days and which chag each one
   // was, so a chag isn't given to the same person again (rule c). Only chags
-  // whose name is on the holiday list count; nothing here reaches the range's
-  // blocks, their חלוקות or their cuts.
+  // of the schema count; nothing here reaches the range's blocks, their
+  // חלוקות or their cuts.
   (pastHolidays || []).forEach((holiday) => {
     if (!holiday?.start_date) return;
-    if (useHolidayList && !listNames.has(String(holiday.name || ""))) return;
+    if (useHolidayList && (!inSchema(holiday) || !listNames.has(chagNameOfRow(holiday)))) return;
     const first = parseDateKey(holiday.start_date);
     const last = parseDateKey(holiday.end_date || holiday.start_date);
     if (Number.isNaN(first.getTime()) || Number.isNaN(last.getTime())) return;
@@ -331,40 +364,19 @@ export function distributeShifts({
       if (key >= startDate) break;
       holidayByDate.add(key);
       chagCountDates.add(key);
-      if (!groupByDate.has(key)) groupByDate.set(key, String(holiday.name || ""));
+      if (!groupByDate.has(key)) groupByDate.set(key, chagNameOfRow(holiday));
     }
   });
-  // Chol HaMoed days are holiday days too: a run of holiday days that are
-  // straight next to each other is one block, divided into shares. A Chol
-  // HaMoed day is kept only when it hangs on a chag of the holiday list: within
-  // 3 days of a list day, or of another kept Chol HaMoed day (so a weekend in
-  // the middle doesn't break the chain). The Chol HaMoed of a chag that isn't
-  // on the list is an ordinary day.
-  const chainedToList = (keys) => {
-    const all = [...keys].map((k) => String(k).slice(0, 10));
-    if (!useHolidayList) return all;
-    const anchors = new Set([...chagCountDates].map((k) => dayIndex(parseDateKey(k))));
-    const cands = all.map((k) => ({ k, i: dayIndex(parseDateKey(k)) }));
-    const kept = new Set();
-    for (let grew = true; grew; ) {
-      grew = false;
-      cands.forEach((c) => {
-        if (kept.has(c.k)) return;
-        for (let d = -3; d <= 3; d++) {
-          if (anchors.has(c.i + d)) {
-            kept.add(c.k);
-            anchors.add(c.i);
-            grew = true;
-            break;
-          }
-        }
-      });
-    }
-    return [...kept];
-  };
-  const cholHamoedKeys = new Set(chainedToList(cholHamoedDates));
+  // Chol HaMoed: in the schema every Chol HaMoed day is its own entry that the
+  // admin drags into a group or leaves out, so with a schema a Chol HaMoed date
+  // is a chag day only when it is one of the group's days (it then gets the
+  // two-day Chol HaMoed shares). A Chol HaMoed day left out of every group is
+  // an ordinary day. Without a holiday list, Chol HaMoed dates count as before.
+  const onList = (keys) =>
+    [...keys].map((k) => String(k).slice(0, 10)).filter((k) => !useHolidayList || chagCountDates.has(k));
+  const cholHamoedKeys = new Set(onList(cholHamoedDates));
   cholHamoedKeys.forEach((key) => holidayByDate.add(key));
-  chainedToList([...(pastCholHamoedDates || [])].filter((k) => String(k).slice(0, 10) < startDate)).forEach((key) => {
+  onList([...(pastCholHamoedDates || [])].filter((k) => String(k).slice(0, 10) < startDate)).forEach((key) => {
     cholHamoedKeys.add(key);
     holidayByDate.add(key);
   });
@@ -1799,9 +1811,9 @@ export function distributeShifts({
     chagShareTotal: totalChagShares,
     chagShareEligible: chagEligible,
     // The days of the range this run treated as chags: chagDates are the days
-    // of the holiday list only; cholHamoedUsed the Chol HaMoed days kept as
-    // part of a listed chag's block. For the calendar's "chag day" marks, so
-    // it shows exactly the chags of the list and nothing else.
+    // of the schema's groups only; cholHamoedUsed the Chol HaMoed days staffed
+    // as chag blocks outside any list (only when no list was passed). For the
+    // calendar's "chag day" marks, so it shows exactly the schema's chags.
     chagDates: days.filter((d) => chagCountDates.has(d.key)).map((d) => d.key),
     cholHamoedUsed: days.filter((d) => cholHamoedKeys.has(d.key) && !chagCountDates.has(d.key)).map((d) => d.key),
     // true when the spacing refinement tried to move chag shares and its
