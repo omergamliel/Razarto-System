@@ -43,6 +43,164 @@ const countChanges = (base, next) => {
   return changed;
 };
 
+// ---------------------------------------------------------------------------
+// Chag days on the calendar: only the chags of the user's holiday list.
+//
+// The calendar must mark as "chag day" exactly the days of the holiday list
+// the admin built (the Holiday schema rows the distribution was given) — not
+// every chag of a generic Jewish calendar. The distribution result reports
+// those days (chagDates: list days only; cholHamoedUsed: Chol HaMoed kept with
+// a listed chag). Whatever chag source buildPreviewModel reads, the modal
+//   1. filters every chag-date collection it hands to buildPreviewModel down
+//      to those days (keeping its type: Set, Array, Map or plain object), and
+//   2. clears the chag marks of every calendar cell that isn't one of them —
+//      so a chag computed inside previewModel itself can't slip through
+//      either — and marks a list day the model didn't know about.
+// ---------------------------------------------------------------------------
+const DATE_KEY = /^\d{4}-\d{2}-\d{2}/;
+const isDateKey = (v) => typeof v === "string" && DATE_KEY.test(v);
+const dayKey = (v) => String(v).slice(0, 10);
+// Names of fields/props that carry chag information.
+const CHAG_FIELD = /holiday|chag|hamoed|moed/i;
+// Result tables whose names match but hold no chag dates.
+const NOT_CHAG_DATES = new Set(["holidayTable", "justiceTable", "holidayUsers"]);
+
+const addDayKeys = (out, start, end, name) => {
+  const first = new Date(`${dayKey(start)}T00:00:00Z`);
+  const last = new Date(`${dayKey(end || start)}T00:00:00Z`);
+  if (Number.isNaN(first.getTime()) || Number.isNaN(last.getTime())) return;
+  for (let d = first; d <= last; d = new Date(d.getTime() + 864e5)) {
+    const key = d.toISOString().slice(0, 10);
+    if (!out.has(key) || name) out.set(key, name || null);
+  }
+};
+
+// The chag days of the user's holiday list → the chag's name (when known), or
+// null when the preview carries no list at all (then nothing is filtered).
+const listChagDays = (preview) => {
+  if (!preview) return null;
+  const out = new Map();
+  if (Array.isArray(preview.chagDates)) {
+    preview.chagDates.forEach((k) => out.set(dayKey(k), null));
+    (preview.cholHamoedUsed || []).forEach((k) => out.set(dayKey(k), null));
+    // the schema rows, if the preview carries them, only add the names
+    (Array.isArray(preview.holidays) ? preview.holidays : []).forEach((h) => {
+      if (!h?.start_date) return;
+      const named = new Map();
+      addDayKeys(named, h.start_date, h.end_date, String(h.name || ""));
+      named.forEach((name, key) => out.has(key) && out.set(key, name));
+    });
+    return out;
+  }
+  // Older results without chagDates: the holiday-list rows the distribution
+  // was given (name, start_date, end_date, divisions — the Holiday schema).
+  const rows = Array.isArray(preview.holidays)
+    ? preview.holidays.filter((h) => h?.start_date)
+    : [];
+  if (rows.length === 0) return null;
+  rows.forEach((h) => addDayKeys(out, h.start_date, h.end_date, String(h.name || "")));
+  return out;
+};
+
+// A chag-date collection cut down to the list days, in the same shape.
+const onlyListDays = (value, allowed) => {
+  const keep = (k) => allowed.has(dayKey(k));
+  if (value instanceof Set) {
+    const items = [...value];
+    return items.length && items.every(isDateKey) ? new Set(items.filter(keep)) : value;
+  }
+  if (value instanceof Map) {
+    const keys = [...value.keys()];
+    return keys.length && keys.every(isDateKey)
+      ? new Map([...value].filter(([k]) => keep(k)))
+      : value;
+  }
+  if (Array.isArray(value)) {
+    if (value.length && value.every(isDateKey)) return value.filter(keep);
+    // events / rows: { date } or { start_date, end_date }
+    if (value.length && value.every((x) => x && (isDateKey(x.date) || isDateKey(x.start_date)))) {
+      return value.filter((x) => {
+        const days = new Map();
+        addDayKeys(days, x.date || x.start_date, x.end_date || x.date || x.start_date);
+        return [...days.keys()].some((k) => allowed.has(k));
+      });
+    }
+    return value;
+  }
+  if (value && typeof value === "object") {
+    const keys = Object.keys(value);
+    return keys.length && keys.every(isDateKey)
+      ? Object.fromEntries(Object.entries(value).filter(([k]) => keep(k)))
+      : value;
+  }
+  return value;
+};
+
+const filterChagFields = (obj, allowed) => {
+  const out = { ...obj };
+  Object.keys(out).forEach((k) => {
+    if (CHAG_FIELD.test(k) && !NOT_CHAG_DATES.has(k)) out[k] = onlyListDays(out[k], allowed);
+  });
+  return out;
+};
+
+// The model's calendar with chag marks on the list days only.
+const markListChagsOnly = (model, allowed, holidayColor) => {
+  if (!model || !Array.isArray(model.months)) return model;
+  const isChagMark = (x) => typeof x === "string" && /^(holiday|chag|cholhamoed)$/i.test(x);
+  // Does this cell carry a chag mark (in whatever form the model uses)?
+  const marked = (cell) =>
+    Object.entries(cell || {}).some(
+      ([k, v]) =>
+        (CHAG_FIELD.test(k) && !!v && !(Array.isArray(v) && v.length === 0)) ||
+        (Array.isArray(v) && v.some(isChagMark)) ||
+        isChagMark(v) ||
+        (holidayColor && v === holidayColor),
+    );
+  // How the model marks a chag: copied from a list day it did mark, onto the
+  // list days it didn't (a chag the admin added that no generic calendar has).
+  const allCells = model.months.flatMap((month) => month.cells || []);
+  const sample = allCells.find((c) => c && !c.blank && c.key && allowed.has(keyOf(c.key)) && marked(c));
+  const markLike = (cell, name) => {
+    const next = { ...cell };
+    Object.entries(sample).forEach(([k, v]) => {
+      if (k === "key" || k === "date" || k === "blank") return;
+      if (CHAG_FIELD.test(k)) {
+        if (next[k]) return;
+        next[k] = /name|title|label/i.test(k) && typeof v === "string" ? name || v : v;
+      } else if (Array.isArray(v) && v.some(isChagMark)) {
+        const marks = v.filter(isChagMark);
+        next[k] = [...(Array.isArray(next[k]) ? next[k] : []), ...marks.filter((m) => !(next[k] || []).includes(m))];
+      } else if (isChagMark(v) || (holidayColor && v === holidayColor)) {
+        next[k] = v;
+      }
+    });
+    return next;
+  };
+  const months = model.months.map((month) => ({
+    ...filterChagFields(month, allowed),
+    cells: (month.cells || []).map((cell) => {
+      if (!cell || cell.blank || !cell.key) return cell;
+      const key = keyOf(cell.key);
+      if (allowed.has(key)) return sample && !marked(cell) ? markLike(cell, allowed.get(key)) : cell;
+      // not a chag of the list: every chag mark off
+      const next = { ...cell };
+      Object.entries(cell).forEach(([k, v]) => {
+        if (CHAG_FIELD.test(k)) {
+          next[k] =
+            typeof v === "boolean" ? false : typeof v === "number" ? 0 : Array.isArray(v) ? [] : null;
+        } else if (Array.isArray(v) && v.some(isChagMark)) {
+          next[k] = v.filter((x) => !isChagMark(x));
+        } else if (isChagMark(v) || (holidayColor && v === holidayColor)) {
+          next[k] = null;
+        }
+      });
+      return next;
+    }),
+  }));
+  return { ...filterChagFields(model, allowed), months };
+};
+
 const formatIL = (iso) => {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(iso || "").slice(0, 10));
   return match ? `${match[3]}/${match[2]}/${match[1]}` : String(iso || "");
@@ -94,31 +252,21 @@ export default function DistributionPreviewModal({
 
   const assignments = imported?.assignments ?? preview?.assignments ?? NO_ASSIGNMENTS;
 
-  // The calendar marks as "chag day" only the chags of the holiday list the
-  // distribution was given: the run reports the exact days it treated as chags
-  // (chagDates — list days only; cholHamoedUsed — Chol HaMoed kept with a
-  // listed chag). Without them the calendar fell back to every chag date it was
-  // handed, list or not. Older results without these fields keep the old marks.
-  const listChagCalendar = useMemo(() => {
-    if (!Array.isArray(preview?.chagDates)) return null;
-    return {
-      holidayDates: new Set(preview.chagDates),
-      cholHamoedDates: new Set(preview.cholHamoedUsed || []),
-    };
-  }, [preview]);
+  // The chag days of the user's holiday list (see listChagDays). The calendar
+  // marks only these as chag days: the model gets only list days in its chag
+  // inputs, and its cells are cleaned of any other chag mark.
+  const allowedChagDays = useMemo(() => listChagDays(preview), [preview]);
 
-  const model = useMemo(
-    () =>
-      preview
-        ? buildPreviewModel({
-            ...preview,
-            ...(listChagCalendar || {}),
-            assignments,
-            people: people || [],
-          })
-        : null,
-    [preview, people, assignments, listChagCalendar],
-  );
+  const model = useMemo(() => {
+    if (!preview) return null;
+    const input = { ...preview, assignments, people: people || [] };
+    if (!allowedChagDays) return buildPreviewModel(input);
+    return markListChagsOnly(
+      buildPreviewModel(filterChagFields(input, allowedChagDays)),
+      allowedChagDays,
+      MARK_COLORS?.holiday,
+    );
+  }, [preview, people, assignments, allowedChagDays]);
 
   const changes = useMemo(
     () => (imported ? countChanges(preview?.assignments, imported.assignments) : 0),
