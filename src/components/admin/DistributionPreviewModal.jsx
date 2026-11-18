@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { base44 } from "@/api/base44Client";
 import { Check, Loader2, CalendarRange, RefreshCw } from "lucide-react";
 import {
   Dialog,
@@ -46,11 +48,12 @@ const countChanges = (base, next) => {
 // ---------------------------------------------------------------------------
 // Chag days on the calendar: only the chags of the user's holiday list.
 //
-// The calendar must mark as "chag day" exactly the days of the holiday list
-// the admin built (the Holiday schema rows the distribution was given) — not
-// every chag of a generic Jewish calendar. The distribution result reports
-// those days (chagDates: list days only; cholHamoedUsed: Chol HaMoed kept with
-// a listed chag). Whatever chag source buildPreviewModel reads, the modal
+// The calendar must mark as "chag day" exactly the chags of the schema the
+// admin built in the holidays section (its groups) — not every chag of a
+// generic Jewish calendar. The distribution result reports those days
+// (chagDates), and the schema itself is read here too (the ["holidays"] query)
+// to drop any day of an ungrouped row. Whatever chag source buildPreviewModel
+// reads, the modal
 //   1. filters every chag-date collection it hands to buildPreviewModel down
 //      to those days (keeping its type: Set, Array, Map or plain object), and
 //   2. clears the chag marks of every calendar cell that isn't one of them —
@@ -75,31 +78,56 @@ const addDayKeys = (out, start, end, name) => {
   }
 };
 
-// The chag days of the user's holiday list → the chag's name (when known), or
-// null when the preview carries no list at all (then nothing is filtered).
-const listChagDays = (preview) => {
+// The admin's holiday schema (the holidays section): a chag is a GROUP — a
+// row counts only when it belongs to one (its group_name is set, or its name
+// is a group's name or a grouped row's name). Rows left out of every group —
+// imported calendar entries, a Chol HaMoed day, a date added by hand — are not
+// chags. `schema`: the Holiday rows as stored (null while not loaded).
+const schemaFilter = (schema) => {
+  const clean = (v) => String(v || "").trim();
+  const rows = Array.isArray(schema) ? schema.filter(Boolean) : null;
+  const groups = new Set((rows || []).map((r) => clean(r.group_name)).filter(Boolean));
+  const members = new Map(
+    (rows || []).filter((r) => clean(r.group_name) && clean(r.name)).map((r) => [clean(r.name), clean(r.group_name)]),
+  );
+  return {
+    known: !!rows,
+    inSchema: (row) => {
+      if (row && Object.prototype.hasOwnProperty.call(row, "group_name") && !clean(row.group_name)) return false;
+      if (!rows) return true;
+      const name = clean(row?.name);
+      const group = clean(row?.group_name);
+      return groups.has(name) || members.has(name) || (!!group && groups.has(group));
+    },
+    nameOf: (row) => clean(row?.group_name) || members.get(clean(row?.name)) || clean(row?.name),
+  };
+};
+
+// The chag days of the admin's schema → the chag's name (when known), or null
+// when the preview carries nothing to go by (then nothing is filtered).
+const listChagDays = (preview, schema) => {
   if (!preview) return null;
-  const out = new Map();
+  const { known, inSchema, nameOf } = schemaFilter(schema);
+  const rows = Array.isArray(preview.holidays) ? preview.holidays.filter((h) => h?.start_date) : [];
+  // the days the preview's rows cover, by group name — schema rows only
+  const covered = new Map();
+  rows.filter(inSchema).forEach((h) => addDayKeys(covered, h.start_date, h.end_date, nameOf(h)));
   if (Array.isArray(preview.chagDates)) {
-    preview.chagDates.forEach((k) => out.set(dayKey(k), null));
-    (preview.cholHamoedUsed || []).forEach((k) => out.set(dayKey(k), null));
-    // the schema rows, if the preview carries them, only add the names
-    (Array.isArray(preview.holidays) ? preview.holidays : []).forEach((h) => {
-      if (!h?.start_date) return;
-      const named = new Map();
-      addDayKeys(named, h.start_date, h.end_date, String(h.name || ""));
-      named.forEach((name, key) => out.has(key) && out.set(key, name));
+    // The run's own chag days. When the run wasn't given the schema, a day of
+    // an ungrouped row may still be among them: with the schema and the rows
+    // at hand, a day no grouped row covers is dropped.
+    const out = new Map();
+    [...preview.chagDates, ...(preview.cholHamoedUsed || [])].forEach((k) => {
+      const key = dayKey(k);
+      if (known && rows.length > 0 && !covered.has(key)) return;
+      out.set(key, covered.get(key) || null);
     });
     return out;
   }
-  // Older results without chagDates: the holiday-list rows the distribution
-  // was given (name, start_date, end_date, divisions — the Holiday schema).
-  const rows = Array.isArray(preview.holidays)
-    ? preview.holidays.filter((h) => h?.start_date)
-    : [];
+  // Older results without chagDates: the rows the distribution was given,
+  // schema rows only.
   if (rows.length === 0) return null;
-  rows.forEach((h) => addDayKeys(out, h.start_date, h.end_date, String(h.name || "")));
-  return out;
+  return covered;
 };
 
 // A chag-date collection cut down to the list days, in the same shape.
@@ -255,7 +283,16 @@ export default function DistributionPreviewModal({
   // The chag days of the user's holiday list (see listChagDays). The calendar
   // marks only these as chag days: the model gets only list days in its chag
   // inputs, and its cells are cleaned of any other chag mark.
-  const allowedChagDays = useMemo(() => listChagDays(preview), [preview]);
+  // The admin's holiday schema — the same rows (and query) as the holidays
+  // section, so the calendar follows its groups.
+  const { data: holidaySchema = null } = useQuery({
+    queryKey: ["holidays"],
+    queryFn: () => base44.entities.Holiday.list(),
+  });
+  const allowedChagDays = useMemo(
+    () => listChagDays(preview, holidaySchema),
+    [preview, holidaySchema],
+  );
 
   const model = useMemo(() => {
     if (!preview) return null;
