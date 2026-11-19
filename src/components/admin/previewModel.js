@@ -22,7 +22,7 @@ export const CATEGORY_WEIGHT = {
 };
 
 export const CATEGORY_LABELS = {
-  holidays: "חגים",
+  holidays: "ימי חג",
   weekends: "סופ״ש",
   thursdays: "חמישי",
   regular: "רגיל",
