@@ -95,24 +95,30 @@ export function distributeShiftsBest(params, { runs = 4, seed = 1, iterations, o
  *      group_name is set). A day left out of every group — an imported
  *      calendar entry, a Chol HaMoed day, a date added by hand — is an
  *      ordinary day. (holidayDates is used only when no list is passed.)
- *      Even spread: chag shares (a share holding at least one day of the
- *      holiday list) are spread evenly over the people, counted in THIS range
- *      only — nobody gets more than chagShareCap = ceil(chag shares / people
- *      free on at least one chag day) while someone with fewer could take it.
- *      How many chags someone worked in the past doesn't matter.
- *      No repeats: the past (history window, or holidayUsers.history) only
- *      decides who already worked WHICH chag (holiday group name); a share
- *      goes to someone who
- *        1. holds the fewest chag shares among those free for it and did not
- *           work that same chag before,
- *        2. else did not work that same chag and is still under the cap,
- *        3. else holds the fewest chag shares (a repeat, if nobody else can).
+ *      Chag shares (a share holding at least one day of the holiday list),
+ *      counted in THIS range:
+ *        - Cap: at most chagShareCap per person = max(maxChagShares (2),
+ *          ceil(chag shares / people free on at least one chag day)) — 2
+ *          whenever the head count allows it, otherwise the smallest cap that
+ *          still covers every share.
+ *        - People who worked no chag of the schema in the history window (or
+ *          holidayUsers.history) go first (preferNoPastChags).
+ *        - Nobody gets a chag (holiday group name) they worked in the history
+ *          window while someone else can take it (avoidChagRepeat).
+ *      A share goes to someone who, in this order of tiers,
+ *        1. is under the cap and did no chags in the history window,
+ *        2. else is under the cap and didn't work that same chag,
+ *        3. else is under the cap (a repeat),
+ *        4. else (nobody under the cap is free) didn't work that chag,
+ *        5. else anyone.
  *      Each tier is tried on people free for the whole share, then on people
- *      free on its first day, before the next tier. Within a tier, the fewest
- *      chag days in this range come first. A repair pass then moves and swaps
- *      whole shares to clear what the one-at-a-time hand-out left: shares over
- *      the cap, then unevenness, then repeats. Without history nobody counts
- *      as a repeat (avoidChagRepeat: false ignores the past altogether).
+ *      free on its first day, before the next tier. Within a tier only those
+ *      with the fewest chag shares are offered it (one each before anyone
+ *      gets a second), the fewest chag days in this range first. A repair pass
+ *      then moves and swaps whole shares to clear what the one-at-a-time
+ *      hand-out left: shares over the cap, shares held by people with past
+ *      chags, repeats, then unevenness. Without history everyone counts as
+ *      having no past chags and nobody as a repeat.
  *      Saved shifts on chag days count toward their owner's shares. Once
  *      split and handed out, chag shares are never moved by the later passes.
  *   d. A person shouldn't land two calendar-adjacent days by accident.
@@ -254,15 +260,22 @@ export function distributeShifts({
   weekIterations = 1200000,
   // Rule (c): among the people with the fewest chag shares, a share is offered
   // first to whoever has the fewest chag days in this range (within
-  // chagStrictBand days of the lowest). Past chags are NOT counted.
+  // chagStrictBand days of the lowest).
   strictChagOrder = true,
+  // Rule (c): at most this many chag shares per person in the range — raised
+  // only as far as the head count forces it (see chagShareCap). null: the even
+  // share (ceil(shares / people)) is the cap.
+  maxChagShares = 2,
+  // Rule (c): chag shares go first to people who worked no chag of the schema
+  // in the history window. false: no such priority.
+  preferNoPastChags = true,
   chagStrictBand = 1,
   // Rule (c): the Holiday rows of the holidays section (the admin's schema).
   // When passed, only rows that belong to a group there count as chags.
   holidaySchema = null,
   // Rule (c): a chag share never goes to someone who worked that same chag in
-  // the history window while anyone else can take it within the even spread.
-  // false: chags are only spread evenly, the past is ignored.
+  // the history window while anyone else under the cap can take it.
+  // false: same-chag repeats are not avoided.
   avoidChagRepeat = true,
   // Rule (i): weekends staffed in date order, each to the person most overdue
   // for one in their own available time (weekendDue).
@@ -651,12 +664,14 @@ export function distributeShifts({
     if (empty.length > 0) totalChagShares += holidayPartsOf(empty).filter(isChagShare).length;
   });
   // Who can take a chag share at all: free on at least one chag day of the
-  // range. The even spread: nobody gets more than ceil(shares / those people)
-  // — e.g. 14 shares among 10 people: 4 people get 2 and 6 get 1, nobody gets
-  // 0 or 3 — unless constraints leave no other way.
+  // range. The cap: maxChagShares (2) whenever that head count covers every
+  // share; if not, the smallest cap that does — ceil(shares / those people) —
+  // e.g. 25 shares among 10 people: 3. Over the cap only when constraints
+  // leave no other way.
   const rangeChagKeys = days.filter((d) => chagCountDates.has(d.key) && !d.existing).map((d) => d.key);
   const chagEligible = chagPool.filter((p) => rangeChagKeys.some((k) => !isProtected(p.serial_id, k))).length;
-  const chagShareCap = Math.max(1, Math.ceil(totalChagShares / Math.max(1, chagEligible || chagPool.length)));
+  const chagEvenShare = Math.max(1, Math.ceil(totalChagShares / Math.max(1, chagEligible || chagPool.length)));
+  const chagShareCap = maxChagShares == null ? chagEvenShare : Math.max(maxChagShares, chagEvenShare);
   const chagSharesOf = (id) => chagShareCount.get(id) || 0;
   // Saved shifts' shares alone, and every chag share the greedy pass hands out
   // ({keys, personId, bundle, movable}) — for the repair pass after it.
@@ -907,26 +922,30 @@ export function distributeShifts({
             // Without history nobody does.
             const repeats = (p) => restKeys.some((k) => workedSameChag(p.serial_id, k, useUserFairness));
             const noRepeat = (p) => !avoidChagRepeat || !repeats(p);
+            // No chag (of the schema) worked in the history window. Without
+            // history — or with preferNoPastChags off — everyone counts.
+            const pastChagSet = (id) => (useUserFairness ? pastChagsByUser : pastChagsByPerson).get(id);
+            const noPast = (p) => !preferNoPastChags || !pastChagSet(p.serial_id)?.size;
             // Rule (c) tiers, strictest first, each tried on people free for
-            // the whole share and then on its first day. Tier 3 always finds
-            // someone if anyone is free, so the even spread comes before
-            // avoiding a repeat; the repair pass after the greedy one swaps
-            // shares to remove repeats where it can. `fewest`: within the
-            // tier, only those with the fewest chag shares.
-            // `low`: the fewest chag shares anyone free for this call holds.
-            const atLow = (p, low) => chagSharesOf(p.serial_id) === low;
+            // the whole share and then on its first day. Within every tier
+            // only those with the fewest chag shares are offered it, so the
+            // shares go round one each before anyone gets a second.
             const chagTiers = [
-              // 1. at the lowest level and not a repeat
-              { ok: (p, low) => atLow(p, low) && noRepeat(p), fewest: true },
-              // 2. not a repeat, still under the even cap
-              { ok: (p) => underCap(p) && noRepeat(p), fewest: false },
-              // 3. at the lowest level (a repeat, if nobody else can)
-              { ok: atLow, fewest: true },
+              // 1. under the cap, no chags in the history window
+              { ok: (p) => underCap(p) && noPast(p) },
+              // 2. under the cap, didn't work this same chag
+              { ok: (p) => underCap(p) && noRepeat(p) },
+              // 3. under the cap (a repeat, if nobody else can)
+              { ok: underCap },
+              // 4. over the cap only when nobody under it is free: the fewest
+              //    shares, not a repeat first
+              { ok: noRepeat },
+              { ok: () => true },
             ];
             // One tier, people free for this call (the whole share when
             // excludedIds holds everyone blocked on any of its days) and still
-            // free that Sun–Sat week (rule a). Within the tier: the fewest chag
-            // shares first, then the fewest chag days in this range (within
+            // free that Sun–Sat week (rule a). Within the tier: only the fewest
+            // chag shares, then the fewest chag days in this range (within
             // chagStrictBand of the lowest, then twice that); spacing and the
             // other checks then choose among them.
             const pickChagTier = (excludedIds, tier) => {
@@ -936,13 +955,10 @@ export function distributeShifts({
                   remainingCapacity(fair.weekly, p.serial_id, today.weekKey) > 0,
               );
               if (open.length === 0) return null;
-              const low = Math.min(...open.map((p) => chagSharesOf(p.serial_id)));
-              let free = open.filter((p) => tier.ok(p, low));
+              const free = open.filter((p) => tier.ok(p));
               if (free.length === 0) return null;
               const fewestShares = Math.min(...free.map((p) => chagSharesOf(p.serial_id)));
-              const bottom = free.filter((p) => chagSharesOf(p.serial_id) === fewestShares);
-              if (tier.fewest) free = bottom;
-              let order = tier.fewest ? [free] : [bottom, free];
+              let order = [free.filter((p) => chagSharesOf(p.serial_id) === fewestShares)];
               if (strictChagOrder) {
                 order = order.flatMap((list) => {
                   const lowest = Math.min(...list.map((p) => count(p.serial_id)));
@@ -1123,14 +1139,14 @@ export function distributeShifts({
   // is rebuilt from the result and Thursdays and ordinary days are staffed
   // around the weekends.
   // Rule (c) repair: the greedy pass hands chag shares out one at a time, so a
-  // constraint or a weekly slot can leave one person with more shares than
-  // the even spread while another has fewer, or force a repeat that a
-  // different hand-out would have avoided. Before anything else is staffed,
-  // whole chag shares are moved or swapped between people while that lowers,
-  // in this order: shares over the even cap, then the unevenness (sum of
-  // squares of everyone's share counts), then the repeated chags:
-  //   - give a share to someone else (only to someone holding fewer chag
-  //     shares than its holder, so the counts never get less even);
+  // constraint or a weekly slot can leave someone over the cap, a share with
+  // someone who did chags in the past while a person who did none could have
+  // taken it, or a repeat that a different hand-out would have avoided.
+  // Before anything else is staffed, whole chag shares are moved or swapped
+  // between people while that lowers, in this order: shares over the cap,
+  // shares held by people with past chags, repeated chags, then the
+  // unevenness (sum of squares of everyone's share counts):
+  //   - give a share to someone else;
   //   - swap two shares (nobody's share count changes);
   //   - pass a share on in a chain (x → z, z's own share → y) when y can't
   //     take x's share directly.
@@ -1192,55 +1208,60 @@ export function distributeShifts({
       r.personId = to;
     };
     const moved = new Set();
-    // lexicographic cost change [over the cap, unevenness, repeats]
-    const lessThan = (d, e) => d[0] - e[0] || d[1] - e[1] || d[2] - e[2];
+    // Worked a chag of the schema in the history window (no priority then).
+    const hadPast = (id) =>
+      preferNoPastChags && !!(holidayByUser ? pastChagsByUser : pastChagsByPerson).get(id)?.size;
+    // Cost change of handing shares over ([share, new holder] pairs, each
+    // share taken from its current holder), lexicographic:
+    //   [shares over the cap, shares held by people with past chags,
+    //    repeated chags, unevenness (sum of squares of share counts)]
+    const deltaFor = (moves) => {
+      const dc = new Map();
+      const d = [0, 0, 0, 0];
+      moves.forEach(([r, to]) => {
+        dc.set(r.personId, (dc.get(r.personId) || 0) - 1);
+        dc.set(to, (dc.get(to) || 0) + 1);
+        d[2] += rep(to, r) - rep(r.personId, r);
+      });
+      dc.forEach((n, id) => {
+        if (!n) return;
+        const c = counts.get(id) || 0;
+        d[0] += over(c + n) - over(c);
+        if (hadPast(id)) d[1] += n;
+        d[3] += (c + n) ** 2 - c ** 2;
+      });
+      return d;
+    };
+    const lessThan = (d, e) => d[0] - e[0] || d[1] - e[1] || d[2] - e[2] || d[3] - e[3];
+    const ZERO = [0, 0, 0, 0];
     for (let round = 0; round < 500; round++) {
       let best = null;
-      const consider = (d, apply) => {
-        if (lessThan(d, [0, 0, 0]) < 0 && (!best || lessThan(d, best.d) < 0)) best = { d, apply };
-      };
+      const improves = (d) => lessThan(d, ZERO) < 0 && (!best || lessThan(d, best.d) < 0);
       recs.forEach((a) => {
         if (!a.movable) return;
         const x = a.personId;
-        const cx = counts.get(x) || 0;
         chagPool.forEach((p) => {
           const y = p.serial_id;
           if (y === x) return;
-          const cy = counts.get(y) || 0;
           // give a to y
-          if (cy < cx) {
-            const d = [
-              over(cx - 1) - over(cx) + over(cy + 1) - over(cy),
-              (cx - 1) ** 2 + (cy + 1) ** 2 - cx ** 2 - cy ** 2,
-              rep(y, a) - rep(x, a),
-            ];
-            if (lessThan(d, [0, 0, 0]) < 0 && (!best || lessThan(d, best.d) < 0) && canTake(y, a, null))
-              consider(d, () => moveRec(a, y));
-          }
+          const d = deltaFor([[a, y]]);
+          if (improves(d) && canTake(y, a, null)) best = { d, apply: () => moveRec(a, y) };
         });
         recs.forEach((b) => {
           if (b === a || !b.movable || b.personId === x) return;
           const z = b.personId;
-          {
-            // swap a and b (share counts stay; lengths may differ)
-            const d = [0, 0, rep(z, a) + rep(x, b) - rep(x, a) - rep(z, b)];
-            if (d[2] < 0 && (!best || lessThan(d, best.d) < 0) && canTake(z, a, b) && canTake(x, b, a))
-              consider(d, () => { moveRec(a, z); moveRec(b, x); });
-          }
+          // swap a and b (share counts stay; lengths may differ)
+          const ds = deltaFor([[a, z], [b, x]]);
+          if (improves(ds) && canTake(z, a, b) && canTake(x, b, a))
+            best = { d: ds, apply: () => { moveRec(a, z); moveRec(b, x); } };
           // chain: a goes x → z, b goes z → y (for a y who can't take a
           // directly); z keeps the same count
           chagPool.forEach((p) => {
             const y = p.serial_id;
             if (y === x || y === z) return;
-            const cy = counts.get(y) || 0;
-            if (cy >= cx) return;
-            const d = [
-              over(cx - 1) - over(cx) + over(cy + 1) - over(cy),
-              (cx - 1) ** 2 + (cy + 1) ** 2 - cx ** 2 - cy ** 2,
-              rep(z, a) + rep(y, b) - rep(x, a) - rep(z, b),
-            ];
-            if ((!best || lessThan(d, best.d) < 0) && canTake(z, a, b) && canTake(y, b, null))
-              consider(d, () => { moveRec(b, y); moveRec(a, z); });
+            const dch = deltaFor([[b, y], [a, z]]);
+            if (improves(dch) && canTake(z, a, b) && canTake(y, b, null))
+              best = { d: dch, apply: () => { moveRec(b, y); moveRec(a, z); } };
           });
         });
       });
@@ -1395,20 +1416,26 @@ export function distributeShifts({
           stillSkipped.push(entry);
           return;
         }
-        // A chag day (rule c): the even spread and the no-repeat rule, in the
-        // same tier order as the greedy pass.
+        // A chag day (rule c): the cap, people with no past chags and the
+        // no-repeat rule, in the same tier order as the greedy pass.
         const chagDay = holidayBundleKeys.has(day.key) && chagCountDates.has(day.key);
         if (chagDay) {
           const underCap = (r) => chagSharesOf(r.person.serial_id) < chagShareCap;
           const noRepeat = (r) => !avoidChagRepeat || !workedSameChag(r.person.serial_id, day.key, userPool);
-          const low = Math.min(...rows.map((r) => chagSharesOf(r.person.serial_id)));
-          const atLow = (r) => chagSharesOf(r.person.serial_id) === low;
+          const noPast = (r) =>
+            !preferNoPastChags || !(userPool ? pastChagsByUser : pastChagsByPerson).get(r.person.serial_id)?.size;
+          const fewest = (list) => {
+            const min = Math.min(...list.map((r) => chagSharesOf(r.person.serial_id)));
+            return list.filter((r) => chagSharesOf(r.person.serial_id) === min);
+          };
           const tiers = [
-            rows.filter((r) => atLow(r) && noRepeat(r)),
+            rows.filter((r) => underCap(r) && noPast(r)),
             rows.filter((r) => underCap(r) && noRepeat(r)),
-            rows.filter(atLow),
+            rows.filter(underCap),
+            rows.filter(noRepeat),
+            rows,
           ];
-          rows = tiers.find((t) => t.length > 0);
+          rows = fewest(tiers.find((t) => t.length > 0));
         }
         const fewest = Math.min(...rows.map((r) => r.count));
         const band = rows.filter((r) => r.count <= fewest + MAX_TOTAL_SPREAD);
@@ -1645,11 +1672,12 @@ export function distributeShifts({
   // Rule (c), checked on the result: chag days and chag shares (holiday list
   // only) per person in this distribution, how many of the range's chag days
   // each was free on, the shares that repeat a chag the holder worked in the
-  // history window, and every chag share that went to someone holding at
-  // least 2 more chag shares than a person who could have taken it — no
-  // constraint on its days, no other chag share or saved shift in its weeks,
-  // and not a chag they worked in the history window. (Other shifts in those
-  // weeks don't excuse it: chags are handed out before anything else.)
+  // history window, and every chag share that should have gone to someone
+  // else who could have taken it — no constraint on its days, no other chag
+  // share or saved shift in its weeks, not a chag they worked before — because
+  // that person did no chags in the past (and was under the cap) while the
+  // holder did, or held at least 2 fewer shares in the same group. (Other
+  // shifts in those weeks don't excuse it: chags are handed out first.)
   const chagCheck = (fair, pool, byUser) => {
     const ids = pool.map((p) => p.serial_id);
     const ownerOf = (a) => (byUser ? (holidayBundleKeys.has(a.date) ? a.personId : null) : repOf(a.personId));
@@ -1725,13 +1753,20 @@ export function distributeShifts({
       if (key && key >= startDate && key <= endDate) markWeek(byUser ? s.original_user_id : repOf(s.original_user_id), key);
     });
     const sharesOf = (id) => sharesNow.get(id) || 0;
+    const hadPast = (id) => preferNoPastChags && !!(byUser ? pastChagsByUser : pastChagsByPerson).get(id)?.size;
+    // A share should have gone to `other` instead when other was free for it
+    // and either did no chags in the past (under the cap) while its holder
+    // did, or is in the same group (past / no past) holding at least 2 fewer.
+    const shouldHaveGone = (holder, other) =>
+      (hadPast(holder) && !hadPast(other) && sharesOf(other) < chagShareCap) ||
+      (hadPast(holder) === hadPast(other) && sharesOf(holder) >= sharesOf(other) + 2);
     const missed = new Map();
     const overOthers = new Map();
     shares.forEach((share) => {
       const weeks = new Set(share.keys.map((k) => getWeekKey(parseDateKey(k))));
       let flagged = false;
       ids.forEach((other) => {
-        if (other === share.id || sharesOf(share.id) < sharesOf(other) + 2) return;
+        if (other === share.id || !shouldHaveGone(share.id, other)) return;
         if (share.keys.some((k) => isProtected(other, k) || workedSameChag(other, k, byUser))) return;
         if ([...weeks].some((w) => busyWeeks.get(other)?.has(w))) return;
         missed.set(other, (missed.get(other) || 0) + 1);
@@ -1762,9 +1797,8 @@ export function distributeShifts({
           pastHolidays: pastChag?.get(id) || 0,
           pastChags: pastNames?.get(id) || [],
           // holiday-list chag days in this distribution, the range's chag days
-          // this person was free on, chag shares they could have taken but that
-          // went to someone with at least 2 more chag shares, and shares they
-          // got over such a person (see chagCheck)
+          // this person was free on, chag shares that should have gone to them
+          // and shares they got over such a person (see chagCheck)
           chagDays: check?.chagNow.get(id) ?? 0,
           chagFreeDays: check?.freeDays.get(id) ?? 0,
           missedChagShares: check?.missed.get(id) || 0,
@@ -1804,10 +1838,12 @@ export function distributeShifts({
           chagCheck(finalHolidayState, holidayPool, true),
         )
       : null,
-    // Rule (c): the even spread — the most chag shares anyone should get in
-    // this range (ceil(shares / people free on a chag day)), how many chag
-    // shares the range has and how many people could take one.
+    // Rule (c): the most chag shares anyone should get in this range
+    // (maxChagShares, or more only when the head count forces it), whether
+    // people with no past chags went first, how many chag shares the range has
+    // and how many people could take one.
     chagShareCap,
+    chagNoPastFirst: preferNoPastChags,
     chagShareTotal: totalChagShares,
     chagShareEligible: chagEligible,
     // The days of the range this run treated as chags: chagDates are the days
