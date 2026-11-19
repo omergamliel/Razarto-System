@@ -41,14 +41,12 @@ const pastPeriod = (months) => {
 
 /**
  * Chags in this distribution, by the rule: chag shares (a share holding a day
- * of the holiday list) are spread evenly over the people — at most
- * `cap` each (ceil(shares / people free on a chag day)) — and nobody gets a
- * chag they already worked in the past period. How MANY chags someone worked
- * in the past doesn't matter. Only days of the holiday list are counted here
- * (chagDays / chagShares from the run); a chag that isn't on the list is never
- * counted.
+ * of the holiday list) go first to people who worked no chag in the past
+ * period, at most `cap` each (2, or more only when the head count forces it),
+ * and nobody gets a chag they already worked in the past period. Only days of
+ * the holiday list are counted (chagDays / chagShares from the run).
  */
-function HolidaySpreadCheck({ rows, months, cap, pastOff }) {
+function HolidaySpreadCheck({ rows, months, cap, pastOff, noPastFirst = true }) {
   if (!rows.some((r) => r.chagShares != null)) {
     return (
       <p className="text-[11px] text-gray-500 flex items-center gap-1.5">
@@ -67,7 +65,7 @@ function HolidaySpreadCheck({ rows, months, cap, pastOff }) {
     pastChags: Array.isArray(r.pastChags) ? r.pastChags : [],
     repeated: Number(r.repeatedChagShares) || 0,
     repeatedChags: Array.isArray(r.repeatedChags) ? r.repeatedChags : [],
-    // free for a share that went to someone holding 2+ more shares / got such a share
+    // free for a share that should have gone to them / got such a share
     missed: Number(r.missedChagShares) || 0,
     over: Number(r.chagSharesOverOthers) || 0,
   }));
@@ -81,20 +79,20 @@ function HolidaySpreadCheck({ rows, months, cap, pastOff }) {
       </p>
     );
   }
+  const names = (list) => list.map((p) => p.name).join(" · ");
+  const usePast = !pastOff && noPastFirst;
   // Blocked by constraints on every chag day of the range: they can't take any.
   const blocked = people.filter((p) => p.freeDays === 0);
-  const eligible = people.filter((p) => p.freeDays !== 0);
-  const min = Math.min(...eligible.map((p) => p.shares));
-  const max = Math.max(...eligible.map((p) => p.shares));
-  const even = max - min <= 1 && (cap == null || max <= cap);
-  const most = eligible.filter((p) => p.shares === max);
-  const fewest = eligible.filter((p) => p.shares === min);
-  // A wider gap that a different hand-out could have closed (the run checks it).
+  const overCap = cap != null ? people.filter((p) => p.shares > cap) : [];
+  const fresh = people.filter((p) => p.pastChags.length === 0 && p.freeDays !== 0);
+  const veterans = people.filter((p) => p.pastChags.length > 0);
+  // A share that should have gone to someone else (the run checks it: free for
+  // it, and either did no chags in the past while the holder did, or held at
+  // least 2 fewer in the same group).
   const givenOver = people.filter((p) => p.over > 0);
   const passedOver = people.filter((p) => p.missed > 0);
   const repeaters = pastOff ? [] : people.filter((p) => p.repeated > 0);
-  const failed = !even || repeaters.length > 0;
-  const names = (list) => list.map((p) => p.name).join(" · ");
+  const failed = overCap.length > 0 || givenOver.length > 0 || repeaters.length > 0;
 
   const details = (
     <details className="mt-1" open={failed}>
@@ -104,33 +102,30 @@ function HolidaySpreadCheck({ rows, months, cap, pastOff }) {
       </summary>
       <div className="flex flex-wrap gap-1.5 mt-1.5">
         {[...people]
-          .sort((a, b) => b.shares - a.shares || b.days - a.days)
+          .sort((a, b) => a.pastChags.length - b.pastChags.length || b.shares - a.shares)
           .map((p) => (
             <span
               key={p.id}
               className={`text-[11px] rounded-full border px-2 py-0.5 ${
-                p.repeated > 0 && !pastOff
+                overCap.includes(p) || givenOver.includes(p) || (p.repeated > 0 && !pastOff)
                   ? "border-amber-300 bg-amber-50 text-amber-800"
-                  : !even && most.includes(p)
-                    ? "border-amber-300 bg-amber-50 text-amber-800"
-                    : !even && fewest.includes(p)
-                      ? "border-sky-300 bg-sky-50 text-sky-800"
-                      : "border-gray-200 bg-gray-50 text-gray-700"
+                  : passedOver.includes(p)
+                    ? "border-sky-300 bg-sky-50 text-sky-800"
+                    : "border-gray-200 bg-gray-50 text-gray-700"
               }`}
             >
               {p.name}
               <span className="text-gray-400"> · בחלוקה </span>
               <b className="font-mono">{p.shares}</b>
               <span className="text-gray-400"> ({p.days} ימים)</span>
-              {!pastOff && p.pastChags.length > 0 && (
-                <span className="text-gray-500"> · עבר: {p.pastChags.join(", ")}</span>
+              {!pastOff && (
+                <span className="text-gray-500">
+                  {" "}
+                  · עבר: {p.pastChags.length > 0 ? p.pastChags.join(", ") : "לא עשה חגים"}
+                </span>
               )}
-              {p.repeated > 0 && !pastOff && (
-                <span> · שוב: {p.repeatedChags.join(", ")}</span>
-              )}
-              {p.freeDays === 0 && (
-                <span className="text-gray-400"> · חסום בכל ימי החג</span>
-              )}
+              {p.repeated > 0 && !pastOff && <span> · שוב: {p.repeatedChags.join(", ")}</span>}
+              {p.freeDays === 0 && <span className="text-gray-400"> · חסום בכל ימי החג</span>}
             </span>
           ))}
       </div>
@@ -139,54 +134,61 @@ function HolidaySpreadCheck({ rows, months, cap, pastOff }) {
 
   return (
     <div className={failed ? "bg-amber-50 border border-amber-200 rounded-xl px-3 py-2" : ""}>
-      {even ? (
+      {/* the cap */}
+      {overCap.length === 0 ? (
         <p className="text-[11px] text-emerald-700 flex items-center gap-1.5">
           <Scale className="w-3.5 h-3.5" />
-          החגים חולקו שווה בשווה — כל אחד קיבל{" "}
-          {min === max ? max : `${min}–${max}`} משמרות חג.
+          אף אחד לא קיבל יותר מ-{cap ?? Math.max(...people.map((p) => p.shares))} משמרות חג
+          {cap != null && cap > 2 ? " (יותר מ-2 כי אין מספיק אנשים לכל משמרות החג)" : ""}.
         </p>
       ) : (
-        <>
-          <p className="text-[11px] font-semibold text-amber-800 flex items-center gap-1.5">
-            <AlertTriangle className="w-3.5 h-3.5" />
-            החגים לא חולקו שווה בשווה — בין {min} ל-{max} משמרות חג לאדם
-            {cap != null ? ` (החלק השווה: עד ${cap})` : ""}.
-          </p>
-          {givenOver.length > 0 ? (
-            <>
-              <p className="text-[11px] text-amber-800 mt-1">
-                קיבלו יותר אף שמי שקיבל פחות היה פנוי לאותו חג: {names(givenOver)}
-              </p>
-              <p className="text-[11px] text-sky-800">
-                היו פנויים וקיבלו פחות: {names(passedOver)}
-              </p>
-            </>
-          ) : (
-            <p className="text-[11px] text-amber-800 mt-1">
-              מי שקיבלו פחות ({names(fewest)}) לא היו פנויים לחגים הנוספים — בגלל אילוץ,
-              משמרת אחרת באותו שבוע או חג שכבר עשו.
-            </p>
-          )}
-        </>
+        <p className="text-[11px] font-semibold text-amber-800 flex items-center gap-1.5">
+          <AlertTriangle className="w-3.5 h-3.5" />
+          קיבלו יותר מ-{cap} משמרות חג (לא נמצא מי שיחליף בגלל אילוצים או שבוע תפוס):{" "}
+          {overCap.map((p) => `${p.name} (${p.shares})`).join(" · ")}
+        </p>
       )}
-      {pastOff ? (
-        <p className="text-[11px] text-gray-500 mt-1">
-          ההתחשבות בעבר כבויה בחלוקה הזו — לא נבדק אם מישהו קיבל שוב חג שכבר עשה.
-        </p>
-      ) : repeaters.length > 0 ? (
-        <p className="text-[11px] text-amber-800 mt-1 flex items-start gap-1.5">
-          <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-          קיבלו חג שכבר עשו {period} (לא היה מי שיחליף בלי לשבור את החלוקה השווה):{" "}
-          {repeaters
-            .map((p) => `${p.name} (${p.repeatedChags.join(", ")})`)
-            .join(" · ")}
-        </p>
+      {/* people with no past chags first */}
+      {!usePast ? (
+        pastOff && (
+          <p className="text-[11px] text-gray-500 mt-1">
+            ההתחשבות בעבר כבויה בחלוקה הזו — לא נבדק מי עשה חגים בעבר ומי קיבל שוב חג שכבר עשה.
+          </p>
+        )
+      ) : givenOver.length > 0 ? (
+        <>
+          <p className="text-[11px] text-amber-800 mt-1 flex items-start gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            קיבלו משמרות חג אף שמישהו אחר היה פנוי ועדיף לו (לא עשה חגים {period}, או קיבל
+            פחות): {names(givenOver)}
+          </p>
+          <p className="text-[11px] text-sky-800">היו פנויים וקיבלו פחות: {names(passedOver)}</p>
+        </>
+      ) : fresh.length === 0 ? (
+        <p className="text-[11px] text-gray-500 mt-1">כולם עשו חגים {period} — אין למי לתת עדיפות.</p>
       ) : (
         <p className="text-[11px] text-emerald-700 mt-1 flex items-center gap-1.5">
           <CheckCircle2 className="w-3.5 h-3.5" />
-          אף אחד לא קיבל חג שכבר עשה {period}.
+          החגים הלכו קודם למי שלא עשה חגים {period} ({fresh.length} אנשים)
+          {veterans.some((p) => p.shares > 0)
+            ? " — מי שעשה חגים קיבל רק את מה שנשאר."
+            : " — מי שעשה חגים לא קיבל חגים הפעם."}
         </p>
       )}
+      {/* same chag again */}
+      {!pastOff &&
+        (repeaters.length > 0 ? (
+          <p className="text-[11px] text-amber-800 mt-1 flex items-start gap-1.5">
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            קיבלו חג שכבר עשו {period} (לא היה מי שיחליף):{" "}
+            {repeaters.map((p) => `${p.name} (${p.repeatedChags.join(", ")})`).join(" · ")}
+          </p>
+        ) : (
+          <p className="text-[11px] text-emerald-700 mt-1 flex items-center gap-1.5">
+            <CheckCircle2 className="w-3.5 h-3.5" />
+            אף אחד לא קיבל חג שכבר עשה {period}.
+          </p>
+        ))}
       {blocked.length > 0 && (
         <p className="text-[11px] text-gray-500 mt-1">
           לא קיבלו ימי חג כי היו חסומים באילוצים בכל ימי החג בטווח: {names(blocked)}
@@ -199,13 +201,14 @@ function HolidaySpreadCheck({ rows, months, cap, pastOff }) {
 
 /**
  * The run's headline figures plus the completeness checks: every free day was
- * filled, chags were spread evenly without repeats, and no constraint that was
- * left ON got broken.
+ * filled, chags went first to people with no past chags (at most 2 each)
+ * without repeats, and no constraint that was left ON got broken.
  *
  * The chag check runs when `holidayFairness` is passed: the result's
  * holidayTable (or justiceTable when the run had no holidayUsers). Pass
- * `chagShareCap` (the run's even share per person), `pastOff` (the run ignored
- * the past, so repeats aren't checked) and `historyMonths` — the number of
+ * `chagShareCap` (the most chag shares per person), `chagNoPastFirst` (people
+ * with no past chags went first), `pastOff` (the run ignored the past, so
+ * neither that nor repeats is checked) and `historyMonths` — the number of
  * months before the range the run looked at — so the check names that period.
  * When the check can't be shown, `pastFairnessNote` says why in its place.
  */
@@ -216,6 +219,7 @@ export default function DistributionPreviewSummary({
   violations,
   holidayFairness,
   chagShareCap,
+  chagNoPastFirst = true,
   pastOff = false,
   historyMonths,
   pastFairnessNote,
@@ -291,6 +295,7 @@ export default function DistributionPreviewSummary({
           months={historyMonths}
           cap={chagShareCap ?? null}
           pastOff={pastOff}
+          noPastFirst={chagNoPastFirst !== false}
         />
       ) : pastFairnessNote ? (
         <p className="text-[11px] text-gray-500 flex items-center gap-1.5">
